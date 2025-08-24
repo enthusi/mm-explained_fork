@@ -3,7 +3,7 @@ It includes the main engine code, as well as the special disk loaders used.
 
 Roughly 97% of the code has been commented.
 
-Be aware there might be errors or mistakes, as well as minor gaps in the analysis. Particularly with the animation logic.
+Be aware there might be errors or mistakes, as well as minor gaps in the analysis. Particularly with the animation logic and the music player.
 
 I'm sure I'm not the first to analyze the code, as crackers of old necessarily had to do so to defeat copy protection. 
 And at least one modern conversion to cartridge format exists, which forced the author to do analysis at a relatively deep level.
