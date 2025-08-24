@@ -1,0 +1,34 @@
+C64																Drive
+=====															======
+1 - Auto-loader hijacks a BASIC vector and 
+loads the main loader using KERNAL routines
+2 - Main loader
+		-sets expected sentinel for loader code
+		-Instructs drive to load 18/11 and execute it
+																3-Loads sector 18/11 and executes it
+																4-The code loads sector 18/12 using 1541 ROM routines
+																-Uses expected sentinel to set up load jobs
+																-Clears expected sentinel
+																5-Uses an execute job to start executing from beginning of same buffer
+																invoke a sector load routine for each main code sector
+																	-The routine reads a raw GCR sector, decodes it and fast-sends it over serial
+																	-First sector: 19/12
+																-When the track changes, the job is finished and a new one created to work on the new track
+																		
+		6-reads main data from serial bus in fast-load mode
+		7-decrypts rest of the loader code
+		8-instructs drive to read sector 18/8 using KERNAL
+																-Load sector 18/8 into a buffer
+		9-performs a checksum on the sector buffer
+		10-instructs drive to read and execute 18/8
+																11-executes code of 18/8
+																12-decrypts its own encrypted code
+																13-performs copy protection check (wide-track validation)
+																14-sets expected sentinel
+																15-clears out the loaded code
+		16-reads expected sentinel from 18/8 execution buffer
+		17-checksums the main code decryption routine
+		18-computes main checksum transformation values based
+		on previous checksums
+		19-decrypts main code using a dynamic key
+		20-launches the main game code
