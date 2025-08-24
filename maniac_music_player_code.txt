@@ -1,0 +1,894 @@
+sound_read_ptr = $bc
+voice_data_base_lo = $4779
+voice_data_base_hi = $4780
+voice_data_offsets_lo = $4787
+voice_data_offsets_hi = $478e
+music_playback_in_progress = $4816
+music_voices_in_use = $4817
+music_voices_in_use_2 = $4818
+sound_processing_disabled = $4819	;#00 = false, #FF = true
+sound_priority = $4d01		
+sound_to_start = $4d05
+inlined_music_ptr = $53cb
+voice_offsets_in_music_resource = $5455
+sound_resource_index_for_music_voice = $5459
+music_track_ptrs_lo = $5490
+music_track_ptrs_hi = $5499
+sound_rsrc_ptrs_hi = $78C5		;Total sounds: 70
+sound_rsrc_ptrs_lo = $790B
+sound_memory_attrs = $7951
+new_sound_instructions_allowed = $fe71	;#00 = not allowed, nonzero = allowed
+
+start_sound_for_voice = $4939
+release_voice = $4f45
+allocate_voice = $4ffe
+
+;========================================
+; Init music
+; 
+; Arguments:	.A	music resource index
+;
+;	Returns		#01 if music not in memory
+;========================================
+
+music_resource_being_played = $546d
+music_rsrc_addr_lo = $5474
+music_rsrc_addr_hi = $5475
+voice_bitmask = $5458
+
+init_music:
+.C:7dc4  48          PHA
+.C:7dc5  AE 6D 54    LDX music_resource_being_played
+.C:7dc8  20 DA 4C    JSR decrease_sound_memory_attribute
+.C:7dcb  68          PLA
+.C:7dcc  8D 6D 54    STA music_resource_being_played
+.C:7dcf  AA          TAX
+.C:7dd0  BD C5 78    LDA sound_rsrc_ptrs_hi,X
+.C:7dd3  D0 03       BNE init_entry
+;Music not in memory - return #01
+.C:7dd5  A9 01       LDA #$01
+.C:7dd7  60          RTS
+;-----------------------------------------------
+init_entry:
+.C:7dd8  85 BD       STA >sound_read_ptr
+.C:7dda  8D 75 54    STA music_rsrc_addr_hi
+.C:7ddd  BD 0B 79    LDA sound_rsrc_ptrs_lo,X
+.C:7de0  85 BC       STA <sound_read_ptr
+.C:7de2  8D 74 54    STA music_rsrc_addr_lo
+;Disable sound processing
+.C:7de5  A9 FF       LDA #$FF
+.C:7de7  8D 19 48    STA sound_processing_disabled
+.C:7dea  A9 00       LDA #$00
+.C:7dec  8D 71 FE    STA new_sound_instructions_allowed
+.C:7def  A9 00       LDA #$00
+.C:7df1  8D 16 48    STA music_playback_in_progress
+.C:7df4  20 3E 51    JSR clear_refcount_of_sounds_1_and_2
+.C:7df7  20 F7 48    JSR init_more_sound
+.C:7dfa  A0 00       LDY #$00
+.C:7dfc  AE 6D 54    LDX music_resource_being_played
+.C:7dff  20 F4 4F    JSR increment_sound_memory_attr
+;------------------------------------------------
+; Equivalent to JSR music_routine_6 with:
+; .A = sound_read_ptr[5]
+; .Y = #05
+; .X = music_resource_being_played
+;------------------------------------------------
+.C:7e02  A0 05       LDY #$05
+.C:7e04  AE 6D 54    LDX music_resource_being_played
+.C:7e07  B1 BC       LDA (sound_read_ptr),Y
+.C:7e09  48          PHA
+.C:7e0a  8A          TXA
+.C:7e0b  48          PHA
+.C:7e0c  98          TYA
+.C:7e0d  48          PHA
+.C:7e0e  A2 06       LDX #$06
+.C:7e10  BD 90 54    LDA music_track_ptrs_lo,X
+.C:7e13  8D CB 53    STA <inlined_music_ptr		;Inlined address
+.C:7e16  BD 99 54    LDA music_track_ptrs_hi,X
+.C:7e19  8D CC 53    STA >inlined_music_ptr		;Inlined address
+.C:7e1c  68          PLA
+.C:7e1d  A8          TAY
+.C:7e1e  68          PLA
+.C:7e1f  AA          TAX
+.C:7e20  68          PLA
+.C:7e21  20 CA 53    JSR jump_to_inlined_music_routine
+;------------------------------------------------
+; Read voice_bitmask from offset #04
+.C:7e24  A0 04       LDY #$04
+.C:7e26  B1 BC       LDA (sound_read_ptr),Y
+.C:7e28  8D 58 54    STA voice_bitmask
+; Use .X as voice index, start from #02, go downwards
+.C:7e2b  A2 02       LDX #$02
+test_voice:
+;Test if the voice bit is set in voice_bitmask
+;If not, skip to the next voice
+.C:7e2d  AD 58 54    LDA voice_bitmask
+.C:7e30  3D 5C 47    AND set_bitmasks,X
+.C:7e33  F0 1B       BEQ next_voice
+;------------------------------------------------
+; Equivalent to JSR music_routine_0.
+; This is the invocation of set_voices_base_and_offset
+; with .X as the voice argument.
+;------------------------------------------------
+.C:7e35  48          PHA
+.C:7e36  8A          TXA
+.C:7e37  48          PHA
+.C:7e38  98          TYA
+.C:7e39  48          PHA
+.C:7e3a  A2 00       LDX #$00
+.C:7e3c  BD 90 54    LDA music_track_ptrs_lo,X
+.C:7e3f  8D CB 53    STA <inlined_music_ptr
+.C:7e42  BD 99 54    LDA music_track_ptrs_hi,X
+.C:7e45  8D CC 53    STA >inlined_music_ptr
+.C:7e48  68          PLA
+.C:7e49  A8          TAY
+.C:7e4a  68          PLA
+.C:7e4b  AA          TAX
+.C:7e4c  68          PLA
+.C:7e4d  20 CA 53    JSR jump_to_inlined_music_routine
+;------------------------------------------------
+next_voice:
+.C:7e50  CA          DEX
+.C:7e51  10 DA       BPL test_voice
+;------------------------------------------------
+.C:7e53  A9 FF       LDA #$FF
+.C:7e55  8D 16 48    STA music_playback_in_progress
+.C:7e58  20 4F 51    JSR set_refcount_of_sounds_1_and_2
+.C:7e5b  AD 6B 47    LDA $476B
+.C:7e5e  29 F0       AND #$F0
+.C:7e60  8D 6B 47    STA $476B
+.C:7e63  8D 17 D4    STA filter_control_register
+;------------------------------------------------
+; Equivalent to JSR music_routine_1 with:
+; .A = $476B & F0
+; .X = #FF
+; .Y = #04
+;------------------------------------------------
+.C:7e66  48          PHA
+.C:7e67  8A          TXA
+.C:7e68  48          PHA
+.C:7e69  98          TYA
+.C:7e6a  48          PHA
+.C:7e6b  A2 01       LDX #$01
+.C:7e6d  BD 90 54    LDA music_track_ptrs_lo,X
+.C:7e70  8D CB 53    STA <inlined_music_ptr
+.C:7e73  BD 99 54    LDA music_track_ptrs_hi,X
+.C:7e76  8D CC 53    STA >inlined_music_ptr
+.C:7e79  68          PLA
+.C:7e7a  A8          TAY
+.C:7e7b  68          PLA
+.C:7e7c  AA          TAX
+.C:7e7d  68          PLA
+.C:7e7e  20 CA 53    JSR jump_to_inlined_music_routine
+;------------------------------------------------
+;Enable sound processing
+.C:7e81  A9 00       LDA #$00
+.C:7e83  8D 19 48    STA sound_processing_disabled
+.C:7e86  A9 FF       LDA #$FF
+.C:7e88  8D 71 FE    STA new_sound_instructions_allowed
+.C:7e8b  60          RTS
+;=============================================
+; Set voice base and offset
+;
+; Arguments: .X	voice index
+;=============================================
+music_routine_0:
+set_voices_base_and_offset:
+.C:7e8c  48          PHA
+.C:7e8d  8A          TXA
+.C:7e8e  48          PHA
+.C:7e8f  98          TYA
+.C:7e90  48          PHA
+.C:7e91  BC 55 54    LDY voice_offsets_in_music_resource,X
+.C:7e94  B1 BC       LDA (sound_read_ptr),Y
+.C:7e96  9D 76 54    STA $5476,X
+.C:7e99  C8          INY
+.C:7e9a  B1 BC       LDA (sound_read_ptr),Y
+.C:7e9c  9D 79 54    STA $5479,X
+.C:7e9f  A5 BC       LDA <sound_read_ptr
+.C:7ea1  18          CLC
+.C:7ea2  7D 76 54    ADC $5476,X
+.C:7ea5  9D 6E 54    STA $546E,X
+.C:7ea8  A5 BD       LDA >sound_read_ptr
+.C:7eaa  7D 79 54    ADC $5479,X
+.C:7ead  9D 71 54    STA $5471,X
+;Sound resources for voices [0,1,2] are [3,4,5]
+;Sound resources [3,4,5] are stored in the middle of main code (sound_3, sound_4, sound_5)
+.C:7eb0  BD 59 54    LDA sound_resource_index_for_music_voice,X
+.C:7eb3  8D 05 4D    STA sound_to_start
+.C:7eb6  A8          TAY
+;Store the sound resource pointer as voice_data_base for voice .X and .X + 4
+.C:7eb7  B9 0B 79    LDA sound_rsrc_ptrs_lo,Y
+.C:7eba  48          PHA
+.C:7ebb  9D 79 47    STA voice_data_base_lo,X
+.C:7ebe  B9 C5 78    LDA sound_rsrc_ptrs_hi,Y
+.C:7ec1  48          PHA
+.C:7ec2  9D 80 47    STA voice_data_base_hi,X
+.C:7ec5  E8          INX
+.C:7ec6  E8          INX
+.C:7ec7  E8          INX
+.C:7ec8  E8          INX
+.C:7ec9  68          PLA
+.C:7eca  9D 80 47    STA voice_data_base_hi,X
+.C:7ecd  68          PLA
+.C:7ece  9D 79 47    STA voice_data_base_lo,X
+;Set voice_data_offset for voice .X + 4 as #0019
+.C:7ed1  A9 19       LDA #$19
+.C:7ed3  9D 87 47    STA voice_data_offsets_lo,X
+.C:7ed6  A9 00       LDA #$00
+.C:7ed8  9D 8E 47    STA voice_data_offsets_hi,X
+.C:7edb  CA          DEX
+.C:7edc  CA          DEX
+.C:7edd  CA          DEX
+.C:7ede  CA          DEX
+;Set voice_data_offset for voice .X as #0008
+.C:7edf  9D 8E 47    STA voice_data_offsets_hi,X
+.C:7ee2  A9 08       LDA #$08
+.C:7ee4  9D 87 47    STA voice_data_offsets_lo,X
+;------------------------------------------------
+; Equivalent to JSR music_routine_2.
+; Invokes allocate_voice_for_music for the voice index.
+;------------------------------------------------
+.C:7ee7  48          PHA
+.C:7ee8  8A          TXA
+.C:7ee9  48          PHA
+.C:7eea  98          TYA
+.C:7eeb  48          PHA
+.C:7eec  A2 02       LDX #$02
+.C:7eee  BD 90 54    LDA music_track_ptrs_lo,X
+.C:7ef1  8D CB 53    STA <inlined_music_ptr
+.C:7ef4  BD 99 54    LDA music_track_ptrs_hi,X
+.C:7ef7  8D CC 53    STA >inlined_music_ptr
+.C:7efa  68          PLA
+.C:7efb  A8          TAY
+.C:7efc  68          PLA
+.C:7efd  AA          TAX
+.C:7efe  68          PLA
+.C:7eff  20 CA 53    JSR jump_to_inlined_music_routine
+;------------------------------------------------
+.C:7f02  A9 00       LDA #$00
+.C:7f04  9D B1 47    STA $47B1,X
+.C:7f07  68          PLA
+.C:7f08  A8          TAY
+.C:7f09  68          PLA
+.C:7f0a  AA          TAX
+.C:7f0b  68          PLA
+.C:7f0c  60          RTS
+;=============================================
+music_routine_1:
+.C:7f0d  A0 02       LDY #$02
+music_routine_5:
+.C:7f0f  8C 66 54    STY $5466
+.C:7f12  AD 17 48    LDA music_voices_in_use
+.C:7f15  39 5C 47    AND set_bitmasks,Y
+.C:7f18  D0 0B       BNE bit_set
+.C:7f1a  AC 66 54    LDY $5466
+.C:7f1d  88          DEY
+.C:7f1e  30 04       BMI exit_1
+.C:7f20  B0 ED       BCS music_routine_5
+.C:7f22  90 EB       BCC music_routine_5
+exit_1:
+.C:7f24  60          RTS
+;-------------------------------
+bit_set:
+.C:7f25  AD 0C 48    LDA $480C
+.C:7f28  39 5C 47    AND set_bitmasks,Y
+.C:7f2b  F0 0B       BEQ bit_clear
+.C:7f2d  AC 66 54    LDY $5466
+.C:7f30  88          DEY
+.C:7f31  30 04       BMI exit_2
+.C:7f33  B0 DA       BCS music_routine_5
+.C:7f35  90 D8       BCC music_routine_5
+exit_2:
+.C:7f37  60          RTS
+;------------------------------------------------
+; Equivalent to JSR music_routine_3 with:
+; .A = 
+; .X = 
+; .Y = 
+;------------------------------------------------
+bit_clear:
+.C:7f38  48          PHA
+.C:7f39  8A          TXA
+.C:7f3a  48          PHA
+.C:7f3b  98          TYA
+.C:7f3c  48          PHA
+.C:7f3d  A2 03       LDX #$03
+.C:7f3f  BD 90 54    LDA music_track_ptrs_lo,X
+.C:7f42  8D CB 53    STA <inlined_music_ptr
+.C:7f45  BD 99 54    LDA music_track_ptrs_hi,X
+.C:7f48  8D CC 53    STA >inlined_music_ptr
+.C:7f4b  68          PLA
+.C:7f4c  A8          TAY
+.C:7f4d  68          PLA
+.C:7f4e  AA          TAX
+.C:7f4f  68          PLA
+.C:7f50  20 CA 53    JSR jump_to_inlined_music_routine
+;------------------------------------------------
+.C:7f53  C9 01       CMP #$01
+.C:7f55  D0 01       BNE result_not_01
+.C:7f57  60          RTS
+;------------------------------------------------
+result_not_01:
+.C:7f58  B9 6E 54    LDA $546E,Y
+.C:7f5b  85 BF       STA $BF
+.C:7f5d  B9 71 54    LDA $5471,Y
+.C:7f60  85 C0       STA $C0
+.C:7f62  98          TYA
+.C:7f63  AA          TAX
+.C:7f64  A0 00       LDY #$00
+.C:7f66  8C 61 54    STY $5461
+.C:7f69  8C 62 54    STY $5462
+.C:7f6c  8C 63 54    STY $5463
+.C:7f6f  B1 BF       LDA ($BF),Y
+.C:7f71  D0 59       BNE byte_not_00
+;------------------------------------------------
+; Equivalent to JSR music_routine_4 with:
+; .A = 
+; .X = 
+; .Y = 
+;------------------------------------------------
+.C:7f73  48          PHA
+.C:7f74  8A          TXA
+.C:7f75  48          PHA
+.C:7f76  98          TYA
+.C:7f77  48          PHA
+.C:7f78  A2 04       LDX #$04
+.C:7f7a  BD 90 54    LDA music_track_ptrs_lo,X
+.C:7f7d  8D CB 53    STA <inlined_music_ptr
+.C:7f80  BD 99 54    LDA music_track_ptrs_hi,X
+.C:7f83  8D CC 53    STA >inlined_music_ptr
+.C:7f86  68          PLA
+.C:7f87  A8          TAY
+.C:7f88  68          PLA
+.C:7f89  AA          TAX
+.C:7f8a  68          PLA
+.C:7f8b  20 CA 53    JSR jump_to_inlined_music_routine
+.C:7f8e  AD 16 48    LDA music_playback_in_progress
+.C:7f91  D0 01       BNE $7F94
+.C:7f93  60          RTS
+;------------------------------------------------
+.C:7f94  AC 66 54    LDY $5466
+.C:7f97  AD 17 48    LDA music_voices_in_use
+.C:7f9a  39 5C 47    AND set_bitmasks,Y
+.C:7f9d  D0 1C       BNE jump_to_routine_5
+.C:7f9f  AC 66 54    LDY $5466
+.C:7fa2  88          DEY
+.C:7fa3  30 11       BMI exit_3
+;------------------------------------------------
+.C:7fa5  A2 05       LDX #$05
+.C:7fa7  BD 90 54    LDA music_track_ptrs_lo,X
+.C:7faa  8D CB 53    STA <inlined_music_ptr
+.C:7fad  BD 99 54    LDA music_track_ptrs_hi,X
+.C:7fb0  8D CC 53    STA >inlined_music_ptr
+.C:7fb3  4C CA 53    JMP jump_to_inlined_music_routine
+exit_3:
+.C:7fb6  60          RTS
+.C:7fb7  B0 13       BCS byte_not_00
+.C:7fb9  90 11       BCC byte_not_00
+;------------------------------------------------
+jump_to_routine_5:
+.C:7fbb  A2 05       LDX #$05
+.C:7fbd  BD 90 54    LDA music_track_ptrs_lo,X
+.C:7fc0  8D CB 53    STA <inlined_music_ptr
+.C:7fc3  BD 99 54    LDA music_track_ptrs_hi,X
+.C:7fc6  8D CC 53    STA >inlined_music_ptr
+.C:7fc9  4C CA 53    JMP jump_to_inlined_music_routine
+;------------------------------------------------
+byte_not_00:
+.C:7fcc  C9 FF       CMP #$FF
+.C:7fce  D0 07       BNE $7FD7
+.C:7fd0  8D 62 54    STA $5462
+.C:7fd3  B0 2B       BCS $8000
+.C:7fd5  90 29       BCC $8000
+.C:7fd7  48          PHA
+.C:7fd8  A2 07       LDX #$07
+.C:7fda  BD 90 54    LDA music_track_ptrs_lo,X
+.C:7fdd  85 D4       STA $D4
+.C:7fdf  BD 99 54    LDA music_track_ptrs_hi,X
+.C:7fe2  85 D5       STA $D5
+.C:7fe4  A2 08       LDX #$08
+.C:7fe6  BD 90 54    LDA music_track_ptrs_lo,X
+.C:7fe9  85 D6       STA $D6
+.C:7feb  BD 99 54    LDA music_track_ptrs_hi,X
+.C:7fee  85 D7       STA $D7
+.C:7ff0  98          TYA
+.C:7ff1  AA          TAX
+.C:7ff2  68          PLA
+.C:7ff3  A8          TAY
+.C:7ff4  B1 D4       LDA ($D4),Y
+.C:7ff6  8D 64 54    STA $5464
+.C:7ff9  B1 D6       LDA ($D6),Y
+.C:7ffb  8D 65 54    STA $5465
+.C:7ffe  8A          TXA
+.C:7fff  A8          TAY
+.C:8000  C8          INY
+.C:8001  B1 BF       LDA ($BF),Y
+.C:8003  10 05       BPL $800A
+.C:8005  8D 63 54    STA $5463
+.C:8008  29 7F       AND #$7F
+.C:800a  C8          INY
+.C:800b  AA          TAX
+.C:800c  BD A2 54    LDA $54A2,X
+.C:800f  8D 5F 54    STA $545F
+.C:8012  BD C3 54    LDA $54C3,X
+.C:8015  8D 60 54    STA $5460
+.C:8018  AD 63 54    LDA $5463
+.C:801b  F0 04       BEQ $8021
+.C:801d  B0 2B       BCS $804A
+.C:801f  90 29       BCC $804A
+.C:8021  A9 00       LDA #$00
+.C:8023  8D 5E 54    STA $545E
+.C:8026  B1 BF       LDA ($BF),Y
+.C:8028  10 05       BPL $802F
+.C:802a  8D 63 54    STA $5463
+.C:802d  29 7F       AND #$7F
+.C:802f  C8          INY
+.C:8030  29 3F       AND #$3F
+.C:8032  8D 61 54    STA $5461
+.C:8035  AD 63 54    LDA $5463
+.C:8038  F0 04       BEQ $803E
+.C:803a  B0 0E       BCS $804A
+.C:803c  90 0C       BCC $804A
+.C:803e  AD 5E 54    LDA $545E
+.C:8041  D0 07       BNE $804A
+.C:8043  EE 5E 54    INC $545E
+.C:8046  B0 DE       BCS $8026
+.C:8048  90 DC       BCC $8026
+.C:804a  AE 66 54    LDX $5466
+.C:804d  98          TYA
+.C:804e  18          CLC
+.C:804f  7D 6E 54    ADC $546E,X
+.C:8052  9D 6E 54    STA $546E,X
+.C:8055  90 03       BCC $805A
+.C:8057  FE 71 54    INC $5471,X
+.C:805a  98          TYA
+.C:805b  18          CLC
+.C:805c  7D 76 54    ADC $5476,X
+.C:805f  9D 76 54    STA $5476,X
+.C:8062  90 03       BCC $8067
+.C:8064  FE 79 54    INC $5479,X
+.C:8067  AD 61 54    LDA $5461
+.C:806a  F0 62       BEQ $80CE
+.C:806c  0A          ASL A
+.C:806d  18          CLC
+.C:806e  69 0C       ADC #$0C
+.C:8070  A8          TAY
+.C:8071  AD 74 54    LDA music_rsrc_addr_lo
+.C:8074  85 BC       STA <sound_read_ptr
+.C:8076  AD 75 54    LDA music_rsrc_addr_hi
+.C:8079  85 BD       STA >sound_read_ptr
+.C:807b  B1 BC       LDA (sound_read_ptr),Y
+.C:807d  18          CLC
+.C:807e  6D 74 54    ADC music_rsrc_addr_lo
+.C:8081  85 BF       STA $BF
+.C:8083  C8          INY
+.C:8084  B1 BC       LDA (sound_read_ptr),Y
+.C:8086  6D 75 54    ADC music_rsrc_addr_hi
+.C:8089  85 C0       STA $C0
+.C:808b  BC 59 54    LDY sound_resource_index_for_music_voice,X
+.C:808e  B9 0B 79    LDA sound_rsrc_ptrs_lo,Y
+.C:8091  18          CLC
+.C:8092  69 0F       ADC #$0F
+.C:8094  85 C1       STA $C1
+.C:8096  B9 C5 78    LDA sound_rsrc_ptrs_hi,Y
+.C:8099  90 02       BCC $809D
+.C:809b  69 00       ADC #$00
+.C:809d  85 C2       STA $C2
+.C:809f  A0 04       LDY #$04
+.C:80a1  B1 BF       LDA ($BF),Y
+.C:80a3  91 C1       STA ($C1),Y
+.C:80a5  88          DEY
+.C:80a6  10 F9       BPL $80A1
+.C:80a8  A0 04       LDY #$04
+.C:80aa  B1 BF       LDA ($BF),Y
+.C:80ac  9D 67 54    STA $5467,X
+.C:80af  A5 C1       LDA $C1
+.C:80b1  18          CLC
+.C:80b2  69 0A       ADC #$0A
+.C:80b4  85 C1       STA $C1
+.C:80b6  90 02       BCC $80BA
+.C:80b8  E6 C2       INC $C2
+.C:80ba  A5 BF       LDA $BF
+.C:80bc  18          CLC
+.C:80bd  69 05       ADC #$05
+.C:80bf  85 BF       STA $BF
+.C:80c1  90 02       BCC $80C5
+.C:80c3  E6 C0       INC $C0
+.C:80c5  A0 10       LDY #$10
+.C:80c7  B1 BF       LDA ($BF),Y
+.C:80c9  91 C1       STA ($C1),Y
+.C:80cb  88          DEY
+.C:80cc  10 F9       BPL $80C7
+.C:80ce  BD 59 54    LDA sound_resource_index_for_music_voice,X
+.C:80d1  A8          TAY
+.C:80d2  B9 0B 79    LDA sound_rsrc_ptrs_lo,Y
+.C:80d5  85 BF       STA $BF
+.C:80d7  B9 C5 78    LDA sound_rsrc_ptrs_hi,Y
+.C:80da  85 C0       STA $C0
+.C:80dc  A0 0A       LDY #$0A
+.C:80de  B1 BF       LDA ($BF),Y
+.C:80e0  AE 62 54    LDX $5462
+.C:80e3  F0 20       BEQ $8105
+.C:80e5  48          PHA
+.C:80e6  AE 66 54    LDX $5466
+.C:80e9  BD 6A 54    LDA $546A,X
+.C:80ec  D0 0B       BNE $80F9
+.C:80ee  68          PLA
+.C:80ef  29 FE       AND #$FE
+.C:80f1  91 BF       STA ($BF),Y
+.C:80f3  A0 13       LDY #$13
+.C:80f5  B0 03       BCS $80FA
+.C:80f7  90 01       BCC $80FA
+.C:80f9  68          PLA
+.C:80fa  A9 FF       LDA #$FF
+.C:80fc  9D 6A 54    STA $546A,X
+.C:80ff  A0 0D       LDY #$0D
+.C:8101  B0 33       BCS $8136
+.C:8103  90 31       BCC $8136
+.C:8105  48          PHA
+.C:8106  98          TYA
+.C:8107  48          PHA
+.C:8108  AE 66 54    LDX $5466
+.C:810b  BD 6A 54    LDA $546A,X
+.C:810e  F0 12       BEQ $8122
+.C:8110  BD 67 54    LDA $5467,X
+.C:8113  A0 13       LDY #$13
+.C:8115  91 BF       STA ($BF),Y
+.C:8117  68          PLA
+.C:8118  A8          TAY
+.C:8119  68          PLA
+.C:811a  09 01       ORA #$01
+.C:811c  91 BF       STA ($BF),Y
+.C:811e  B0 04       BCS $8124
+.C:8120  90 02       BCC $8124
+.C:8122  68          PLA
+.C:8123  68          PLA
+.C:8124  C8          INY
+.C:8125  AD 64 54    LDA $5464
+.C:8128  91 BF       STA ($BF),Y
+.C:812a  C8          INY
+.C:812b  AD 65 54    LDA $5465
+.C:812e  91 BF       STA ($BF),Y
+.C:8130  C8          INY
+.C:8131  A9 00       LDA #$00
+.C:8133  9D 6A 54    STA $546A,X
+.C:8136  AD 5F 54    LDA $545F
+.C:8139  91 BF       STA ($BF),Y
+.C:813b  C8          INY
+.C:813c  AD 60 54    LDA $5460
+.C:813f  91 BF       STA ($BF),Y
+.C:8141  AE 66 54    LDX $5466
+.C:8144  BD 59 54    LDA sound_resource_index_for_music_voice,X
+.C:8147  9D 72 47    STA $4772,X
+.C:814a  20 39 49    JSR start_sound_for_voice
+.C:814d  AE 66 54    LDX $5466
+.C:8150  BD 59 54    LDA sound_resource_index_for_music_voice,X
+.C:8153  E8          INX
+.C:8154  E8          INX
+.C:8155  E8          INX
+.C:8156  E8          INX
+.C:8157  9D 72 47    STA $4772,X
+.C:815a  20 39 49    JSR start_sound_for_voice
+.C:815d  AC 66 54    LDY $5466
+.C:8160  88          DEY
+.C:8161  30 15       BMI $8178
+.C:8163  98          TYA
+;------------------------------------------------
+; Equivalent to JMP music_routine_5 with:
+; .A = 
+; .X = 
+; .Y = 
+;------------------------------------------------
+.C:8164  48          PHA
+.C:8165  A2 05       LDX #$05
+.C:8167  BD 90 54    LDA music_track_ptrs_lo,X
+.C:816a  8D CB 53    STA <inlined_music_ptr
+.C:816d  BD 99 54    LDA music_track_ptrs_hi,X
+.C:8170  8D CC 53    STA >inlined_music_ptr
+.C:8173  68          PLA
+.C:8174  A8          TAY
+.C:8175  4C CA 53    JMP jump_to_inlined_music_routine
+.C:8178  60          RTS
+;=============================================
+; Allocates a voice for music.
+;
+; Arguments: .X	voice index
+;=============================================
+music_routine_2:
+allocate_voice_for_music:
+.C:8179  48          PHA
+.C:817a  8A          TXA
+.C:817b  48          PHA
+.C:817c  98          TYA
+.C:817d  48          PHA
+;Save previous sound_priority in stack
+.C:817e  AD 01 4D    LDA sound_priority
+.C:8181  48          PHA
+;Set the highest sound_priority value possible
+.C:8182  A9 7F       LDA #$7F
+.C:8184  8D 01 4D    STA sound_priority
+;Save previous sound_to_start in stack
+.C:8187  AD 05 4D    LDA sound_to_start
+.C:818a  48          PHA
+;Set sound_to_start (a resource ID) that is used for this voice
+.C:818b  BD 59 54    LDA sound_resource_index_for_music_voice,X
+.C:818e  8D 05 4D    STA sound_to_start
+;Allocate a voice (by using the highest priority, it will always be allocated)
+.C:8191  20 FE 4F    JSR allocate_voice
+;Restore previous sound_to_start from stack
+.C:8194  68          PLA
+.C:8195  8D 05 4D    STA sound_to_start
+;Restore previous sound_priority from stack
+.C:8198  68          PLA
+.C:8199  8D 01 4D    STA sound_priority
+;Set the voice as used in these 2 bitmasks
+.C:819c  AD 18 48    LDA music_voices_in_use_2
+.C:819f  1D 5C 47    ORA set_bitmasks,X
+.C:81a2  8D 18 48    STA music_voices_in_use_2
+.C:81a5  AD 17 48    LDA music_voices_in_use
+.C:81a8  1D 5C 47    ORA set_bitmasks,X
+.C:81ab  8D 17 48    STA music_voices_in_use
+.C:81ae  68          PLA
+.C:81af  A8          TAY
+.C:81b0  68          PLA
+.C:81b1  AA          TAX
+.C:81b2  68          PLA
+.C:81b3  60          RTS
+;=============================================
+music_routine_4:
+.C:81b4  48          PHA
+.C:81b5  8A          TXA
+.C:81b6  48          PHA
+.C:81b7  98          TYA
+.C:81b8  48          PHA
+.C:81b9  AD 18 48    LDA music_voices_in_use_2
+.C:81bc  3D 63 47    AND clear_bitmasks,X
+.C:81bf  8D 18 48    STA music_voices_in_use_2
+.C:81c2  D0 2B       BNE $81EF
+.C:81c4  8D 16 48    STA music_playback_in_progress
+.C:81c7  20 3E 51    JSR clear_refcount_of_sounds_1_and_2
+.C:81ca  48          PHA
+.C:81cb  8A          TXA
+.C:81cc  48          PHA
+.C:81cd  98          TYA
+.C:81ce  48          PHA
+.C:81cf  AE 6D 54    LDX music_resource_being_played
+.C:81d2  A0 00       LDY #$00
+.C:81d4  20 EA 4F    JSR decrease_sound_memory_attr
+.C:81d7  A0 02       LDY #$02
+.C:81d9  BE 59 54    LDX sound_resource_index_for_music_voice,Y
+.C:81dc  8C 54 54    STY $5454
+.C:81df  A0 00       LDY #$00
+.C:81e1  20 EA 4F    JSR decrease_sound_memory_attr
+.C:81e4  AC 54 54    LDY $5454
+.C:81e7  88          DEY
+.C:81e8  10 EF       BPL $81D9
+.C:81ea  68          PLA
+.C:81eb  A8          TAY
+.C:81ec  68          PLA
+.C:81ed  AA          TAX
+.C:81ee  68          PLA
+.C:81ef  A9 02       LDA #$02
+.C:81f1  9D 95 47    STA $4795,X
+.C:81f4  AD 17 48    LDA music_voices_in_use
+.C:81f7  3D 63 47    AND clear_bitmasks,X
+.C:81fa  8D 17 48    STA music_voices_in_use
+.C:81fd  A9 00       LDA #$00
+.C:81ff  9D 67 54    STA $5467,X
+.C:8202  20 45 4F    JSR release_voice
+.C:8205  68          PLA
+.C:8206  A8          TAY
+.C:8207  68          PLA
+.C:8208  AA          TAX
+.C:8209  68          PLA
+.C:820a  60          RTS
+;=============================================
+music_routine_3:
+.C:820b  48          PHA
+.C:820c  8A          TXA
+.C:820d  48          PHA
+.C:820e  98          TYA
+.C:820f  48          PHA
+.C:8210  AE 6D 54    LDX music_resource_being_played
+.C:8213  BD C5 78    LDA sound_rsrc_ptrs_hi,X
+.C:8216  D0 30       BNE return_00
+.C:8218  A2 02       LDX #$02
+test:
+.C:821a  AD 58 54    LDA voice_bitmask
+.C:821d  3D 5C 47    AND set_bitmasks,X
+.C:8220  F0 1B       BEQ next
+;------------------------------------------------
+; Equivalent to JSR music_routine_4 with:
+; .A = 
+; .X = 
+; .Y = 
+;------------------------------------------------
+.C:8222  48          PHA
+.C:8223  8A          TXA
+.C:8224  48          PHA
+.C:8225  98          TYA
+.C:8226  48          PHA
+.C:8227  A2 04       LDX #$04
+.C:8229  BD 90 54    LDA music_track_ptrs_lo,X
+.C:822c  8D CB 53    STA <inlined_music_ptr
+.C:822f  BD 99 54    LDA music_track_ptrs_hi,X
+.C:8232  8D CC 53    STA >inlined_music_ptr
+.C:8235  68          PLA
+.C:8236  A8          TAY
+.C:8237  68          PLA
+.C:8238  AA          TAX
+.C:8239  68          PLA
+.C:823a  20 CA 53    JSR jump_to_inlined_music_routine
+next:
+.C:823d  CA          DEX
+.C:823e  10 DA       BPL test
+.C:8240  68          PLA
+.C:8241  A8          TAY
+.C:8242  68          PLA
+.C:8243  AA          TAX
+.C:8244  68          PLA
+.C:8245  A9 01       LDA #$01
+.C:8247  60          RTS
+;=============================================
+return_00:
+.C:8248  8D 14 48    STA $4814
+.C:824b  BD 0B 79    LDA sound_rsrc_ptrs_lo,X
+.C:824e  8D 15 48    STA $4815
+.C:8251  CD 74 54    CMP music_rsrc_addr_lo
+.C:8254  D0 10       BNE return_ff
+.C:8256  AD 14 48    LDA $4814
+.C:8259  CD 75 54    CMP music_rsrc_addr_hi
+.C:825c  D0 08       BNE return_ff
+.C:825e  68          PLA
+.C:825f  A8          TAY
+.C:8260  68          PLA
+.C:8261  AA          TAX
+.C:8262  68          PLA
+.C:8263  A9 00       LDA #$00
+.C:8265  60          RTS
+;=============================================
+return_ff:
+.C:8266  AD 14 48    LDA $4814
+.C:8269  8D 75 54    STA music_rsrc_addr_hi
+.C:826c  AD 15 48    LDA $4815
+.C:826f  8D 74 54    STA music_rsrc_addr_lo
+.C:8272  A2 02       LDX #$02
+loop:
+.C:8274  AD 15 48    LDA $4815
+.C:8277  18          CLC
+.C:8278  7D 76 54    ADC $5476,X
+.C:827b  9D 6E 54    STA $546E,X
+.C:827e  AD 14 48    LDA $4814
+.C:8281  7D 79 54    ADC $5479,X
+.C:8284  9D 71 54    STA $5471,X
+.C:8287  CA          DEX
+.C:8288  10 EA       BPL loop
+.C:828a  68          PLA
+.C:828b  A8          TAY
+.C:828c  68          PLA
+.C:828d  AA          TAX
+.C:828e  68          PLA
+.C:828f  A9 FF       LDA #$FF
+.C:8291  60          RTS
+;=============================================
+music_routine_6:
+.C:8292  8D 5C 54    STA $545C
+.C:8295  A9 00       LDA #$00
+.C:8297  8D C4 54    STA $54C4
+.C:829a  AE 5C 54    LDX $545C
+.C:829d  CA          DEX
+.C:829e  CA          DEX
+.C:829f  8E A3 54    STX $54A3
+.C:82a2  8A          TXA
+.C:82a3  A2 01       LDX #$01
+.C:82a5  A0 00       LDY #$00
+:
+.C:82a7  18          CLC
+.C:82a8  6D 5C 54    ADC $545C
+.C:82ab  9D A3 54    STA $54A3,X
+.C:82ae  48          PHA
+.C:82af  90 01       BCC $82B2
+.C:82b1  C8          INY
+:
+.C:82b2  98          TYA
+.C:82b3  9D C4 54    STA $54C4,X
+.C:82b6  68          PLA
+.C:82b7  E8          INX
+.C:82b8  E0 20       CPX #$20
+.C:82ba  30 EB       BMI $82A7
+.C:82bc  60          RTS
+;==================================================
+.C:82bd  00          BRK
+.C:82be  0C 1C 2D    NOOP $2D1C
+.C:82c1  3E 51 66    ROL $6651,X
+.C:82c4  7B 91 A9    RRA $A991,Y
+.C:82c7  C3 DD       DCP ($DD,X)
+.C:82c9  FA          NOOP
+.C:82ca  18          CLC
+.C:82cb  38          SEC
+.C:82cc  5A          NOOP
+.C:82cd  7D A3 CC    ADC $CCA3,X
+.C:82d0  F6 23       INC $23,X
+.C:82d2  53 86       SRE ($86),Y
+.C:82d4  BB F4 30    LAS $30F4,Y
+.C:82d7  70 B4       BVS $828D
+.C:82d9  FB 47 98    ISB $9847,Y
+.C:82dc  ED 47 A7    SBC $A747
+.C:82df  0C 77 E9    NOOP $E977
+.C:82e2  61 E1       ADC ($E1,X)
+.C:82e4  68          PLA
+.C:82e5  F7 8F       ISB $8F,X
+.C:82e7  30 DA       BMI $82C3
+.C:82e9  8F 4E 18    SAX $184E
+.C:82ec  EF D2 C3    ISB $C3D2
+.C:82ef  C3 D1       DCP ($D1,X)
+.C:82f1  EF 1F 60    ISB $601F
+.C:82f4  B5 1E       LDA $1E,X
+.C:82f6  9C 31 DF    SHY $DF31,X
+.C:82f9  A5 87       LDA $87
+.C:82fb  86 A2       STX $A2
+.C:82fd  DF 3E C1    DCP $C13E,X
+.C:8300  6B 3C       ARR #$3C
+.C:8302  39 63 BE    AND $BE63,Y
+.C:8305  4B 0F       ASR #$0F
+.C:8307  0C 45 BF    NOOP $BF45
+.C:830a  7D 83 D6    ADC $D683,X
+.C:830d  79 73 C7    ADC $C773,Y
+.C:8310  7C 97 1E    NOOP $1E97,X
+.C:8313  18          CLC
+.C:8314  8B 7E       ANE #$7E
+.C:8316  FA          NOOP
+.C:8317  06 AC       ASL $AC
+.C:8319  F3 E6       ISB ($E6),Y
+.C:831b  8F F8 2E    SAX $2EF8
+.C:831e  00          BRK
+.C:831f  01 01       ORA ($01,X)
+.C:8321  01 01       ORA ($01,X)
+.C:8323  01 01       ORA ($01,X)
+.C:8325  01 01       ORA ($01,X)
+.C:8327  01 01       ORA ($01,X)
+.C:8329  01 01       ORA ($01,X)
+.C:832b  02          JAM
+.C:832c  02          JAM
+.C:832d  02          JAM
+.C:832e  02          JAM
+.C:832f  02          JAM
+.C:8330  02          JAM
+.C:8331  02          JAM
+.C:8332  03 03       SLO ($03,X)
+.C:8334  03 03       SLO ($03,X)
+.C:8336  03 04       SLO ($04,X)
+.C:8338  04 04       NOOP $04
+.C:833a  04 05       NOOP $05
+.C:833c  05 05       ORA $05
+.C:833e  06 06       ASL $06
+.C:8340  07 07       SLO $07
+.C:8342  07 08       SLO $08
+.C:8344  08          PHP
+.C:8345  09 09       ORA #$09
+.C:8347  0A          ASL A
+.C:8348  0B 0B       ANC #$0B
+.C:834a  0C 0D 0E    NOOP $0E0D
+.C:834d  0E 0F 10    ASL $100F
+.C:8350  11 12       ORA ($12),Y
+.C:8352  13 15       SLO ($15),Y
+.C:8354  16 17       ASL $17,X
+.C:8356  19 1A 1C    ORA $1C1A,Y
+.C:8359  1D 1F 21    ORA $211F,X
+.C:835c  23 25       RLA ($25,X)
+.C:835e  27 2A       RLA $2A
+.C:8360  2C 2F 32    BIT $322F
+.C:8363  35 38       AND $38,X
+.C:8365  3B 3F 43    RLA $433F,Y
+.C:8368  47 4B       SRE $4B
+.C:836a  4F 54 59    SRE $5954
+.C:836d  5E 64 6A    LSR $6A64,X
+.C:8370  70 77       BVS $83E9
+.C:8372  7E 86 8E    ROR $8E86,X
+.C:8375  96 9F       STX $9F,Y
+.C:8377  A8          TAY
+.C:8378  B3 BD       LAX ($BD),Y
+.C:837a  C8          INY
+.C:837b  D4 E1       NOOP $E1,X
+.C:837d  EE FD 81    INC $81FD

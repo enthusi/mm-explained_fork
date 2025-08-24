@@ -1,0 +1,1550 @@
+Maniac Mansion 1987
+
+Track of next dir block: 00
+Sector of next dir block: FF
+
+Entry 1
+Type 82 - PRG
+Track/sector of first block - 0x13/0x00 (19/0)
+Filename - "COPYRIGHT"
+Number of blocks in file: 1
+
+Entry 2
+Type: PRG
+First block track: #13
+First block sector: #01
+Filename: "  1987   "
+Number of blocks in file: 4
+
+==============================
+"  1987   " file tracks
+Sector #13/1 - next block at #13/0B
+Load address - 9C00
+
+Sector #13/B - next block at #13/02
+Sector #13/2 - next block at #13/0C
+Sector #13/C - last block - # of valid bytes in sector: E7
+==============================
+"COPYRIGHT" file tracks
+
+Track 19 Sector 0 (final sector)
+00 35 D2 02
+
+First byte: 0 - ignored
+Number of valid data bytes in sector: 0x35 - 53
+Load address: 0x2D2
+
+
+The autoloader will:
+
+-have a load address of 0x2D2, so it will be copied into memory starting at that location
+-the last 2 bytes overwritten will be at locations 0x302/0x303 - these are the BASIC idle loop routine pointer
+-they will be overwritten with the loader's real start address (0x2DB)
+	-so that when BASIC eventually executes the idle loop, it will instead invoke the loader's code
+
+When the loader code is executed, it will:
+-set screen to black
+-set audio volume
+-load the real loader from disk, by doing the equivalent of a LOAD "  1987   ",8,1
+-start the loaded code by doing a JMP 9F64 (equivalent of SYS 40804)
+
+==========================
+02d2 20 20 31 39 38 37 20 20 20 ;Filename of file to load: "  1987  "
+autoloader_start:
+;Set background color to black
+02db a9 00    lda #$00
+02dd 8d 20 d0 sta $d020	
+;Set screen off
+02e0 8d 11 d0 sta $d011	;Set border color
+;Set SID volume to max 
+02e3 a9 0f    lda #$0f
+02e5 8d 18 d4 sta $d418	
+;Set logical file parameters (file 2, device 8, secondary address 1)
+02e8 a9 02    lda #$02
+02ea a2 08    ldx #$08
+02ec a0 01    ldy #$01
+02ee 20 ba ff jsr $ffba 
+; Set filename (9 chars long, pointer to filename $02D2)
+02f1 a9 09    lda #$09
+02f3 a2 d2    ldx #$d2
+02f5 a0 02    ldy #$02
+02f7 20 bd ff jsr $ffbd
+; Load file into memory (at the load address specified in the file's header) 
+; This is equivalent to run LOAD "  1987   ",8,1
+02fa a9 00    lda #$00
+02fc 20 d5 ff jsr $ffd5 ; Load RAM (.A = 0 means Load operation)
+						; Secondary address = 1
+						;so memory location will be specified in first 2 bytes of header
+;Start loader2					
+02ff 4c 64 9f jmp loader2_start ;$9f64
+;Overwriting these 2 bytes will hijack the BASIC idle loop
+; and thus trigger execution
+0302 db,02 ;$02DB - autoloader_start
+
+==============================================================================================
+Real loader - second file
+Note: 9D20-9F62 is encrypted code
+
+
+;Full sector count = #98 (152)
+;Base pointer = 03FC
+;Bytes in last sector = #34
+;So this is 152 full sectors + 1 last sector
+;Size of full sector: 256 - 2 (header) bytes = 254
+;Size of last sector: #34 = 52 bytes
+;Total bytes to load (excluding headers): 152 * size (full sectors) + size(last sector) = 152 * 254 + 52 = 38660 bytes (0x9704 bytes)
+;First offset of load: 0400
+;Final offset of load: 9B04
+
+
+;==================================================================================
+; Load main file
+;==================================================================================
+;Kernal routines used
+;CLALL = $FFE7
+;OPEN = $FFC0
+;SETNAM = $FFBD
+;SETLFS = $FFBA
+;CHKOUT = $FFC9
+;CHROUT = $FFD2
+;CLRCHN = $FFCC
+
+full_sector_count 		9C00
+load_address_lo			9C01
+load_address_hi			9C02
+bytes_in_last_sector	9C03
+
+load_main_file:
+;Save AE/AF and B7 in stack
+9c04 a5 ae    lda $ae
+9c06 48       pha 
+9c07 a5 af    lda $af
+9c09 48       pha 
+9c0a a5 b7    lda $b7
+9c0c 48       pha 
+;Close all channels and files
+9c0d 20 e7 ff jsr CLALL
+;Copy file load parameters to local variables
+9c10 b9 1c 9d lda main_file_load_parameters,y
+9c13 8d 00 9c sta full_sector_count
+9c16 b9 1d 9d lda main_file_load_parameters+1,y
+9c19 8d 01 9c sta load_address_lo
+9c1c b9 1e 9d lda main_file_load_parameters+2,y
+9c1f 8d 02 9c sta load_address_hi
+9c22 b9 1f 9d lda main_file_load_parameters+3,y
+9c25 8d 03 9c sta bytes_in_last_sector
+;Save current pointer in Y
+9c28 98       tya 
+9c29 48       pha 
+;----------------------------------
+;Open command channel
+;----------------------------------
+;Set filename length to 0
+9c2a a0 00    ldy #$00
+9c2c 84 b7    sty $b7
+;Set logical file parameters 15,8,15
+9c2e a9 0f    lda #$0f
+9c30 a8       tay 
+9c31 a2 08    ldx #$08
+9c33 20 ba ff jsr SETLFS	
+9c36 20 c0 ff jsr OPEN
+;----------------------------------
+;Open write channel
+;----------------------------------
+;Open logical file 2, use drive's buffer #2 (by setting the filename to "#2")
+;Set filename as "#2" 
+9c39 a0 9d    ldy >buffer_2_string
+9c3b a2 06    ldx <buffer_2_string
+9c3d a9 02    lda #$02
+9c3f 20 bd ff jsr SETNAM	
+;Set logical file parameters 2,8,2
+9c42 a8       tay 
+9c43 a2 08    ldx #$08
+9c45 20 ba ff jsr SETLFS 
+9c48 20 c0 ff jsr OPEN
+;Restore B7 (filename length), store it in $9D1B
+9c4b 68       pla 
+9c4c 8d 1b 9d sta $9d1b
+;Call CHKOUT to set logical file 15 as an output channel
+9c4f a2 0f    ldx #$0f
+9c51 20 c9 ff jsr CHKOUT	
+;----------------------------------
+; Write a 0x00 at drive's 0x7FF address (used as a sentinel)
+; This value will be used by the track 18/11 code later on - it's expected to be 0 or the code will crash
+;----------------------------------
+;Data at mem_write_command: 4d 2d 57 ff 07 01 00 ;"M-W", address 07FF, data length 0x01, data 0x00
+9c54 a0 00    ldy #$00
+9c56 b9 15 9d lda mem_write_command,y
+9c59 20 d2 ff jsr CHROUT	
+9c5c c8       iny 
+9c5d c0 07    cpy #$07
+9c5f d0 f5    bne $9c56
+;Restore default I/O (close the channel)
+9c61 20 cc ff jsr CLRCHN
+;Call CHKOUT to set logical file 15 as an output channel
+9c64 a2 0f    ldx #$0f
+9c66 20 c9 ff jsr CHKOUT
+;----------------------------------
+; Load track 18/11 into buffer #2 and execute it
+;----------------------------------
+;Data at 9D08: 42 2d 45 20 32 20 30 20 31 38 20 31 31   ; "B-E 2 0 18 11" 
+;This is a 1541 Block Execute command, for channel 2, drive 0, track 18, sector 11
+;Channel 2 has been associated with drive's buffer #2, so the block will be read and executed in that buffer
+9c69 a0 00    ldy #$00
+9c6b b9 08 9d lda block_execute_command,y
+9c6e 20 d2 ff jsr CHROUT
+9c71 c8       iny 
+9c72 c0 0d    cpy #$0d
+9c74 d0 f5    bne $9c6b
+;Restore default I/O (close the channel)
+9c76 20 cc ff jsr CLRCHN
+;----------------------------------
+; Fast-load over serial setup
+;----------------------------------
+;Disable interrupts
+9c79 78       sei 
+;Set Serial bus CLOCK OUT to Low, ATN OUT and DATA OUT to High
+;DD00 = Serial bus access
+9c7a ad 00 dd lda $dd00
+;Save current value in stack
+9c7d 48       pha 
+;Set bit 4 - CLOCK OUT (1 = Low)
+9c7e 09 10    ora #$10
+;Clear bits 3 and 5 - Bit 3 = ATN OUT, bit 5 = DATA OUT (0 = High)
+9c80 29 d7    and #$d7
+9c82 8d 00 dd sta $dd00
+;Set screen control - Vertical raster scroll = b11, Screen height = 25 rows 
+9c85 ad 11 d0 lda $d011
+9c88 48       pha 
+9c89 a9 0b    lda #$0b	;0B = 1011 in binary, bits 0,1 and 3 set
+9c8b 8d 11 d0 sta $d011
+;Copy load address pointers to AE/AF
+9c8e ad 01 9c lda load_address_lo
+9c91 85 ae    sta $ae
+9c93 ad 02 9c lda load_address_hi
+9c96 85 af    sta $af
+;----------------------------------
+;Read first sector
+9c98 a0 04    ldy #$04	; Initial base pointer will be $03FC, so adding 4 will yield $0400
+9c9a 20 db 9c jsr fast_byte_read	; Read (skip over) first 2 bytes (they get overwritten by the third read)
+9c9d 20 db 9c jsr fast_byte_read	
+9ca0 2c a0 02 bit $02a0 ;when code is executed branching to 9CA1, A0 02 means LDY #$02
+			;otherwise, the BIT instruction has no effect
+;----------------------------------
+;Real loop
+9ca3 20 db 9c jsr fast_byte_read ;Read a byte (this one will survive as Y is actually moved afterwards)
+9ca6 c8       iny	 
+9ca7 d0 fa    bne $9ca3
+;Update AE/AF pointers - add $FE to them as we actually read $FE bytes
+9ca9 a5 ae    lda $ae
+9cab 18       clc 
+9cac 69 fe    adc #$fe
+9cae 85 ae    sta $ae
+9cb0 90 02    bcc $9cb4
+9cb2 e6 af    inc $af
+
+9cb4 ce 00 9c dec full_sector_count	; Decrease sector count
+9cb7 d0 e8    bne $9ca1	; Sector count != 0? Jump to 9CA1, which actually is LDY #$02
+			; Intermediate sectors (other than the first one) will set Y to #02, effectively skipping the first 2 bytes
+;----------------------------------
+;Final sector read
+9cb9 a0 02    ldy #$02
+last_sector_loop:
+9cbb 20 db 9c jsr fast_byte_read
+9cbe c8       iny 
+9cbf cc 03 9c cpy bytes_in_last_sector
+9cc2 d0 f7    bne last_sector_loop
+;----------------------------------
+;Restore screen control from stack
+9cc4 68       pla 
+9cc5 8d 11 d0 sta $d011
+;Restore serial bus lines from stack
+9cc8 68       pla 
+9cc9 8d 00 dd sta $dd00
+;Restore B7, AF and AE
+9ccc 68       pla 
+9ccd 85 b7    sta $b7
+9ccf 68       pla 
+9cd0 85 af    sta $af
+9cd2 68       pla 
+9cd3 85 ae    sta $ae
+
+;Enable interrupts
+9cd5 58       cli 
+9cd6 18       clc
+;Close all channels and files 
+9cd7 20 e7 ff jsr CLALL
+9cda 60       rts 
+;==================================================================================
+;Fast-load byte read
+;Input argument - $AE/$AF as destination pointer, .Y as destination offset 
+;These arg values are not modified on exit
+;==================================================================================
+fast_byte_read:
+
+;Set Serial bus - VIC bank #0, DATA OUT low, CLOCK IN High
+;DD00 = Serial bus access
+;Set bits 0,1,5 and 6 - clear the rest
+;Bits 0 and 1 - mean use 3 - use VIC bank #0 (0000-3FFFF)
+;Bit 5 is DATA OUT, set 1 means Low
+;Bit 6 is CLOCK IN, set 1 means High
+9cdb a9 63    lda #$63		;#63 = 1100011
+9cdd 8d 00 dd sta $dd00
+
+;Wait for CLOCK IN to go Low
+;Set overflow flag based on bit 6 - Bit 6 is CLOCK IN
+9ce0 2c 00 dd bit $dd00
+9ce3 70 fb    bvs $9ce0	; Still set? Loop
+
+;Set Serial bus - VIC bank #0, RS232 TXD, DATA IN to High
+;Set bits 0,1,2 and 7 - clear the rest
+;Bits 0,1 - same VIC bank #0
+;Bit 2 is RS232 TXD line output
+;Bit 7 is DATA IN - Set 1 = High
+9ce5 a9 87    lda #$87
+9ce7 8d 00 dd sta $dd00
+
+;Wait 18 cycles (total of 2 cycles for the LDX + 4 loop iterations * 4 cycles = 2 + 16 = 18 cycles)
+9cea a2 04    ldx #$04	; 2 cycles
+9cec ca       dex 	; 2 cycles
+9ced d0 fd    bne $9cec	; 2 cycles
+
+;On each loop iteration, $02 will get 2 bits from the different shifts/rotations
+;After 4 rotations, a full 8 bits will be read into $02
+;The only bits relevant for this loop are bits 7 and 6 (7 - DATA IN, 6 - CLOCK IN) - all the other ones are ignored
+
+;Read in bits 7-6 of Serial bus (DATA IN, CLOCK IN)
+;Rotate them in as the lowest bits in $02 - in reverse order: bit 7 becomes bit 0, bit 6 becomes bit 1
+; 00 and 11 remain as they are, 01 and 10 get flipped (see analysis below)
+; Repeat this 4 times and you effectively read a whole byte from the serial bus, 2 bits at a time
+9cef a2 04    ldx #$04		;2 cycles
+
+;2-bit read loop (26 cycles per iteration)
+9cf1 ad 00 dd lda $dd00		;4 cycles
+9cf4 0a       asl a		;2 cycles
+9cf5 2a       rol a		;2 cycles
+9cf6 26 02    rol $02		;5 cycles
+9cf8 4a       lsr a		;2 cycles
+9cf9 ea       nop 		;2 cycles
+9cfa 26 02    rol $02		;5 cycles
+9cfc ca       dex 		;2 cycles 
+9cfd d0 f2    bne $9cf1		;2 cycles
+
+
+;Flip all bits of $02
+9cff a5 02    lda $02
+9d01 49 ff    eor #$ff
+
+;Store result in ($AE),Y
+9d03 91 ae    sta ($ae),y
+9d05 60       rts 
+
+=====================================================================
+buffer_2_string 9d06 23 32 "#2"
+block_execute_command 9d08 42 2d 45 20 32 20 30 20 31 38  20 31 31 "B-E 2 0 18 11"
+mem_write_command 9d15 2d 57 ff 07 01 "M-W", $07FF, 01, 00
+main_file_load_parameters
+9d1c 98		;Full sector count
+9d1d fc		;Load address pointer lo
+9d1e 03		;Load address pointer hi
+9d1f 34		;Bytes in last sector
+
+=====================================================================
+Bus 11xxxxxx
+
+		A		Carry	$02
+		11xxxxxx	x	xxxxxxxx
+ASL A		<-
+		1xxxxxxx	1	xxxxxxxx
+ROL A		<-		
+		xxxxxxx1	1	xxxxxxxx
+ROL $02
+		xxxxxxx1	x	xxxxxxx1
+LSR A		
+		xxxxxxxx	1	xxxxxxx1
+ROL $02
+		xxxxxxxx	x	xxxxxx11	
+
+=====================================================================
+Bus 10xxxxxx
+
+		A		Carry	$02
+		10xxxxxx	x	xxxxxxxx
+ASL A		<-
+		0xxxxxxx	1	xxxxxxxx
+ROL A		<-		
+		xxxxxxx1	0	xxxxxxxx
+ROL $02
+		xxxxxxx1	x	xxxxxxx0
+LSR A		
+		xxxxxxxx	1	xxxxxxx0
+ROL $02
+		xxxxxxxx	x	xxxxxx01	
+
+=====================================================================
+Bus 01xxxxxx
+
+		A		Carry	$02
+		01xxxxxx	x	xxxxxxxx
+ASL A		<-
+		1xxxxxxx	0	xxxxxxxx
+ROL A		<-		
+		xxxxxxx0	1	xxxxxxxx
+ROL $02
+		xxxxxxx0	x	xxxxxxx1
+LSR A		
+		xxxxxxxx	0	xxxxxxx1
+ROL $02
+		xxxxxxxx	x	xxxxxx10	
+=====================================================================
+Bus 00xxxxxx
+
+		A		Carry	$02
+		00xxxxxx	x	xxxxxxxx
+ASL A		<-
+		0xxxxxxx	0	xxxxxxxx
+ROL A		<-		
+		xxxxxxx0	0	xxxxxxxx
+ROL $02
+		xxxxxxx0	x	xxxxxxx0
+LSR A		
+		xxxxxxxx	0	xxxxxxx0
+ROL $02
+		xxxxxxxx	x	xxxxxx00	
+=======================================================================
+;Decrypt the memory region 0400-1400
+=======================================================================
+decrypt_region_0400_1400:
+;Checksum code "region A"
+;On return, memory_region_a_checksum holds the checksum 
+.C:9d20  20 63 9D    jsr checksum_region_a
+
+;$B4 = disk_sector_18_8_checksum + disk_decryption_checksum 
+.C:9d23  AD 44 9D    lda disk_sector_18_8_checksum	(#36)
+.C:9d26  18          clc
+.C:9d27  6D 9D 9E    adc disk_decryption_checksum	(#00)
+.C:9d2a  85 B4       sta $B4
+
+;$B5 = memory_region_b_checksum - disk_decryption_checksum 
+.C:9d2c  AD D7 9D    lda memory_region_b_checksum	(#5C)
+.C:9d2f  38          sec
+.C:9d30  ED 9D 9E    sbc disk_decryption_checksum
+.C:9d33  85 B5       sta $B5
+
+;$B6 = memory_region_a_checksum
+.C:9d35  A9 FF       lda #$FF	;Disguised variable - The LDA instruction has no consequence as there's another LDA immediately afterwards 
+;9D36 - variable disguised as the immediate operand of the LDA instruction
+.C:9d36  FF       
+memory_region_a_checksum: FF	(#07)
+.C:9d37  85 B6       sta $B6
+
+;Set processor port data direction register (by default it's already #2F)
+.C:9d39  A9 2F       lda #$2F
+.C:9d3b  85 00       sta $00
+
+;Clear processor port bit 0 - switch out BASIC, switch in RAM (at A000-BFFF)
+.C:9d3d  A5 01       lda $01
+.C:9d3f  29 FE       and #$FE
+.C:9d41  85 01       sta $01
+
+.C:9d43  A9 1F       lda #$1F	;Disguised variable - The LDA instruction has no consequence as there's another LDA immediately afterwards
+;9D44 - variable disguised as the immediate operand of the LDA instruction
+.C:9d44  1F       
+disk_sector_18_8_checksum: FF
+								
+;Set base pointer to $0400
+.C:9d45  A9 00       lda #$00
+.C:9d47  85 FB       sta $FB
+.C:9d49  A9 04       lda #$04
+.C:9d4b  85 FC       sta $FC
+
+;.X is used as mem hi index, .Y as mem lo
+;Total iterations will be 0x10 * 0x100 = 0x1000 (4096 in decimal)
+;Range covered will be 0400-13FF 
+.C:9d4d  A2 10       ldx #$10
+.C:9d4f  A0 00       ldy #$00
+
+decrypt_next_byte:
+;The checksum transformation will compute a combined checksum in $FF based on $B4, $B5 and $B6
+;It will also modify B4, B5 and B6 (as explained in detail in that routine)
+.C:9d51  20 C0 9E    jsr checksum_transformation		
+									
+;Decrypt pointed byte with $FF
+.C:9d54  B1 FB       lda ($FB),Y
+.C:9d56  45 FF       eor $FF
+.C:9d58  91 FB       sta ($FB),Y
+.C:9d5a  C8          iny
+.C:9d5b  D0 F4       bne decrypt_next_byte
+.C:9d5d  E6 FC       inc $FC
+.C:9d5f  CA          dex
+.C:9d60  D0 EF       bne decrypt_next_byte
+.C:9d62  60          rts
+=============================================
+;Performs a XOR checksum of the memory region A (9D8E-9EBF)
+;On exit, memory_region_a_checksum will hold the checksum
+=============================================
+;Variables used
+;FB/FC	memory_region_lo/hi
+;9D36	memory_region_a_checksum
+
+checksum_region_a:
+;Set up base pointer to the memory region start
+.C:9d63  A9 8E       lda #$8E
+.C:9d65  85 FB       sta memory_region_a_lo
+.C:9d67  A9 9D       lda #$9D
+.C:9d69  85 FC       sta memory_region_a_hi
+;Set initial XOR value to #00
+.C:9d6b  A9 00       lda #$00
+.C:9d6d  8D 36 9D    sta memory_region_a_checksum
+;Checksum next byte by doing a XOR
+.C:9d70  A0 00       ldy #$00
+checksum_next_byte:
+.C:9d72  B1 FB       lda (memory_region_lo),Y
+.C:9d74  4D 36 9D    eor memory_region_a_checksum
+.C:9d77  8D 36 9D    sta memory_region_a_checksum
+;Increment pointer
+; Note: instead of moving Y, we're moving the base pointer
+; This simplifies comparing against the end of region
+.C:9d7a  E6 FB       inc memory_region_a_lo
+.C:9d7c  D0 02       bne region_end_check
+.C:9d7e  E6 FC       inc memory_region_a_hi
+;If we reached the end of the memory region, exit - otherwise, loop
+region_end_check:
+.C:9d80  A5 FB       lda memory_region_a_lo
+.C:9d82  C9 BF       cmp #$BF
+.C:9d84  D0 EC       bne checksum_next_byte
+.C:9d86  A5 FC       lda memory_region_a_hi
+.C:9d88  C9 9E       cmp #$9E
+.C:9d8a  D0 E6       bne checksum_next_byte
+.C:9d8c  60          rts
+.C:9d8d  00          brk
+
+=============================================
+;Integrity checks part 1
+=============================================
+integrity_check_1:
+;Checksum disk track 18, sector 8
+.C:9d8e  20 10 9E    jsr checksum_disk_track	
+;Execute track 18/8 directly in the drive, calculate checksum
+.C:9d91  20 98 9D    jsr disk_execute_block_18_8	
+;Checksum memory region B (9D20-9D8D)
+.C:9d94  20 73 9E    jsr checksum_region_b  								
+.C:9d97  60          rts
+=============================================
+;Instruct the disk drive to execute the block on track 18/8, buffer #1
+;Calculate a checksum from the drive memory, store it in disk_decryption_checksum
+=============================================
+;Kernal routines used
+;SETLFS = $FFBA
+;SETNAM = $FFBD
+;OPEN = $FFC0
+;CHKOUT = $FFC9
+;CHROUT = $FFD2
+;CLRCHN = $FFCC
+;CHKIN = $FFC6
+;CHRIN = $FFCF
+;CLOSE = $FFC3
+disk_execute_block_18_8:
+;Open command channel
+.C:9d98  A9 0F       lda #$0F
+.C:9d9a  A8          tay
+.C:9d9b  A2 08       ldx #$08
+.C:9d9d  20 BA FF    jsr SETLFS
+.C:9da0  A9 00       lda #$00
+.C:9da2  20 BD FF    jsr SETNAM	
+.C:9da5  20 C0 FF    jsr OPEN	
+;--------------------
+;Open logical file 2, use buffer #1
+.C:9da8  A9 02       lda #$02
+.C:9daa  A8          tay
+.C:9dab  A2 08       ldx #$08
+.C:9dad  20 BA FF    jsr SETLFS	;Set logical file parameters
+.C:9db0  A9 02       lda #$02	;Filename length
+.C:9db2  A2 AF       ldx #$AF	;Pointer to filename
+.C:9db4  A0 9E       ldy #$9E
+.C:9db6  20 BD FF    jsr SETNAM	;Set filename to "#1"
+.C:9db9  20 C0 FF    jsr OPEN	;Open file
+;-------------------
+; Load track 18/8 into buffer #1 and execute it
+.C:9dbc  A2 0F       ldx #$0F
+.C:9dbe  20 C9 FF    jsr CHKOUT	;Set #F as output channel
+.C:9dc1  A2 00       ldx #$00
+;Write out the string "B-E 2 0 18 8"
+.C:9dc3  BD 9E 9E    lda $9E9E,X
+.C:9dc6  20 D2 FF    jsr CHROUT	
+.C:9dc9  E8          inx
+.C:9dca  E0 0C       cpx #$0C
+.C:9dcc  D0 F5       bne $9DC3
+.C:9dce  20 CC FF    jsr CLRCHN	
+;-------------------
+;Issue a 1541 Memory Read command, read address 0x1FF (in 1541 address space), data size 0x23 (35 bytes)
+;The purpose of reading more than 1 byte is unknown, as afterwards only the first byte is read, flipped
+; and stored as the disk_decryption_checksum
+;
+.C:9dd1  A2 0F       ldx #$0F
+.C:9dd3  20 C9 FF    jsr CHKOUT	;Set output channel								
+.C:9dd6  A2 FF       ldx #$FF	;Disguised variable - The LDX instruction has no consequence as there's another LDX immediately afterwards
+;9DD7 - variable disguised as the immediate operand of the LDX instruction
+memory_region_b_checksum: FF
+
+.C:9dd8  A2 00       ldx #$00
+;Write out "M-R", address 0x1FF, size 0x23
+.C:9dda  BD AA 9E    lda $9EAA,X
+.C:9ddd  20 D2 FF    jsr CHROUT	
+.C:9de0  E8          inx
+.C:9de1  E0 05       cpx #$05
+.C:9de3  D0 F5       bne $9DDA
+.C:9de5  20 CC FF    jsr CLRCHN	
+;-------------------
+;Read one byte from the command channel, flip all its bits, store it in disk_decryption_checksum
+;Open input channel on logical file #F
+.C:9de8  A2 0F       ldx #$0F
+.C:9dea  20 C6 FF    jsr CHKIN	
+;Read 1 byte
+.C:9ded  20 CF FF    jsr CHRIN	;If protection checks suceeded, the value read will be #FF
+.C:9df0  49 FF       eor #$FF	;Flip all bits - that yields a value of #00
+.C:9df2  8D 9D 9E    sta disk_decryption_checksum
+;Clear all channels, close command channel and file #2
+.C:9df5  20 CC FF    jsr CLRCHN	
+.C:9df8  A9 0F       lda #$0F
+.C:9dfa  20 C3 FF    jsr CLOSE	
+.C:9dfd  A9 02       lda #$02
+.C:9dff  20 C3 FF    jsr CLOSE	
+;-------------------
+;Black out the screen
+.C:9e02  A9 00       lda #$00
+.C:9e04  8D 20 D0    sta $D020 ;Set screen border color
+;Clear bit 4 of screen control register - all screen is covered by border
+.C:9e07  AD 11 D0    lda $D011
+.C:9e0a  29 EF       and #$EF
+.C:9e0c  8D 11 D0    sta $D011
+.C:9e0f  60          rts
+=============================================
+;Kernal routines used 
+;CLOSE = $FF3C
+checksum_disk_track:
+.C:9e10  20 21 9E    jsr open_file_5_8_5		;Open logical file 5,8,15
+.C:9e13  20 37 9E    jsr checksum_disk_t18_s8	;Checksum track 18, sector 8 - store result in $FE
+;Close logical file 5
+.C:9e16  A9 05       lda #$05		
+.C:9e18  20 C3 FF    jsr CLOSE		;CLOSE
+;Store checksum in $9D44
+.C:9e1b  A5 FE       lda $FE		
+.C:9e1d  8D 44 9D    sta disk_sector_18_8_checksum
+.C:9e20  60          rts
+=============================================
+;Open logical file 5 on device 8, secondary address 5
+=============================================
+;Kernal routines used 
+;SETLFS = $FFBA
+;SETNAM = $FFBD
+;OPEN = $FFC0
+open_file_5_8_5:
+.c:9e21  a9 05       lda #$05
+.c:9e23  a2 08       ldx #$08
+.c:9e25  a0 05       ldy #$05
+.C:9e27  20 BA FF    jsr SETLFS	;Set logical parameters (5,8,5)
+.c:9e2a  a9 01       lda #$01
+.c:9e2c  a2 b1       ldx #$b1
+.c:9e2e  a0 9e       ldy #$9e
+.C:9e30  20 BD FF    jsr SETNAM	;Set filename (length 1, pointer to filename string 9EB1 - #23)
+.C:9e33  20 C0 FF    jsr OPEN	;Open file
+.C:9e36  60          rts
+=============================================
+;Read Track 18, sector 8 into floppy memory
+;Read a total of #C0 bytes, XOR all of them together (starting with initial value of #00)
+;Store XOR result in $FE
+;Note: with the original disk image I used, the checksum yields 0x36
+=============================================
+;Kernal routines used 
+;LISTEN = $FFB1
+;SECOND = $FF93
+;CIOUT = $FFA8
+;UNLSN = $FFAE
+;CHKIN = $FFC6
+;CHRIN = $FFCF
+;CLRCHN = $FFCF
+;Internal variables
+;checksum = $FE
+
+checksum_disk_t18_s8:
+;Instruct device #8 to LISTEN
+.C:9e37  A9 08       lda #$08
+.C:9e39  20 B1 FF    jsr LISTEN
+;Send secondary address #0F to serial device
+.C:9e3c  A9 6F       lda #$6F	;Device address must be or'ed with #60
+.C:9e3e  20 93 FF    jsr SECOND
+; Issue a U1 variant of the BLOCK-READ command to the disk drive
+; This is done by sending the command string bytes over the serial bus
+;
+; Block read parameters:
+;	Channel 5, Drive 0, Track 18, Sector 8
+; Note: the block is read in full (256 bytes) instead of the usual 254,
+; as U1 includes the header	
+.C:9e41  A2 00       ldx #$00
+next_cmd_char:
+.C:9e43  8A          txa
+.C:9e44  48          pha
+.C:9e45  BD B2 9E    lda full_block_read_18_8_cmd,X
+.C:9e48  F0 08       beq end_of_cmd_string
+.C:9e4a  20 A8 FF    jsr CIOUT		;Send byte over serial bus using full handshaking
+.C:9e4d  68          pla
+.C:9e4e  AA          tax
+.C:9e4f  E8          inx
+.C:9e50  D0 F1       bne next_cmd_char
+end_of_cmd_string:
+.C:9e52  68          pla
+;Unlisten device on serial bus (all devices)
+.C:9e53  20 AE FF    jsr UNLSN	
+;Initialize checksum value
+.C:9e56  A9 00       lda #$00
+.C:9e58  85 FE       sta checksum
+;Open input channel on logical file #5
+.C:9e5a  A2 05       ldx #$05
+.C:9e5c  20 C6 FF    jsr CHKIN	
+
+;Read a total #C0 bytes (use .X as index)
+;Start with a value of #00
+;Read the next byte from the channel
+;XOR it with the current checksum, store as new checksum, loop
+.C:9e5f  A2 C0       ldx #$C0	;Checksum 192 bytes in total
+next_input_byte:
+.C:9e61  8A          txa	;Save .X as it will be affected by CHRIN
+.C:9e62  48          pha
+.C:9e63  20 CF FF    jsr CHRIN	
+.C:9e66  45 FE       eor checksum
+.C:9e68  85 FE       sta checksum
+.C:9e6a  68          pla	;Restore .X
+.C:9e6b  AA          tax
+.C:9e6c  CA          dex
+.C:9e6d  D0 F2       bne next_input_byte	;Loop
+;Clear all I/O channels
+.C:9e6f  20 CC FF    jsr CLRCHN	
+.C:9e72  60          rts
+=============================================
+;Performs a XOR checksum of the memory region B (9D20-9D8D)
+;On exit, disk_memory_checksum will hold the final XOR value 
+;
+;Note: this is almost identical to the checksum_region_a routine. 
+;The only difference is in the hardcoded memory region boundaries.
+=============================================
+;Variables used
+;FB/FC	memory_region_b_lo/hi
+;9DD7	memory_region_b_checksum - this variable is disguised in the middle of the code of disk_execute_block_18_8
+
+checksum_region_b:
+;Set up base pointer to the memory region start
+.C:9e73  A9 20       lda #$20
+.C:9e75  85 FB       sta memory_region_b_lo
+.C:9e77  A9 9D       lda #$9D
+.C:9e79  85 FC       sta memory_region_b_hi
+;Set initial XOR value to #00
+.C:9e7b  A9 00       lda #$00
+.C:9e7d  8D D7 9D    sta memory_region_b_checksum
+.C:9e80  A0 00       ldy #$00
+;Checksum next byte by doing a XOR
+checksum_next_byte:
+.C:9e82  B1 FB       lda (memory_region_b_lo),Y
+.C:9e84  4D D7 9D    eor memory_region_b_checksum
+.C:9e87  8D D7 9D    sta memory_region_b_checksum
+;Increment pointer
+; Note: instead of moving Y, we're moving the base pointer
+; This simplifies comparing against the end of region
+.C:9e8a  E6 FB       inc memory_region_b_lo
+.C:9e8c  D0 02       bne region_end_check
+.C:9e8e  E6 FC       inc memory_region_b_hi
+;If we reached the end of the memory region, exit - otherwise, loop
+region_end_check:
+.C:9e90  A5 FB       lda memory_region_b_lo
+.C:9e92  C9 8D       cmp #$8D
+.C:9e94  D0 EC       bne checksum_next_byte
+.C:9e96  A5 FC       lda memory_region_b_hi
+.C:9e98  C9 9D       cmp #$9D
+.C:9e9a  D0 E6       bne checksum_next_byte
+.C:9e9c  60          rts
+=============================================
+disk_decryption_checksum:
+.C:9e9d AC	;Checksum variable - single byte read from floppy, flipped 
+
+.C:9e9e 42 2D 45 20 32 20 30 20 31 38 20 38 ;"B-E 2 0 18 8"
+.C:9eaa 4D 2D 52 FF 01 23       ;"M-R", address 0x1FF, size 0x23
+.C:9eb0 31 
+.C:9eb1 23       
+-------------------------------------------
+.C:9eb2 full_block_read_18_8_cmd 55 31 3A 35 20 30 20 31 38 20 38 0D 00 ;"U1:5 0 18 8" + return character (0D) + zero-termination (00)
+;U1 works like the BLOCK-READ command (read a block to the floppy RAM)
+;but includes the link to the next block in the data.
+;Thus reading 256 bytes instead of 254.
+;Block read parameters:
+;	Channel 5, Drive 0, Track 18, Sector 8
+.C:9ebf  00          BRK
+=============================================
+; Checksum transformation
+;
+; Input/output values: $B4, $B5, $B6 (these are altered)
+; Temporary variables: $4F-$5A
+; Output value: $FF
+
+; For enhanced readability, we'll call B4/B5/B6/4F, "A", "B", "C" and "D" respectively
+; And in lowercase, each of their bits (a7..a0, b7..b0, etc.)
+; The calculations and changes performed:
+;
+; d2: c3 ^ b6 ^ b3 ^ a5
+; d1: c0 ^ b6 ^ b2 ^ b1 ^ a0
+; d0: (c2 & c5) ^ (c6 & c5) ^ (c6 & c2) ^ c0 ^ c2 ^ c5 ^ a0
+;
+; where "&" is bit-wise AND, and "^" is bit-wise XOR
+;
+; After those calculations, the original bits of A, B and C...
+;
+; A					B					C
+; a7a6a5a4a3a2a1a0	b7b6b5b4b3b2b1b0	c7c6c5c4c3c2c1c0
+;
+; ...are shifted and rotated around like this:
+;
+; a6a5a4a3a2a1a0d2	d1b5b4b3b2b1b0a7	d0c5c4c3c2c1c0b7
+;
+; Finally, $FF = A ^ B ^ C (after the bit swap)
+=============================================
+checksum_transformation:
+;Save .A, .X and .Y in the stack
+.C:9ec0  48          PHA
+.C:9ec1  98          TYA
+.C:9ec2  48          PHA
+.C:9ec3  8A          TXA
+.C:9ec4  48          PHA
+
+;For enhanced readability, let's call B4/B5/B6, "A", "B" and "C" respectively
+;$50 = A
+;$51 = A >> 5
+;$52 = B >> 1
+;$53 = B >> 2
+;$54 = B >> 3
+;$55 = B >> 6
+;$56 = C
+;$57 = C >> 2
+;$58 = C >> 3
+;$59 = C >> 5
+;$5A = C >> 6
+.C:9ec5  A5 B4       LDA $B4
+.C:9ec7  85 50       STA $50
+.C:9ec9  4A          LSR A
+.C:9eca  4A          LSR A
+.C:9ecb  4A          LSR A
+.C:9ecc  4A          LSR A
+.C:9ecd  4A          LSR A
+.C:9ece  85 51       STA $51
+.C:9ed0  A5 B5       LDA $B5
+.C:9ed2  4A          LSR A
+.C:9ed3  85 52       STA $52
+.C:9ed5  4A          LSR A
+.C:9ed6  85 53       STA $53
+.C:9ed8  4A          LSR A
+.C:9ed9  85 54       STA $54
+.C:9edb  4A          LSR A
+.C:9edc  4A          LSR A
+.C:9edd  4A          LSR A
+.C:9ede  85 55       STA $55
+.C:9ee0  A5 B6       LDA $B6
+.C:9ee2  85 56       STA $56
+.C:9ee4  4A          LSR A
+.C:9ee5  4A          LSR A
+.C:9ee6  85 57       STA $57
+.C:9ee8  4A          LSR A
+.C:9ee9  85 58       STA $58
+.C:9eeb  4A          LSR A
+.C:9eec  4A          LSR A
+.C:9eed  85 59       STA $59
+.C:9eef  4A          LSR A
+.C:9ef0  85 5A       STA $5A
+;--------------------
+;Mask out bits 7-1 of every helper variable 50-5A (that is, leave only bit 0)
+;Set $FF to #01 to use as bitmask for the LSB
+.C:9ef2  A9 01       LDA #$01
+.C:9ef4  85 FF       STA $FF
+;Iterate over all 10 auxiliary variables $50-$5A
+.C:9ef6  A0 0A       LDY #$0A
+;Select bit 0 of each variable - mask out all other bits
+.C:9ef8  A5 FF       LDA $FF
+.C:9efa  39 50 00    AND $0050,Y
+.C:9efd  99 50 00    STA $0050,Y
+.C:9f00  88          DEY
+.C:9f01  10 F5       BPL $9EF8
+
+;At this point, variables will have the following values as the least-significant bit:
+;$50 = A0
+;$51 = A5
+;$52 = B1
+;$53 = B2
+;$54 = B3
+;$55 = B6
+;$56 = C0
+;$57 = C2
+;$58 = C3
+;$59 = C5
+;$5A = C6
+
+;4F = C6 & C2
+.C:9f03  A5 5A       LDA $5A
+.C:9f05  AA          TAX
+.C:9f06  25 57       AND $57
+.C:9f08  85 4F       STA $4F
+
+;4F = (C6 & C5) ^ 4F
+.C:9f0a  8A          TXA
+.C:9f0b  25 59       AND $59
+.C:9f0d  45 4F       EOR $4F
+.C:9f0f  85 4F       STA $4F
+
+;4F = (C2 & C5) ^ 4F ^ C0 ^ C2 ^ C5 ^A0
+.C:9f11  A5 57       LDA $57
+.C:9f13  25 59       AND $59
+.C:9f15  45 4F       EOR $4F
+.C:9f17  45 56       EOR $56
+.C:9f19  45 57       EOR $57
+.C:9f1b  45 59       EOR $59
+.C:9f1d  45 50       EOR $50
+.C:9f1f  85 4F       STA $4F
+;So far we have been operating on a single bit
+
+;This operation introduces a second bit
+;4F = (C0 ^ B6 ^ B2 ^ B1 ^ A0) << 1 | 4F
+.C:9f21  A5 56       LDA $56
+.C:9f23  45 55       EOR $55
+.C:9f25  45 53       EOR $53
+.C:9f27  45 52       EOR $52
+.C:9f29  45 50       EOR $50
+.C:9f2b  0A          ASL A
+.C:9f2c  05 4F       ORA $4F
+.C:9f2e  85 4F       STA $4F
+
+;This one introduces a third bit
+;4F = (C3 ^ B6 ^ B3 ^ A5) << 2 | 4F
+.C:9f30  A5 58       LDA $58
+.C:9f32  45 55       EOR $55
+.C:9f34  45 54       EOR $54
+.C:9f36  45 51       EOR $51
+.C:9f38  0A          ASL A
+.C:9f39  0A          ASL A
+.C:9f3a  05 4F       ORA $4F
+.C:9f3c  85 4F       STA $4F
+;The full expression for 4F would be:
+;Bit 2: C3 ^ B6 ^ B3 ^ A5
+;Bit 1: C0 ^ B6 ^ B2 ^ B1 ^ A0
+;Bit 0: (C2 & C5) ^ (C6 & C5) ^ (C6 & C2) ^ C0 ^ C2 ^ C5 ^A0
+
+;So far, 4F only has the three lower bits set, the other ones are 0
+;We'll call B4,B5,B6 and 4F: A,B,C,D respectively
+;Below is the sequence of bits and steps performed
+;B4					B5					B6					Carry		4F
+;A					B					C								D
+;a7a6a5a4a3a2a1a0	b7b6b5b4b3b2b1b0	c7c6c5c4c3c2c1c0	x			0_0_0_0_0_d2d1d0
+;ASL A
+;A					B					C
+;a6a5a4a3a2a1a0_0	b7b6b5b4b3b2b1b0	c7c6c5c4c3c2c1c0	a7			0_0_0_0_0_d2d1d0
+;ROL B
+;a6a5a4a3a2a1a0_0	b6b5b4b3b2b1b0a7	c7c6c5c4c3c2c1c0	b7			0_0_0_0_0_d2d1d0
+;ROL C
+;a6a5a4a3a2a1a0_0	b6b5b4b3b2b1b0a7	c6c5c4c3c2c1c0b7	c7			0_0_0_0_0_d2d1d0
+;ASL C
+;a6a5a4a3a2a1a0_0	b6b5b4b3b2b1b0a7	c5c4c3c2c1c0b7_0	c6			0_0_0_0_0_d2d1d0
+;LSR D
+;a6a5a4a3a2a1a0_0	b6b5b4b3b2b1b0a7	c5c4c3c2c1c0b7_0	d0			0_0_0_0_0_0_d2d1
+.C:9f3e  06 B4       ASL $B4
+.C:9f40  26 B5       ROL $B5
+.C:9f42  26 B6       ROL $B6
+.C:9f44  06 B6       ASL $B6
+.C:9f46  46 4F       LSR $4F
+;ROR C
+;a6a5a4a3a2a1a0_0	b6b5b4b3b2b1b0a7	d0c5c4c3c2c1c0b7 	0			0_0_0_0_0_0_d2d1
+;ASL B
+;a6a5a4a3a2a1a0_0	b5b4b3b2b1b0a7_0	d0c5c4c3c2c1c0b7 	b6			0_0_0_0_0_0_d2d1
+;LSR D
+;a6a5a4a3a2a1a0_0	b5b4b3b2b1b0a7_0	d0c5c4c3c2c1c0b7 	d1			0_0_0_0_0_0_0_d2
+;ROR B
+;a6a5a4a3a2a1a0_0	d1b5b4b3b2b1b0a7	d0c5c4c3c2c1c0b7 	0			0_0_0_0_0_0_0_d2
+;LSR A
+;0_a6a5a4a3a2a1a0	d1b5b4b3b2b1b0a7	d0c5c4c3c2c1c0b7 	0			0_0_0_0_0_0_0_d2
+;LSR D
+;0_a6a5a4a3a2a1a0	d1b5b4b3b2b1b0a7	d0c5c4c3c2c1c0b7 	d2			0_0_0_0_0_0_0_0_
+;ROL A
+;a6a5a4a3a2a1a0d2	d1b5b4b3b2b1b0a7	d0c5c4c3c2c1c0b7 	0			0_0_0_0_0_0_0_0_
+.C:9f48  66 B6       ROR $B6
+.C:9f4a  06 B5       ASL $B5
+.C:9f4c  46 4F       LSR $4F
+.C:9f4e  66 B5       ROR $B5
+.C:9f50  46 B4       LSR $B4
+.C:9f52  46 4F       LSR $4F
+.C:9f54  26 B4       ROL $B4
+
+;FF = A ^ B ^ C
+.C:9f56  A5 B4       LDA $B4
+.C:9f58  45 B5       EOR $B5
+.C:9f5a  45 B6       EOR $B6
+.C:9f5c  85 FF       STA $FF
+;Restore .A, .X and .Y
+.C:9f5e  68          PLA
+.C:9f5f  AA          TAX
+.C:9f60  68          PLA
+.C:9f61  A8          TAY
+.C:9f62  68          PLA
+.C:9f63  60          RTS
+
+========================================
+; Loader2 entry point
+========================================
+decrypt_ptr_lo = $fb
+decrypt_ptr_hi = $fc
+xor_key = $fd
+addend = $fe
+
+loader2_start:
+;Supress OS messages
+9f64 a9 00    lda #$00
+9f66 20 90 ff jsr $ff90	
+;Fast-load main file into memory
+9f69 a0 00    ldy #$00
+9f6b 20 04 9c jsr load_main_file	
+;Set up data decryption 
+9f6e a9 20    lda #$20	;Set FB/FC to point to $9D20 - pointer to a block of data to be decrypted
+9f70 85 fb    sta decrypt_ptr_lo
+9f72 a9 9d    lda #$9d
+9f74 85 fc    sta decrypt_ptr_hi
+9f76 ad d9 9f lda $9fd9	;Copy decryption keys to FD and FE (values are #13 and #A7)
+9f79 85 fd    sta xor_key
+9f7b ad da 9f lda $9fda
+9f7e 85 fe    sta addend
+;Push into the stack the code address to be executed once the whole decryption logic finishes
+;The address in the stack is <return_address - 1>, so the actual address executed will be 0400
+9f80 a9 03    lda #$03	
+9f82 48       pha 
+9f83 a9 ff    lda #$ff
+9f85 48       pha 
+; Decrypt memory in range 9D20-9F63
+9f86 20 8c 9f jsr decrypt_memory
+;Continue with post-decryption logic
+9f89 4c ae 9f jmp post_decryption	
+
+;==================================================================================
+; Decrypt data
+;
+; Arguments: 
+;	FB/FC base pointer to data
+;	FD initial value of XOR key
+;	FE addend - constant value to add to XOR key after each step
+;
+; Note: this will decrypt memory until it reaches address $9F64 (hardcoded)
+;==================================================================================
+;$fb = base_lo
+;$fc = base_hi
+;$fd = xor_key
+;$fe = addend
+;END_OFFSET_LO = #$64
+;END_OFFSET_HI = #$9f
+decrypt_memory:
+9f8c a0 00    ldy #$00			;.Y is always kept to 0
+								;This simplifies comparing the offset against the end offset
+next_byte:
+;XOR data with key
+9f8e b1 fb    lda (base_lo),y
+9f90 45 fd    eor xor_key
+9f92 91 fb    sta (base_lo),y
+; Key += addend
+9f94 a5 fd    lda xor_key
+9f96 18       clc 
+9f97 65 fe    adc addend
+9f99 85 fd    sta xor_key
+;Increment offset
+9f9b e6 fb    inc base_lo
+9f9d d0 02    bne end_offset_check
+9f9f e6 fc    inc base_hi
+
+end_offset_check:
+;Has offset reached the end? (which is #$9F64)
+9fa1 a5 fb    lda base_lo
+9fa3 c9 64    cmp END_OFFSET_LO
+9fa5 d0 e7    bne next_byte
+9fa7 a5 fc    lda base_hi
+9fa9 c9 9f    cmp END_OFFSET_HI
+9fab d0 e1    bne next_byte	;If not, loop
+9fad 60       rts
+;==================================================================================
+; Post-decryption logic
+;==================================================================================
+clear_ptr_lo = $fb
+clear_ptr_hi = $fc
+
+post_decryption:
+;Perform code integrity checks
+9fae 20 d2 9f jsr check_integrity	
+
+;Delete all the decrypted code 
+;This is done by overwriting it with zeroes
+;Set up destination pointer as $9D00 in FB/FC
+9fb1 a9 00    lda #$00
+9fb3 85 fb    sta clear_ptr_lo
+9fb5 a9 9d    lda #$9d
+9fb7 85 fc    sta clear_ptr_hi
+;This loop will iterate over 9D20-9FBB - zeroing out every memory position
+9fb9 a9 00    lda #$00
+9fbb a0 20    ldy #$20
+clear_byte:
+9fbd 91 fb    sta (clear_ptr_lo),y
+9fbf c0 bb    cpy #$bb		;Index is #BB?
+9fc1 f0 08    beq end_of_region_check
+move_to_next_byte:
+9fc3 c8       iny 
+9fc4 d0 f7    bne clear_byte		;Y reached zero? If so, increment pointer hi, continue
+9fc6 e6 fc    inc clear_ptr_hi
+9fc8 4c bd 9f jmp clear_byte
+end_of_region_check:
+9fcb a6 fc    ldx clear_ptr_hi		;Pointer hi is #9F? If so, return
+9fcd e0 9f    cpx #$9f		
+9fcf d0 f2    bne clear_next_byte		;Otherwise, loop
+9fd1 60       rts 
+;==================================================================================
+; Code integrity checks
+;==================================================================================
+check_integrity:
+9fd2 20 8e 9d jsr integrity_check_1
+9fd5 20 20 9d jsr decrypt_region_0400_1400
+9fd8 60       rts 
+;===============================================================================
+9fd9 13 	;Initial XOR key for decryption
+9fda a7		;Initial addition operand for decryption
+
+
+;===============================================================================
+;
+;DRIVE CODE
+;
+;===============================================================================
+;
+; Actual copy protection code
+;
+; Code on track 18 / sector 8 - loaded at buffer #1 (0400 drive's address)
+; Loaded directly into memory and executed in the first routine that computes checksums (integrity_check_1)
+;
+; Tries to read tracks 35, 35.6 and 36, from sector 16 to sector 0.
+; If no errors were found while doing so, the validation sentinel flag will be set to a specific expected value,
+; to indicate the copy protection check from the drive's side has succeeded.
+;
+; Otherwise, the validation sentinel flag will not have the expected value set.
+; Later on, the code running in the computer will fetch this flag using a memory-read operation.
+;===============================================================================
+drive_ctrl_port = $1C00
+drive_pcr = $1C0C	;Peripheral control register
+timer_1_hi = $1805
+validation_flag = $01FF
+
+copy_protection_check:
+; Decrypt the memory range 412-4AD
+.8:0400  78          SEI
+.8:0401  A0 FF       LDY #$FF
+decrypt_next_byte:
+.8:0403  C8          INY
+.8:0404  B9 12 04    LDA encrypted_data,Y
+.8:0407  4D AE 04    EOR xor_key	
+.8:040a  99 12 04    STA encrypted_data,Y
+.8:040d  CC B0 04    CPY byte_count	
+.8:0410  D0 F1       BNE decrypt_next_byte
+
+;Start of encrypted region
+;---------------------
+;Code below has been already decrypted
+encrypted_data:
+
+job_0_sector = $0007
+job_0_track = $0006
+job_0_jobcode = $0000
+last_read_error = $0009
+halftrack_offset = $0008
+JOB_CODE_SEEK = #$B0
+JOB_CODE_READ = #$80
+temp = $0044
+
+.8:0412  20 6F 04    JSR stop_head_and_set_read_mode
+.8:0415  A2 00       LDX #$00	
+.8:0417  8E 09 00    STX last_read_error	
+.8:041a  A2 02       LDX #$02	
+.8:041c  8E 08 00    STX halftrack_offset	; We'll do a total of 3 track reads, moving 2 half-tracks in total
+.8:041f  A9 23       LDA #$23
+.8:0421  8D 06 00    STA job_0_track	
+;Job 0 will start with track 35 sector 16 (#23/#10)
+;and successive jobs will go downwards in sectors until track 35/0
+first_sector:
+.8:0424  A0 10       LDY #$10
+.8:0426  8C 07 00    STY job_0_sector	
+.8:0429  A9 80       LDA JOB_CODE_READ
+read_next_sector:
+.8:042b  8D 00 00    STA job_0_jobcode	;$00 = 'Read a sector' job code for job #0
+.8:042e  20 7F 04    JSR wait_for_job_completion
+.8:0431  C9 01       CMP #$01
+.8:0433  F0 03       BEQ check_if_next_sector	;Job successful? If so, continue
+.8:0435  8D 09 00    STA last_read_error		;If not, store error code
+check_if_next_sector:
+.8:0438  CE 07 00    DEC job_0_sector	 
+.8:043b  10 EC       BPL read_next_sector	;Sectors pending?
+.8:043d  20 8E 04    JSR step_half_track_forward
+.8:0440  CE 08 00    DEC halftrack_offset	;Do we still need to do another track? (offset >= 0)
+.8:0443  10 DF       BPL first_sector
+;Step head twice
+.8:0445  A0 02       LDY #$02
+step_back:
+.8:0447  20 87 04    JSR step_half_track_backward
+.8:044a  88          DEY
+.8:044b  10 FA       BPL step_back
+;Did we have any read error in this whole track read?
+.8:044d  AD 09 00    LDA last_read_error		;If there were any errors, $09 will have the last error code seen
+									;It will thus be nonzero
+.8:0450  D0 05       BNE post_validation_byte		;If there _were_ errors, don't set the expected validation byte
+.8:0452  A9 FF       LDA #$FF		;Set expected validation byte at $01FF (value #FF)
+.8:0454  8D FF 01    STA validation_flag	;The validation flag will be read by the computer via a memory-read command, later on
+post_validation_byte:
+;Seek track 12/0 with job #0
+.8:0457  A9 12       LDA #$12	;Track
+.8:0459  8D 06 00    STA job_0_track
+.8:045c  A9 00       LDA #$00	;Sector
+.8:045e  8D 07 00    STA job_0_sector
+.8:0461  A9 B0       LDA JOB_CODE_SEEK	
+.8:0463  8D 00 00    STA job_0_jobcode
+.8:0466  20 7F 04    JSR wait_for_job_completion
+.8:0469  20 6F 04    JSR stop_head_and_set_read_mode
+.8:046c  4C B2 04    JMP do_bit_cycling
+;==============================
+stop_head_and_set_read_mode:
+;Enable read mode 
+.8:046f  AD 0C 1C    LDA drive_pcr	;Peripheral control register
+.8:0472  09 0E       ORA #$0E	;Set bits 1,2 and 3
+.8:0474  D0 05       BNE $047B
+;Stop head stepping
+.8:0476  AD 0C 1C    LDA drive_pcr	
+.8:0479  29 FD       AND #$FD	;Clear bit 1
+.8:047b  8D 0C 1C    STA drive_pcr
+.8:047e  60          RTS
+;==============================
+wait_for_job_completion:
+.8:047f  58          CLI		;Enable interrupts (to enable job queue processing)
+completion_wait_loop:
+.8:0480  AD 00 00    LDA job_0_jobcode
+.8:0483  30 FB       BMI completion_wait_loop	;Wait on job completion (bit 8 will be set on completion)
+.8:0485  78          SEI		;Disable interrupts (pause job queue processing)
+.8:0486  60          RTS
+;==============================
+step_half_track_backward:
+;Same logic as the routine below, but cycling bits down instead of up
+.8:0487  AE 00 1C    LDX drive_ctrl_port
+.8:048a  CA          DEX
+.8:048b  4C 92 04    JMP cycle_head_bits
+;==============================
+step_half_track_forward:
+.8:048e  AE 00 1C    LDX drive_ctrl_port
+.8:0491  E8          INX			;Add 1 (bits 0/1 are cycled to step the head)
+cycle_head_bits:
+.8:0492  8A          TXA
+.8:0493  29 03       AND #$03		;Mask-in bits 0/1, store them
+.8:0495  8D 44 00    STA temp
+.8:0498  AD 00 1C    LDA drive_ctrl_port		;Read data port B again, mask out bits 0/1, combine with previous value
+.8:049b  29 FC       AND #$FC		
+.8:049d  0D 44 00    ORA temp
+.8:04a0  8D 00 1C    STA drive_ctrl_port
+;Set D0 as timer 1 high counter
+.8:04a3  A9 D0       LDA #$D0
+.8:04a5  8D 05 18    STA timer_1_hi
+wait_timer_hi:
+.8:04a8  2C 05 18    BIT timer_1_hi		;Wait on timer
+.8:04ab  30 FB       BMI wait_timer_hi
+.8:04ad  60          RTS
+---------------------------
+;End of encrypted region
+04ae xor_key BA          
+.8:04af  00          
+04B0 byte_count 9B
+.8:04b1  00 
+;Clear the memory region 0400-04B2 (destroying the code above)
+04b2     AD 01 00    LDA $0001
+.8:04b5  A0 00       LDY #$00
+clear_next_byte:
+.8:04b7  99 00 04    STA copy_protection_check,Y
+.8:04ba  C8          INY
+.8:04bb  C0 B2       CPY #$B2
+.8:04bd  90 F8       BCC clear_next_byte
+.8:04bf  58          CLI
+.8:04c0  60          RTS
+;===============================================================================
+; Code on track 18 / sector 11 - loaded at 0500 of drive's address (buffer #2)
+; Loaded by the main file loader (set up fast-loader?) and executed.
+; This is the first sector loaded into the drive's memory and directly executed.
+;
+; This sets up another job to read and execute another block.
+;
+; Note: prior to executing this block, the expected_index sentinel value is set
+; by code running in the computer.
+;===============================================================================
+sentinel = $07FF
+expected_index = $07FF
+direct_block_read = $D460
+next_track = $0A
+next_sector = $0B
+job_0_track = $06
+job_number = $F9
+
+;Load track 18, sector 12 using job number 0 (so it will use buffer #0)
+;Do this by invoking the ROM routine to read blocks directly
+.8:0500  A9 12       LDA #$12
+.8:0502  85 80       STA $80		;80 = track number
+.8:0504  A9 0C       LDA #$0C
+.8:0506  85 81       STA $81		;81 = sector number
+.8:0508  A9 00       LDA #$00
+.8:050a  85 F9       STA $F9		;F9 = current job number
+.8:050c  20 60 D4    JSR direct_block_read		
+;Disable interrupts - job queue will not be processed until interrupts are enabled
+.8:050f  78          SEI
+;.Y will be used as index against the track and sector base addresses
+; If the index is off, garbage data will be read and the loading will fail
+; The expected value is #00
+.8:0510  AC FF 07    LDY expected_index		
+.8:0513  A2 00       LDX #$00
+wait_loop:
+.8:0515  E8          INX
+.8:0516  D0 FD       BNE wait_loop
+;Set up helper variables used in the fast-loader routine (in the sector 18/12)
+;Doing the setup here helps to obscure things
+.8:0518  B9 37 05    LDA track_ptr,Y	
+.8:051b  85 0A       STA next_track
+.8:051d  85 06       STA job_0_track
+.8:051f  B9 38 05    LDA sector_ptr,Y	
+.8:0522  85 0B       STA next_sector
+.8:0524  86 F9       STX job_number	
+.8:0526  86 0C       STX total_bytes_to_send
+.8:0528  AD C6 E5    LDA $E5C6		;E5C6 points to the middle of the error message table (E4FC-E5D4) - in the 1541 ROM, it's 0x34
+.8:052b  C9 37       CMP #$37		;Why would we check a byte in ROM? 
+.8:052d  F0 02       BEQ $0531		;If they're equal, store #37 in sentinel (this would cause a reset later on?)
+.8:052f  A9 00       LDA #$00		;If not equal, store #00 in sentinel
+.8:0531  8D FF 07    STA sentinel		
+.8:0534  4C A4 03    JMP job_loop	;Start code in buffer #0 (see track 18/12)
+track_ptr	0537	13
+sector_ptr	0538	03
+
+;===============================================================================
+; Fast-loader sender of main file
+;
+; Code on track 18 / sector 12 - when loaded at 0300 of drive's address (buffer #0)
+ ;Loaded by code executed in the drive (track 18/sector 11) as part of the main file loader
+
+; This code will be executed by an "execute" job, which is setup at the job_loop section (later in this same memory page).
+; This is done instead of simply jumping directly, as a way to further obfuscate things
+
+;==========================================================================
+job_0_track = $06
+job_0_sector = $07
+next_track = $0A
+next_sector = $0B
+total_bytes_to_send = $0C
+ID1_in_header = $16
+ID2_in_header = $17
+track_in_header = $18
+sector_in_header = $19
+header_checksum = $1A
+track_under_head = $22
+active_buffer_lo = $30
+active_buffer_hi = $31
+data_block_id = $38
+data_checksum = $3A
+data_block_id_code = $47
+expected_header_in_gcr = $0024
+page_1_addr = $0100
+buffer_1_addr = $0400
+payload_next_track = $0400
+payload_next_sector = $0401
+payload_total_bytes = $0401
+data_port = $1C01
+header_size = #$08
+overflow_start_offset = #$BA
+
+read_raw_sector:
+;Set active buffer to $0400 (buffer #1)
+.8:0300  A9 04       LDA #$04
+.8:0302  85 31       STA active_buffer_hi
+.8:0304  A9 00       LDA #$00
+.8:0306  85 30       STA active_buffer_lo
+;Copy next sector, fill header metadata
+.8:0308  A5 06       LDA job_0_track	
+.8:030a  85 18       STA track_in_header
+.8:030c  85 22       STA track_under_head
+;Set next sector for job 0
+.8:030e  A5 0B       LDA next_sector			;The next sector is copied here - the next track is copied in the job_loop routine
+.8:0310  85 07       STA job_0_sector	
+.8:0312  85 19       STA sector_in_header
+;Compute header checksum
+.8:0314  45 18       EOR track_in_header	
+.8:0316  45 17       EOR ID2_in_header
+.8:0318  45 16       EOR ID1_in_header
+.8:031a  85 1A       STA header_checksum
+;Convert header data to its GCR representation
+.8:031c  20 34 F9    JSR CONHDR	
+;Check if header is seen on disk
+.8:031f  A2 5A       LDX #$5A	;.X - number of header check attempts
+sync_and_validate_header:	
+.8:0321  20 56 F5    JSR SYNC	;Wait for SYNC mark
+;Check each found byte with the expected byte
+next_header_byte:
+.8:0324  50 FE       BVC next_header_byte	;Wait for byte ready to read
+.8:0326  B8          CLV
+.8:0327  AD 01 1C    LDA data_port		
+.8:032a  D9 24 00    CMP expected_header_in_gcr,Y	
+.8:032d  D0 6F       BNE check_retries_pending
+.8:032f  C8          INY
+.8:0330  C0 08       CPY header_size
+.8:0332  D0 F0       BNE next_header_byte
+;------------------------------
+;Read sector data into buffer #1 - .Y is zero, so it will read 256 bytes
+.8:0334  20 56 F5    JSR SYNC
+next_data_byte:
+.8:0337  50 FE       BVC next_data_byte	;Wait for byte ready to read
+.8:0339  B8          CLV
+.8:033a  AD 01 1C    LDA data_port
+.8:033d  99 00 04    STA buffer_1_addr,Y
+.8:0340  C8          INY
+.8:0341  D0 F4       BNE next_data_byte
+;Read bytes into the GCR "overflow" buffer ($01BA-01FF)
+.8:0343  A0 BA       LDY overflow_start_offset
+next_gcr_overflow_byte:
+.8:0345  50 FE       BVC next_gcr_overflow_byte
+.8:0347  B8          CLV
+.8:0348  AD 01 1C    LDA data_port
+.8:034b  99 00 01    STA page_1_addr,Y
+.8:034e  C8          INY
+.8:034f  D0 F4       BNE next_gcr_overflow_byte
+;Decode GCR data to binary (combining buffer #1 + the GCR overflow buffer)
+;Decoded data will reside in buffer #1
+.8:0351  20 E0 F8    JSR GCRBIN											
+;------------------------------
+;Check block ID and data checksum - on failure, reset drive									
+.8:0354  A5 38       LDA data_block_id
+.8:0356  C5 47       CMP data_block_id_code
+.8:0358  D0 47       BNE reset_drive
+.8:035a  20 E9 F5    JSR CHKBLK				;Calculate data checksum
+.8:035d  C5 3A       CMP data_checksum		
+.8:035f  EA          NOP
+.8:0360  EA          NOP
+.8:0361  D0 3E       BNE reset_drive
+;------------------------------
+;Send bytes over serial bus
+.8:0363  A0 02       LDY #$02	;.Y - data offset (skip first 2 bytes, as they are the next track/sector numbers)
+.8:0365  AD 00 04    LDA payload_next_track		
+.8:0368  D0 06       BNE send_next_byte			;If next track is not 0, this is not the last sector
+.8:036a  AE 01 04    LDX payload_total_bytes	;It's the last sector, load total number of bytes + 1 into $0C
+.8:036d  E8          INX
+.8:036e  86 0C       STX total_bytes_to_send	
+send_next_byte:
+.8:0370  B9 00 04    LDA buffer_1_addr,Y
+.8:0373  20 C6 03    JSR fast_byte_send
+.8:0376  C8          INY
+.8:0377  C4 0C       CPY total_bytes_to_send		;Did we reach the total number of bytes to send? If not, loop
+.8:0379  D0 F5       BNE send_next_byte
+;Turn on drive LED
+.8:037b  AD 00 1C    LDA drive_ctrl_port
+.8:037e  49 08       EOR #$08		;#08 = Drive busy LED light
+.8:0380  8D 00 1C    STA drive_ctrl_port
+;Set phase of head stepper motor
+.8:0383  A9 00       LDA #$00
+.8:0385  8D FE 02    STA $02FE
+;Copy next track/sector from payload to helper variables
+.8:0388  AD 01 04    LDA payload_next_sector
+.8:038b  85 0B       STA next_sector
+.8:038d  AD 00 04    LDA payload_next_track
+.8:0390  85 0A       STA next_track
+.8:0392  F0 07       BEQ terminate_job		;Next track is 0? Then we're done
+.8:0394  C5 06       CMP job_0_track
+.8:0396  D0 03       BNE terminate_job		;Next track is different than the current one? Time for a new job
+.8:0398  4C 00 03    JMP read_raw_sector	;We're on the same track, keep running this job
+;------------------------------
+terminate_job:
+;This will mark the job as successfully completed by setting the job code to #01
+.8:039b  4C 9E FD    JMP job_termination
+check_retries_pending:
+.8:039e  CA          DEX
+.8:039f  D0 80       BNE sync_and_validate_header
+;No more retries - reset drive
+reset_drive:
+.8:03a1  6C FC FF    JMP (disk_initialization)	;Reset the drive (effectively aborting the load)
+;End of fast-loader sender
+;==========================================================================
+;Start address invoked from track 18/8 code
+job_0_code = $00
+job_0_track = $06
+next_track = $0A
+listener_address = $77
+talker_address = $78 
+current_secondary_addr = $83
+execute_job_code = #$E0
+serial_data_port = $1800
+sentinel = $07FF
+
+job_loop:
+.8:03a4  A9 00       LDA #$00
+.8:03a6  85 78       STA talker_address
+.8:03a8  85 83       STA current_secondary_addr
+.8:03aa  85 77       STA listener_address
+.8:03ac  A9 E0       LDA execute_job_code
+.8:03ae  85 00       STA job_0_code
+.8:03b0  58          CLI			;Enable interrupts (thus enabling job execution)
+;Wait until job 0 finished (bit 8 is no longer set)
+;Job #0 will execute code on this same buffer at 0300
+job_completion_wait:
+.8:03b1  A5 00       LDA job_0_code
+.8:03b3  30 FC       BMI job_completion_wait
+;After execution of the job terminates (the fast-loader sender above), it will return here
+;Disable interrupts
+.8:03b5  78          SEI
+;Check for errors
+;Job result code < 0x02?
+;The only job result expected is 0x01 (success)
+.8:03b6  C9 02       CMP #$02			
+.8:03b8  B0 E7       BCS reset_drive
+;Set next track for job 0
+.8:03ba  A5 0A       LDA next_track
+.8:03bc  85 06       STA job_0_track	;The next track is copied here - the next sector is copied in the read_raw_sector routine
+;Track non-zero? Then sectors are still pending - do the next job
+.8:03be  D0 E4       BNE job_loop
+;Track is zero - no sectors pending
+;Validate sentinel is zero - if not, reset
+.8:03c0  AD FF 07    LDA sentinel
+.8:03c3  D0 DC       BNE reset_drive
+.8:03c5  40          RTI
+;==========================================================================
+temp = $08
+fast_byte_send:
+;.A = byte to send
+.8:03c6  85 08       STA temp	
+wait_for_atn_signal:
+.8:03c8  AD 00 18    LDA serial_data_port
+.8:03cb  4A          LSR A
+.8:03cc  90 FA       BCC wait_for_atn_signal
+;Send clock out signal
+.8:03ce  A9 08       LDA #$08
+.8:03d0  8D 00 18    STA serial_data_port
+.8:03d3  A2 04       LDX #$04	;.X - counter of bit pairs
+next_bit_pair:
+.8:03d5  A9 00       LDA #$00	;Clear all bits of .A
+.8:03d7  06 08       ASL temp	;Move bit 7 of temp into bit 1 of .A
+.8:03d9  2A          ROL A
+.8:03da  0A          ASL A
+.8:03db  06 08       ASL temp	;Move bit 6 of temp into bit 1 of .A - bit 7 of temp is now bit 3 of .A
+.8:03dd  2A          ROL A
+.8:03de  0A          ASL A
+;Send bits over serial bus
+.8:03df  8D 00 18    STA serial_data_port
+.8:03e2  CA          DEX
+.8:03e3  D0 F0       BNE next_bit_pair
+;Delay loop
+.8:03e5  A2 01       LDX #$01
+.8:03e7  CA          DEX
+.8:03e8  D0 00       BNE $03EA
+.8:03ea  EA          NOP
+.8:03eb  EA          NOP
+;Clear signals
+.8:03ec  A9 00       LDA #$00
+.8:03ee  8D 00 18    STA serial_data_port
+.8:03f1  60          RTS

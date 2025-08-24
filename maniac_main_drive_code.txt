@@ -1,0 +1,506 @@
+;===============================================================================================
+; Code in drive's memory
+;===============================================================================================
+; Main command processing loop
+;
+; It will wait for a new command to be sent on the serial bus,
+; then dispatch it to the appropriate handler (read/write/reset).
+; If there's an error, it will send an error sequence back to the computer.
+;===============================================================================================
+track_for_command = $07		;Job #4's track
+sector_for_command = $08	;Job #4's sector
+operation_code = $09		;Note: the job code variable uses the address intended for job #1's sector
+buffer_4_addr = $0700		;Buffer #4 (for job #4) base address
+data_port = $1800
+disk_controller_port = $1C00
+reset_drive = $EAA0			;Drive reset routine in ROM
+RESET_COMMAND = #$20
+READ_COMMAND = #$30
+WRITE_COMMAND = #$40
+ERROR_SEQUENCE_1 = #$01
+ERROR_SEQUENCE_2 = #$11
+
+.8:0500  20 5D 06    JSR sync_with_computer
+read_next_command:
+;Wait for and receive a disk command
+.8:0503  20 26 06    JSR recv_command	
+;Switch on value of .Y (command)
+check_reset_cmd:
+.8:0506  C0 20       CPY RESET_COMMAND
+.8:0508  D0 03       BNE check_read_cmd
+.8:050a  4C A0 EA    JMP reset_drive	
+check_read_cmd:
+.8:050d  C0 30       CPY READ_COMMAND
+.8:050f  D0 03       BNE check_write_cmd
+.8:0511  4C E4 05    JMP read_sector	
+check_write_cmd:
+.8:0514  C0 40       CPY WRITE_COMMAND
+.8:0516  D0 03       BNE command_error
+.8:0518  4C B7 05    JMP write_sector	
+command_error:
+;Clear all lines on serial port
+.8:051b  A9 00       LDA #$00
+.8:051d  8D 00 18    STA data_port
+;Send error sequence (#01, #11)
+.8:0520  A9 01       LDA ERROR_SEQUENCE_1
+.8:0522  20 80 06    JSR send_byte_over_serial
+.8:0525  A9 11       LDA ERROR_SEQUENCE_2
+.8:0527  20 80 06    JSR send_byte_over_serial
+;Wait for next command
+.8:052a  4C 03 05    JMP read_next_command
+;===============================================================================================
+;Unused code?
+.8:052d  BD 01 07    LDA $0701,X
+.8:0530  85 0E       STA $0E
+.8:0532  BD 02 07    LDA $0702,X
+.8:0535  85 0F       STA $0F
+.8:0537  20 7C 05    JSR $057C
+.8:053a  A2 FF       LDX #$FF
+.8:053c  AD 01 07    LDA $0701
+.8:053f  85 0F       STA $0F
+.8:0541  AD 00 07    LDA $0700
+.8:0544  85 0E       STA $0E
+.8:0546  D0 03       BNE $054B
+.8:0548  AE 01 07    LDX $0701
+.8:054b  E8          INX
+.8:054c  86 10       STX end_offset
+.8:054e  A2 02       LDX #$02
+.8:0550  20 0C 06    JSR send_buffer4_data
+.8:0553  AD 00 07    LDA $0700
+.8:0556  F0 12       BEQ $056A
+.8:0558  A9 01       LDA #$01
+.8:055a  20 80 06    JSR send_byte_over_serial
+.8:055d  A9 20       LDA #$20
+.8:055f  20 80 06    JSR send_byte_over_serial
+.8:0562  A2 08       LDX #$08
+.8:0564  8E 00 18    STX data_port
+.8:0567  4C 37 05    JMP $0537
+.8:056a  A9 01       LDA #$01
+.8:056c  20 80 06    JSR send_byte_over_serial
+.8:056f  A9 81       LDA #$81
+.8:0571  20 80 06    JSR send_byte_over_serial
+.8:0574  A2 08       LDX #$08
+.8:0576  8E 00 18    STX data_port
+.8:0579  4C 03 05    JMP read_next_command
+;===============================================================================================
+; Executes a disk command.
+;
+; The command attributes need to be previously set up correctly.
+; This routine will use the drive's built-in job queue to activate the prepared job.
+;
+; It does so by simply writing the operation code to job #4's code byte ($04).
+; As soon as this happens and interrupts are enabled, the interrupt handler
+; will execute the job queue processing, pick up the job code and execute it.
+;
+; Job failures are handled by taking corrective actions and retrying the job, up to a limit,
+; after which it will give up with an error.
+;
+; The corrective actions consist of refreshing the Disk ID and bumping the head to track #1.
+; Refreshing the ID is necessary in case the disk has been swapped with another one,
+; as it will contain a different disk ID (and jobs will definitely fail).
+; Bumping the head was a usual practice to perhaps fix a transient misalignment,
+; although proven ineffective and even dangerous to the head mechanism.
+;
+; The sequence of corrective actions is:
+;
+;	Disk ID refresh (48 times)
+;	Bump + Disk ID refresh
+;	Disk ID refresh (2 times)
+;
+; This sequence will be repeated twice and then it will give up.
+;
+;===============================================================================================
+job_4_code = $04
+bump_job_counter = $0A
+job_4_track = $0E
+job_4_sector = $0F
+job_attempts_remaining = $11
+master_disk_id_1 = $12
+master_disk_id_2 = $13
+header_disk_id_1 = $16
+header_disk_id_2 = $17
+JOB_SUCCESS_CODE = #$01
+BUMP_HEAD_OPERATION_CODE = #$C0
+TRIGGER_BUMP_ON_ATTEMPT = #$02
+TOTAL_JOB_ATTEMPTS = #$32
+TOTAL_BUMPS = #$02
+
+execute_command:
+.8:057c  A6 09       LDX operation_code
+;If we need to bump the head, do it at most twice
+.8:057e  A9 02       LDA TOTAL_BUMPS
+.8:0580  85 0A       STA bump_job_counter
+reset_job_attempts:
+.8:0582  A0 32       LDY TOTAL_JOB_ATTEMPTS		
+.8:0584  84 11       STY job_attempts_remaining
+start_job:
+.8:0586  58          CLI
+.8:0587  86 04       STX job_4_code	
+wait_for_job_completion_1:	
+.8:0589  A5 04       LDA job_4_code
+.8:058b  30 FC       BMI wait_for_job_completion_1	;Bit 7 is set when job is complete
+;Did the job succeed? If so, return
+.8:058d  C9 01       CMP JOB_SUCCESS_CODE
+.8:058f  F0 24       BEQ execute_command_exit
+; The job failed, update the attempts remaining counter
+.8:0591  C6 11       DEC job_attempts_remaining
+.8:0593  A4 11       LDY job_attempts_remaining
+;If the remaining attempts were exhausted, reset the count
+.8:0595  30 EB       BMI reset_job_attempts
+; Are we on the attempt that triggers a bump job?
+.8:0597  C0 02       CPY TRIGGER_BUMP_ON_ATTEMPT
+;If not, go straight to the refresh disk ID section instead of bumping
+.8:0599  D0 0C       BNE refresh_master_disk_id
+;If so, count another bump attempt
+.8:059b  C6 0A       DEC bump_job_counter
+;Do we still have bump attempts left? If so, bump the disk's head
+.8:059d  10 04       BPL bump_head			
+;No, we exhausted bumps - disable interrupts and report the error
+.8:059f  78          SEI
+.8:05a0  4C 1B 05    JMP command_error
+;Bump drive's head to track #1
+bump_head:
+.8:05a3  A9 C0       LDA BUMP_HEAD_OPERATION_CODE
+.8:05a5  85 04       STA job_4_code
+;Refresh master disk ID with the last seen ID in a sector header
+;This should cover the scenario in which there was a disk change
+refresh_master_disk_id:
+.8:05a7  A5 16       LDA header_disk_id_1
+.8:05a9  85 12       STA master_disk_id_1
+.8:05ab  A5 17       LDA header_disk_id_2
+.8:05ad  85 13       STA master_disk_id_2
+;Wait for job completion - if the bump job was started, wait for it to finish
+;If we branched straight to the refresh disk ID section, the previous job has already finished
+wait_for_job_completion_2:
+.8:05af  A5 04       LDA job_4_code
+.8:05b1  30 FC       BMI wait_for_job_completion_2
+;Start over
+.8:05b3  10 D1       BPL start_job
+execute_command_exit:
+.8:05b5  78          SEI
+.8:05b6  60          RTS
+;===============================================================================================
+; Creates and executes a "write job" to write a whole sector.
+; It first sets up the disk job parameters (operation, track, sector).
+; It uses job slot #4, which uses buffer #4.
+
+; Then it receives a whole sector data from the computer over the serial bus.
+; Finally executes the disk job, which writes the data in buffer #4 to disk.
+;===============================================================================================
+WRITE_SECTOR_OPERATION_CODE = #$90
+CLKOUT_clear = #$00
+CLKOUT_set = #$08
+temp = $10
+
+write_sector:
+;Set up disk job parameters
+;Set operation type as "write sector"
+.8:05b7  A9 90       LDA WRITE_SECTOR_OPERATION_CODE		
+.8:05b9  85 09       STA operation_code
+;Track number
+.8:05bb  A5 07       LDA track_for_command
+.8:05bd  85 0E       STA job_4_track
+;Sector number
+.8:05bf  A5 08       LDA sector_for_command
+.8:05c1  85 0F       STA job_4_sector
+;-----------------
+;Receive 256 bytes (a sector) from the serial bus
+;Set .X as buffer offset
+.8:05c3  A2 00       LDX #$00
+;Clear CLKOUT
+.8:05c5  A9 00       LDA CLKOUT_clear
+.8:05c7  8D 00 18    STA data_port
+recv_next_byte:
+;Save offset, as it will be overwritten by the call to "recv_byte_from_serial"
+.8:05ca  86 10       STX temp
+;Receive a byte from the serial port
+.8:05cc  20 AE 06    JSR recv_byte_from_serial
+;Store byte in buffer #4
+.8:05cf  A6 10       LDX temp
+.8:05d1  9D 00 07    STA buffer_4_addr,X
+;Move offset and loop
+.8:05d4  E8          INX
+.8:05d5  D0 F3       BNE recv_next_byte
+;-----------------
+;Set CLKOUT
+.8:05d7  A2 08       LDX CLKOUT_set
+.8:05d9  8E 00 18    STX data_port
+.8:05dc  A2 00       LDX #$00		;This line seems unnecessary
+;Execute the write job - write a sector with data from buffer #4
+.8:05de  20 7C 05    JSR execute_command
+.8:05e1  4C 03 05    JMP read_next_command
+;===============================================================================================
+; Creates and executes a "read job" to read a whole sector.
+; The sector is read into the drive's memory.
+; It uses job slot #4, which uses buffer #4.
+;
+; Afterwards, it transmits the buffer data to the computer over the serial bus.
+; Finally, the end-of-data sequence is sent: #01, #81
+; Real #01 payload bytes are escaped in send_buffer4_data.
+;
+;===============================================================================================
+READ_SECTOR_OPERATION = #$80
+CLKOUT_set = #$08
+end_offset = $10
+END_OF_DATA_1 = #$01
+END_OF_DATA_2 = #$81
+
+read_sector:
+;Set operation type as "read sector"
+.8:05e4  A9 80       LDA READ_SECTOR_OPERATION
+.8:05e6  85 09       STA operation_code
+;Track number
+.8:05e8  A5 07       LDA track_for_command
+.8:05ea  85 0E       STA job_4_track
+;Sector number
+.8:05ec  A5 08       LDA sector_for_command
+.8:05ee  85 0F       STA job_4_sector
+;Execute the read job - read a sector into buffer #4
+.8:05f0  20 7C 05    JSR execute_command
+;Set transmission end offset to #00 (effectively transmitting 256 bytes)
+.8:05f3  A2 00       LDX #$00
+.8:05f5  86 10       STX end_offset
+;Send buffer #4's data over serial
+.8:05f7  20 0C 06    JSR send_buffer4_data
+;Send end-of-data sequence 
+.8:05fa  A9 01       LDA END_OF_DATA_1
+.8:05fc  20 80 06    JSR send_byte_over_serial
+.8:05ff  A9 81       LDA END_OF_DATA_2
+.8:0601  20 80 06    JSR send_byte_over_serial
+;Set CLKOUT
+.8:0604  A2 08       LDX CLKOUT_set
+.8:0606  8E 00 18    STX data_port
+.8:0609  4C 03 05    JMP read_next_command
+;===============================================================================================
+; Send data from buffer #4 over serial.
+; Data is sent until the end offset is reached.
+; Buffer #4 starts at $0700.
+;
+; The end of the buffer is expressed, in the "read_sector" routine,
+; as a sequence of 2 bytes: #01, #81.
+;
+; To differentiate a real #01 byte from the end-of-data sequence,
+; it has to be "escaped" by preceding it with another #01.
+;
+; Arguments: .X starting offset
+; 			$10 end offset
+;===============================================================================================
+end_offset = $10
+ALL_LINES_CLEAR = #$00
+BYTE_TO_ESCAPE = #$01
+ESCAPE_VALUE = #$01
+
+send_buffer4_data:
+;Clear all lines of the serial port
+.8:060c  A9 00       LDA ALL_LINES_CLEAR
+.8:060e  8D 00 18    STA data_port
+next_byte:
+;Read byte from pointer
+.8:0611  BD 00 07    LDA buffer_4_addr,X
+; If the byte is not 1, send it directly
+; Otherwise, send it 2 times to "escape" it
+.8:0614  C9 01       CMP BYTE_TO_ESCAPE
+.8:0616  D0 05       BNE send_actual_byte
+.8:0618  20 80 06    JSR send_byte_over_serial
+.8:061b  A9 01       LDA ESCAPE_VALUE
+send_actual_byte:
+.8:061d  20 80 06    JSR send_byte_over_serial
+.8:0620  E8          INX
+;Have we reached the end offset? If not, send the next byte
+.8:0621  E4 10       CPX end_offset
+.8:0623  D0 EC       BNE next_byte
+.8:0625  60          RTS
+;===============================================================================================
+; Receives a disk command from the serial port.
+;
+; It will block execution, waiting for DATA IN to be clear.
+; Once it's set, it will read the command attributes: track, sector and operation identifier.
+;
+; Stores them in track_for_command, sector_for_command and .Y respectively
+;===============================================================================================
+LED_OFF = #$F7	;11110111
+LED_ON = #$08
+CLKOUT_set = #$08
+CLKOUT_clear = #$00
+DATIN_set = #$01
+
+recv_command:
+;Set CLKOUT 
+.8:0626  A9 08       LDA CLKOUT_set
+.8:0628  8D 00 18    STA data_port
+.8:062b  58          CLI
+;Turn drive LED off 
+.8:062c  AD 00 1C    LDA disk_controller_port
+.8:062f  29 F7       AND LED_OFF
+.8:0631  8D 00 1C    STA disk_controller_port
+;Wait for DATA IN clear
+.8:0634  A9 01       LDA DATIN_set
+wait_for_DATIN_clear:
+.8:0636  2C 00 18    BIT data_port
+.8:0639  F0 FB       BEQ wait_for_DATIN_clear
+.8:063b  78          SEI
+;Clear CLKOUT 
+.8:063c  A9 00       LDA CLKOUT_clear
+.8:063e  8D 00 18    STA data_port
+;Receive track, sector, operation bytes
+.8:0641  20 AE 06    JSR recv_byte_from_serial
+.8:0644  85 07       STA track_for_command
+.8:0646  20 AE 06    JSR recv_byte_from_serial
+.8:0649  85 08       STA sector_for_command
+.8:064b  20 AE 06    JSR recv_byte_from_serial
+.8:064e  A8          TAY
+;Set CLKOUT 
+.8:064f  A9 08       LDA CLKOUT_set
+.8:0651  8D 00 18    STA data_port
+;Turn drive LED on
+.8:0654  AD 00 1C    LDA disk_controller_port
+.8:0657  09 08       ORA LED_ON
+.8:0659  8D 00 1C    STA disk_controller_port
+.8:065c  60          RTS
+;===============================================================================================
+; Synchronize with the computer before starting serial bus transmissions.
+;
+; It will flip the ATN ACK line 8 times, then wait for CLOCK IN, DATA IN and DATA OUT to be clear.
+;===============================================================================================
+data_direction_port_b = $1802
+ATNA_line_clear = #$00
+ATNA_line_set = #$10
+ATNA_flip_count = #$08
+CLKIN_DATOUT_DATIN_mask = #$07
+
+; On entry, .Y will hold the wait count for keeping ATNA clear
+; I assume its actually set to #00, for a total of 256 iterations
+
+sync_with_computer:
+.8:065d  78          SEI
+;We'll set the ATNA signal on and off a total of 8 times
+.8:065e  A2 08       LDX ATNA_flip_count		
+atn_flip_loop:
+;Set all lines clear, including ATNA
+.8:0660  A9 00       LDA ATNA_line_clear
+.8:0662  8D 00 18    STA data_port
+;Wait for a while
+ATNA_clear_wait:
+.8:0665  88          DEY
+.8:0666  D0 FD       BNE ATNA_clear_wait
+;Set ATNA line
+.8:0668  A9 10       LDA ATNA_line_set
+.8:066a  8D 00 18    STA data_port
+;Wait for a while
+ATNA_set_wait:
+.8:066d  88          DEY
+.8:066e  D0 FD       BNE ATNA_set_wait
+;Loop
+.8:0670  CA          DEX
+.8:0671  D0 ED       BNE atn_flip_loop
+;Set DATA OUT and CLOCK OUT lines (bits 1 and 3) as R/W lines
+.8:0673  A9 0A       LDA #$0A		;00001010
+.8:0675  8D 02 18    STA data_direction_port_b
+wait_for_lines_clear:
+;Read from serial port until CLOCK IN, DATA OUT and DATA IN are all clear
+.8:0678  AD 00 18    LDA data_port
+.8:067b  29 07       AND CLKIN_DATOUT_DATIN_mask
+.8:067d  D0 F9       BNE wait_for_lines_clear	
+.8:067f  60          RTS
+;===============================================================================================
+; Send byte over serial port
+;
+; Sends a whole byte over the serial port.
+; Arguments: .A byte to be sent
+;===============================================================================================
+CLKIN_line_set = #$04
+
+send_byte_over_serial:
+.8:0680  85 06       STA temp
+;Save the CLKIN_line bitmask set in .A
+.8:0682  A9 04       LDA CLKIN_line_set	
+;Send 3 pairs of bits		
+.8:0684  20 8D 06    JSR send_bit_pair_over_serial
+.8:0687  20 8D 06    JSR send_bit_pair_over_serial
+.8:068a  20 8D 06    JSR send_bit_pair_over_serial
+;Fall through to the next subroutine to send the 4th pair
+;
+;===============================================================================================
+; Sends 2 bits over the serial bus
+;
+; Uses an input/output helper variable (serial_byte).
+; Will rotate 2 bits LEFT from the helper into the carry,
+; so successive calls will keep sending more bits into it (from MSB to LSB).
+;===============================================================================================
+DATAOUT_line_set = #$02
+DATAOUT_line_clear = #$00
+serial_byte = $06
+; Important: on entry, .A has the CLKIN_line bitmask value
+;
+; Of the serial bus signals, CLOCK IN is used for acknowledging a bit transmission.
+; DATA OUT is used to indicate the value of the bit transmitted
+; CLOCK IN is bit 2, DATA OUT is bit 1
+; To signal acknowledgement, CLOCK OUT needs to be flipped from its previous state
+
+send_bit_pair_over_serial:
+;Set or clear DATA OUT line, depending on the bit being transmitted (rotated from temp)
+;Store the resulting bitmask in .Y
+.8:068d  A0 02       LDY DATOUT_line_set			;Store the 'line set' bitmask in .Y
+.8:068f  26 06       ROL serial_byte				;Rotate the bit into carry
+.8:0691  90 02       BCC wait_for_CLKIN_clear_2		;If carry is set, we already have the 'line set' bitmask in .Y, continue
+.8:0693  A0 00       LDY DATOUT_line_clear			;Otherwise, use the 'line clear' bitmask
+;Wait for CLOCK IN to be clear - we had saved the bitmask in .A before routine entry
+wait_for_CLKIN_clear_2:
+.8:0695  2C 00 18    BIT data_port
+.8:0698  D0 FB       BNE wait_for_CLKIN_clear_2
+;Send the bitmask over the serial port
+.8:069a  8C 00 18    STY data_port	
+;Repeat the same exact logic for the second bit
+;Set or clear DATA OUT line, depending on the bit being transmitted (rotated from temp)
+;Store the resulting bitmask in .Y
+.8:069d  A0 02       LDY DATOUT_line_set			
+.8:069f  26 06       ROL serial_byte
+.8:06a1  90 02       BCC wait_for_CLKIN_set_2
+.8:06a3  A0 00       LDY DATOUT_line_clear
+;Wait for CLOCK IN to be set - we had saved the bitmask in .A before routine entry
+wait_for_CLKIN_set_2:
+.8:06a5  2C 00 18    BIT data_port
+.8:06a8  F0 FB       BEQ wait_for_CLKIN_set_2
+;Send the bitmask over the serial port
+.8:06aa  8C 00 18    STY data_port
+.8:06ad  60          RTS
+;===============================================================================================
+; Receives a byte from the serial port
+;
+; Reads a whole byte into a helper variable (serial_byte).
+
+; Returns byte read in .A.
+; Will overwrite X and Y.
+;===============================================================================================
+serial_byte = $06
+
+recv_byte_from_serial:
+;This routine will read bit pairs 4 times in total
+.8:06ae  A2 04       LDX #$04		; .X = number of bit pairs to read (4 bit pairs = 8 bits)
+;Save CLOCK IN bitmask in Y
+.8:06b0  A0 04       LDY #$04		; .Y = CLOCK IN set bitmask
+next_bit_pair:
+;Wait for CLOCK IN to be set
+.8:06b2  98          TYA
+wait_for_CLKIN_set:
+.8:06b3  2C 00 18    BIT data_port
+.8:06b6  F0 FB       BEQ wait_for_CLKIN_set
+;Read bit and rotate it into the serial byte
+.8:06b8  AD 00 18    LDA data_port
+.8:06bb  6A          ROR A				;Rotate bit 0 (DATA IN) into A	
+.8:06bc  26 06       ROL serial_byte	;Rotate bit into serial_byte
+;Wait for CLOCK IN to be clear
+.8:06be  98          TYA
+wait_for_CLKIN_clear:
+.8:06bf  2C 00 18    BIT data_port
+.8:06c2  D0 FB       BNE wait_for_CLKIN_clear
+;Read bit and rotate it into the serial byte
+.8:06c4  AD 00 18    LDA data_port
+.8:06c7  6A          ROR A			;Rotate the bit in DATA IN into temp
+.8:06c8  26 06       ROL serial_byte
+;If bit pairs are pending, loop
+.8:06ca  CA          DEX
+.8:06cb  D0 E5       BNE next_bit_pair
+;Copy the full byte into .A and return
+.8:06cd  A5 06       LDA serial_byte
+.8:06cf  60          RTS
