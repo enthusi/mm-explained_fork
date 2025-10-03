@@ -1,0 +1,590 @@
+;===============================================================================
+; Stage 5 Overview: Main game file sender
+;-------------------------------------------------------------------------------
+; What this stage does:
+;   • Sends the main game file to the C64 using a "fast loader" mechanism
+;   • The job_loop orchestrates execution of Job #0, handles track changes, 
+;	  and decides when the load is finished.
+;   • The reader/sender reads one sector from the current track, verifies it, 
+;	  streams the payload to the C64, and publishes where to go next.
+;
+; Division of responsibilities
+;   • job_loop:
+;       - Prime Job #0 by writing the “execute” opcode to its job code byte.
+;       - CLI to let the 1541 job engine run; poll bit7 of the job code byte:
+;           bit7=1 → job running (BMI loops), bit7=0 → job finished.
+;       - SEI, check result ($01=OK, ≥$02=error→reset).
+;       - Copy NEXT_TRACK → JOB0_TRACK and relaunch Job #0 if NEXT_TRACK≠0.
+;       - When NEXT_TRACK==0, verify the sentinel at $07FF, then RTI (or reset).
+;   • fast reader/sender:
+;       - Set GCR decode target to $0400 (buffer #1).
+;       - Compose/convert the expected header (CONHDR), wait for SYNC, and
+;         validate 8 GCR header bytes against the expected sequence.
+;       - Read 256 data bytes to $0400..$04FF + capture GCR overflow to $01BA..$01FF.
+;       - Decode GCR → binary (GCRBIN); verify block ID and checksum (CHKBLK).
+;       - Stream decoded payload to the C64 via fast_byte_send.
+;       - Update NEXT_SECTOR/NEXT_TRACK for the controller.
+;
+; How a sector is streamed
+;   • The first 2 decoded bytes at $0400/$0401 are a trailer containing the
+;     *next* track/sector (PAYLOAD_NEXT_TRACK/SECTOR); they are not sent.
+;   • Non-final sector: leave TOTAL_BYTES_TO_SEND at 0 so the send loop runs
+;     until Y wraps (naturally sending bytes $02..$FF).
+;   • Final sector (PAYLOAD_NEXT_TRACK==0): take a byte count from the payload
+;     trailer, set TOTAL_BYTES_TO_SEND accordingly, and stop early after that
+;     many bytes.
+;
+; Same-track vs next-track
+;   • After sending, Stage 6 writes PAYLOAD_NEXT_SECTOR → NEXT_SECTOR and
+;     PAYLOAD_NEXT_TRACK → NEXT_TRACK.
+;   • If NEXT_TRACK == 0 → done: terminate job (success).
+;   • If NEXT_TRACK == JOB0_TRACK → same track: Stage 6 loops immediately to
+;     read the next sector (no head step required).
+;   • Else (track changed) → terminate job; Stage 5 copies NEXT_TRACK to
+;     JOB0_TRACK and relaunches Job #0 so the head can step before reading.
+;
+; Sentinel & safety checks
+;   • A shared sentinel at $07FF is set earlier in the flow (ROM fingerprint /
+;     handshake). This stage requires it to match the expected value before RTI.
+;     On mismatch or any read/verify failure, the drive resets via the
+;     project’s reset routine.
+;
+; Net effect
+;   • The reader handles per-sector disk I/O + C64 streaming and publishes the
+;     next T/S, while the job loop arbitrates track changes and finalization. This
+;     separation keeps the hot path tight and lets mechanical head stepping
+;     happen between Job #0 runs.
+;===============================================================================
+;------------------------------------------------------------------------------
+; Magnetic storage of bits
+;------------------------------------------------------------------------------
+; Magnetic disks don’t store 0/1 as DC levels; they store *flux reversals*
+; (polarity flips) along the track. The read amp produces a pulse **when** a
+; reversal occurs. A data separator (PLL) locks its clock to the timing of
+; those pulses and samples the stream at the expected cell boundaries.
+;
+; Why transitions matter
+;   • Too few transitions (e.g., many consecutive ‘0’ cells → no reversals)
+;     starve the PLL of timing edges and the clock drifts → byte framing is lost.
+;   • An uncontrolled pattern of transitions can also make the separator miscount.
+;
+; GCR’s solution (4→5 coding on the 1541)
+;   • Each 4-bit data nybble is mapped to a 5-bit *codeword* chosen so that:
+;       - Transitions occur often enough to keep the PLL aligned (bounded run
+;         length of zeros: there’s a maximum number of “no-transition” cells).
+;       - Only 16 out of the 32 possible 5-bit patterns are legal codewords.
+;   • Inside headers and data fields, only these legal codewords may appear.
+;
+; What is an “illegal run”?
+;   • Any sequence that would require a 5-bit group not in the legal set, or a
+;     run of zeros longer than allowed (too many consecutive “no-transition”
+;     cells). These cannot be produced by proper GCR encoding and usually mean
+;     the reader has lost phase or encountered noise.
+;
+; Consequences when reading
+;   • During header compare: the 8 incoming GCR bytes won’t match the CONHDR
+;     table → we keep scanning for the correct header.
+;   • During data decode: GCRBIN can’t map a bad 5-bit group back to a nybble,
+;     or the computed checksum won’t match → the block is rejected.
+;
+; Special case: SYNC
+;   • SYNC runs are intentional *high-transition-density* regions (often read
+;     as $FF bytes). They appear only between fields to let the PLL firmly lock
+;     before the next header/data. Inside fields, GCR codewords avoid both
+;     “no-transition deserts” and “nonsense” 5-bit patterns.
+;------------------------------------------------------------------------------
+;------------------------------------------------------------------------------
+; Quick primer: 1541 GCR (Group Code Recording) and the decode pipeline
+;------------------------------------------------------------------------------
+; What “GCR” is
+;   • The 1541 stores data on disk as a stream of 5-bit *codewords* (“GCR”)
+;     instead of raw 8-bit bytes. Each 4-bit nybble of real data is mapped to
+;     a 5-bit GCR codeword (a 5→4 scheme), chosen so there are no “illegal”
+;     bit runs on the magnetic media.
+;   • A 256-byte data field therefore expands to 320+ GCR code bytes, including some
+;     trailing “overflow/tail” GCR that helps complete boundaries between groups.
+;
+; SYNC marks
+;   • Between header and data fields, the drive writes a long run of ‘1’ bits
+;     (often read as $FF bytes). This is the *SYNC* mark: it lets the 1541’s
+;     hardware/ROM align to the next field cleanly.
+;
+; Header vs Data fields
+;   • A *header* field identifies the sector (Track/ Sector) and contains two
+;     disk ID bytes and a header checksum. We usually prebuild the *expected*
+;     header in GCR and compare the incoming 8 bytes against that.
+;   • A *data* field contains the 256 data bytes (GCR-encoded) followed by a
+;     checksum of the data. Decoding turns the GCR stream back into the original
+;     256 bytes; we then validate the checksum.
+;
+; Why we capture “overflow” at $01BA..$01FF
+;   • Because GCR packs 4 real bits into 5 recorded bits, byte boundaries in the
+;     decoded data don’t line up perfectly with the incoming GCR byte boundaries.
+;     The ROM decoder needs some extra GCR tail bytes to finish the last few
+;     groups cleanly; we stash those 0x46 bytes at $01BA..$01FF for GCRBIN.
+;
+; ROM routines typically involved
+;   SYNC   ($F556) : Wait for the next SYNC mark (start of a field).
+;   CONHDR ($F934) : Build the expected 8-byte *header in GCR* from:
+;                    track_in_header, sector_in_header, id1_in_header,
+;                    id2_in_header, header_checksum → stored at $0024..$002B.
+;   GCRBIN ($F8E0) : Decode one full data field:
+;                    input  : $0400..$04FF (main GCR) + $01BA..$01FF (overflow)
+;                    output : 256 decoded bytes at $0400..$04FF (+ ID/check bytes)
+;   CHKBLK ($F5E9) : Compute the data checksum over the 256 decoded bytes.
+;
+; Normal decode/verify flow (what our loader does)
+;   1) SYNC → we’re aligned at a header.
+;   2) Compare the 8 incoming header GCR bytes against the CONHDR-built table.
+;      If any mismatch, retry on the next header.
+;   3) SYNC again to align at the data field start.
+;   4) Read 256 GCR bytes into $0400..$04FF and capture the tail into $01BA..$01FF.
+;   5) JSR GCRBIN to decode to binary.
+;   6) Verify block ID (format/type) and JSR CHKBLK to verify the data checksum.
+;   7) If OK, stream the decoded payload to the C64; otherwise, error/reset.
+;------------------------------------------------------------------------------
+;------------------------------------------------------------------------------
+; How “byte ready” is polled via the 6502 V (overflow) flag
+;------------------------------------------------------------------------------
+; The 1541’s data separator exposes a “byte ready / byte sync” signal on the
+; VIA connected to the read channel (Port A). In ROM code and many loaders,
+; this line is sampled with a BIT instruction on the port:
+;   BIT $1C01    ; VIA Port A (read channel)
+; BIT copies input bit 6 into the 6502 V flag. With that mapping, code can:
+;   CLV          ; acknowledge/clear V before waiting
+;   BVC wait     ; loop until V=1  (a new GCR byte has latched)
+;   LDA $1C01    ; read the GCR byte
+; This V-flag handshake is why we see the BVC/CLV polling idiom wrapped
+; around LDA data_port in fastloaders: V mirrors the hardware “byte ready” line.
+;------------------------------------------------------------------------------ 
+;------------------------------------------------------------------------------
+; Why we must scan headers even when staying on the same track
+;------------------------------------------------------------------------------
+; The 1541 has no usable “index” reference for angular position: the DOS does
+; not use an index hole or a rotation counter. After any operation (read, seek,
+; or just returning from code), the head may be sitting at an arbitrary point
+; on the track relative to sector boundaries. There’s no API to “jump” to a
+; given sector by angle.
+;
+; Consequences:
+;   • Even if we already know we’re on the correct TRACK, the next sector that
+;     passes under the head could be any sector on that track.
+;   • To read a specific sector, the drive must watch the disk spin and *scan*
+;     the incoming headers until the desired (T,S,ID) appears.
+;   • Our loader builds the expected header in GCR (CONHDR), then loops:
+;       SYNC → poll “byte ready” → read/compare 8 header bytes
+;     If it’s not our header, we keep scanning until it shows up or the retry
+;     budget is exhausted.
+;   • After a head step (track change) this scanning is mandatory; but it’s also
+;     required on same-track reads because angular position is still unknown.
+;------------------------------------------------------------------------------ 
+
+
+;----------------------------
+; Zero-page / work variables
+;----------------------------
+job0_code               = $00  ; DOS job engine: Job #0 code/status byte.
+                               ;   Bit 7=1 → job running; cleared on completion.
+                               ;   Final value: $01=OK, ≥$02=error (checked by job_loop).
+
+job0_track              = $06  ; Target track for Job #0 (used by reader and header fill).
+job0_sector             = $07  ; Target sector for Job #0 (set before each read).
+
+next_track              = $0A  ; “Controller handoff” value: next track published by Stage 6
+                               ;   after decoding a sector’s trailer. 0 means “done”.
+
+next_sector             = $0B  ; Next sector published by Stage 6 (from payload trailer).
+
+total_bytes_to_send     = $0C  ; Byte budget for the *final* sector only.
+                               ;   When nonzero, the send loop stops early after this count.
+                               ;   Otherwise (0), it streams bytes $02..$FF (254 bytes).
+
+id1_in_header           = $16  ; Sector header ID1 (from disk header; used in checksum).
+id2_in_header           = $17  ; Sector header ID2 (from disk header; used in checksum).
+track_in_header         = $18  ; Track number echoed into the DOS header.
+sector_in_header        = $19  ; Sector number echoed into the DOS header.
+header_checksum         = $1A  ; XOR of (sector ^ track ^ id2 ^ id1) for header compare.
+
+track_under_head        = $22  ; Snapshot of the physical track currently under the head;
+                               ;   used to track same-track loops without stepping.
+
+active_buffer_lo        = $30  ; Destination pointer for GCR decoder (lo).
+active_buffer_hi        = $31  ; Destination pointer for GCR decoder (hi). Set to $0400.
+
+data_block_id           = $38  ; Decoded data block ID (from $0400 area after GCRBIN).
+data_checksum           = $3A  ; Decoded data block checksum (computed by CHKBLK vs stored).
+
+data_block_id_code      = $47  ; Expected block ID code to validate against (constant in RAM).
+
+listener_addr           = $77  ; IEC book-keeping: current listener device address.
+talker_addr             = $78  ; IEC book-keeping: current talker device address.
+current_secondary_addr  = $83  ; IEC book-keeping: current secondary address.
+                               ; These are cleared at job_loop start to neutralize the bus.
+
+temp                    = $08  ; Scratch byte for fast_byte_send (bit-pair assembly).
+
+
+;----------------------------
+; Constants
+;----------------------------
+JOB_EXEC_OPCODE         = $E0  ; DOS job engine opcode: “EXECUTE buffer”
+                               ;   Write to job0_code to post the job.
+                               ;   The selected buffer is determined by job_number ($F9).
+
+;JOB_RESULT_OK          = $01  ; (reference) success status left in job0_code on completion
+JOB_RESULT_ERR_MIN      = $02  ; Any final status ≥ $02 is an error (job_loop tests against this)
+
+HEADER_SIZE             = $08  ; Number of GCR header bytes to compare (expected vs on-disk)
+
+RETRY_BUDGET			= $5A
+OVERFLOW_START_OFFSET   = $BA  ; Offset into page $01xx for tail/overflow capture:
+                               ;   $0100 + $BA = $01BA .. $01FF are filled after the 256 data bytes
+
+;----------------------------
+; Addresses / I/O registers
+;----------------------------
+expected_header_in_gcr  = $0024 ; Pointer to 8-byte “expected header in GCR” table (built by CONHDR);
+                                ; compared byte-by-byte with ,Y after SYNC.
+
+page1_addr              = $0100 ; Base of “page 1” scratch; used for GCR overflow capture ($01BA..$01FF)
+
+motor_phase             = $02FE ; Stepper/motor phase byte (drive RAM mirror). Written to reinitialize phase.
+
+buffer1_addr            = $0400 ; Start of buffer #1 (decoded binary target for GCRBIN)
+
+payload_next_track      = $0400 ; First two decoded bytes at $0400/$0401 carry the *next* T/S header:
+payload_next_sector     = $0401 ;   next track / next sector. These are NOT transmitted to the C64.
+
+payload_total_bytes     = $0401 ; Alias: same location reused as “final sector byte count”
+                                ; when payload_next_track == 0 (last sector). 
+
+sentinel                = $07FF ; Shared C64↔1541 sentinel byte. Must be $00 here for a valid end-of-load;
+                                ; set earlier in the flow based on ROM fingerprint/handshake.
+
+drive_ctrl_port         = $1C00 ; VIA #1 Port B: LED and stepper coil control (bit 3 = LED)
+data_port               = $1C01 ; VIA #1 Port A: raw read-data byte during sector read (polled after SYNC)
+serial_data_port        = $1800 ; VIA #2 Port B (IEC lines): toggled/polled by fast_byte_send during streaming
+
+
+;----------------------------
+; 1541 ROM routines
+;----------------------------
+SYNC            = $F556  ; Wait for a GCR SYNC mark on the read channel.
+                        ; Returns when the start of a header/data field is detected;
+                        ; caller then polls $1C01 (data_port) for the incoming bytes.
+
+CHKBLK          = $F5E9  ; Compute the sector data checksum over the decoded 256 bytes.
+                        ; Input : decoded data at $0400..$04FF (standard workspace)
+                        ; Output: A = computed checksum (compare with data_checksum)
+
+GCRBIN          = $F8E0  ; Decode one GCR sector into binary.
+                        ; Input : GCR data in $0400..$04FF and tail/overflow in $01BA..$01FF
+                        ; Output: 256 decoded bytes at $0400..$04FF, plus ID/check bytes set
+
+CONHDR          = $F934  ; Build the 8-byte “expected header” in GCR form.
+                        ; Input : track_in_header, sector_in_header, id1_in_header, id2_in_header,
+                        ;         header_checksum
+                        ; Output: 8-byte GCR sequence at expected_header_in_gcr ($0024..$002B)
+
+JOB_TERMINATION = $FD9E  ; Terminate Job #0 with success and return to the job engine.
+                        ; Side effects: clears bit7 of job0_code and stores $01, then RTI.
+
+DSKINT          = $FFFC  ; RESET vector (low address) for the 1541 ROM.
+                        ; Used as an indirect pointer: JMP (DSKINT) performs a soft DOS reset
+                        ; via the ROM’s reset entry.
+
+
+;===============================================================================
+; Read raw sector, decode, verify, and send to C64
+;===============================================================================
+;Address here is $0300
+* = $0300
+read_raw_sector:
+    ; Point the decoder at buffer #1 ($0400)
+    ;   GCRBIN uses (active_buffer_lo/hi) as its destination pointer.
+    LDA #>buffer1_addr
+    STA active_buffer_hi
+    LDA #<buffer1_addr
+    STA active_buffer_lo
+
+    ; Mirror the current track:
+    ;   • track_in_header is used to build the expected header (CONHDR)
+    ;   • track_under_head tracks the physical position for same-track loops
+    LDA job0_track
+    STA track_in_header
+    STA track_under_head
+
+    ; Select which sector to read next on this track:
+    ;   job0_sector drives the ROM reader; sector_in_header feeds CONHDR
+    LDA next_sector
+    STA job0_sector
+    STA sector_in_header
+
+    ; Compute the standard DOS header checksum:
+    ;   A currently holds SECTOR (from above), so:
+    ;     checksum = sector ^ track ^ id2 ^ id1
+    EOR track_in_header
+    EOR id2_in_header
+    EOR id1_in_header
+    STA header_checksum
+
+    ; Build the 8-byte expected header in GCR (written at $0024..$002B)
+    ; using track_in_header/sector_in_header/id1_in_header/id2_in_header/header_checksum.
+    JSR CONHDR
+
+
+    ; Seek the desired sector header, then verify its 8 GCR bytes
+    ;   X = retry budget (90 headers max before giving up)
+    ;   SYNC returns at the start of a header/data field.
+    ;   After SYNC, we poll the VIA “byte-ready” flag using V:
+    ;     - BVC loops while V=0 (no byte yet)
+    ;     - CLV clears V so the next byte can signal again
+    ;   Each ready byte is read from data_port and compared against the
+    ;   8-byte GCR sequence prepared by CONHDR at expected_header_in_gcr.
+    LDX #RETRY_BUDGET                   ; retry budget (90 attempts)
+sync_and_validate_header:
+    JSR SYNC                           ; wait for a SYNC mark (start of header)
+
+next_header_byte:
+    BVC next_header_byte               ; wait until VIA signals “byte ready” (V=1)
+    CLV                                 ; ack the event: clear V for the next poll
+    LDA data_port                       ; fetch next header byte from the read channel
+    CMP expected_header_in_gcr,Y        ; does it match the expected converted header?
+    BNE check_retries_pending           ; mismatch → this isn’t our sector; retry another header
+    INY
+    CPY #HEADER_SIZE                    ; matched so far; done after 8 bytes
+    BNE next_header_byte
+
+
+    ;------------------------------
+    ; Header matched → read the 256-byte GCR data field into $0400..$04FF
+    ;------------------------------
+    ; Re-sync to the start of the data field (skip the SYNC-run between header and data)
+    JSR SYNC
+
+next_gcr_byte:
+    BVC next_gcr_byte               ; wait for VIA “byte ready” (V=1)
+    CLV                               ; ack: clear V for the next byte
+    LDA data_port                     ; fetch next raw GCR byte from the read channel
+    STA buffer1_addr,Y                ; store at $0400 + Y
+    INY                               ; advance within the 256-byte target window
+    BNE next_gcr_byte                ; loop until Y wraps to 0 → exactly 256 bytes read
+
+
+    ; Capture the trailing GCR “overflow” bytes needed by the decoder
+    ;   After the 256 data bytes, the GCR stream continues with tail bytes.
+    ;   The decoder consumes these to finish 5→4 decoding across byte boundaries.
+    ;   We store them at $01BA..$01FF (70 bytes: $200 - $1BA = $46).
+    LDY #OVERFLOW_START_OFFSET        ; start at $0100+$BA = $01BA
+next_gcr_overflow_byte:
+    BVC next_gcr_overflow_byte        ; wait for VIA “byte ready” (V=1)
+    CLV                                ; ack: clear V for the next poll
+    LDA data_port                      ; next raw GCR byte
+    STA page1_addr,Y                   ; → $01BA..$01FF
+    INY
+    BNE next_gcr_overflow_byte         ; stop exactly at $01FF (when Y wraps)
+
+    ; Decode GCR → binary using:
+    ;   • main field at $0400..$04FF, and
+    ;   • overflow tail at $01BA..$01FF
+    JSR GCRBIN
+
+
+    ;------------------------------
+    ; Validate decoded block header and data integrity
+    ;   • Block ID must match the expected code (format/type sanity check).
+    ;   • Data checksum computed by CHKBLK must equal the stored checksum.
+    ;     Any mismatch indicates a bad read or decode → reset the drive.
+    ;------------------------------
+    LDA data_block_id
+    CMP data_block_id_code             ; wrong block type/ID?
+    BNE reset_drive
+
+    JSR CHKBLK                         ; A := computed checksum over $0400..$04FF
+    CMP data_checksum                  ; compare against checksum stored in the block
+    NOP                                ; (timing pad / alignment from original source)
+    NOP
+    BNE reset_drive                    ; checksum mismatch → abort/load reset
+
+    ;------------------------------
+    ; Stream decoded payload to the C64 over the fast serial link
+    ;   • The first two decoded bytes ($0400/$0401) are a trailer carrying
+    ;     the *next* track/sector and are NOT transmitted.
+    ;   • Non-final sector:
+    ;       total_bytes_to_send stays 0, so the loop runs until Y wraps
+    ;       from $FF→$00, naturally sending bytes $02..$FF (254 bytes).
+    ;   • Final sector (payload_next_track == 0):
+    ;       payload_total_bytes (at $0401) holds the exact byte count.
+    ;       We load it, add 1 (because Y starts at $02), and stop when
+    ;       Y == total_bytes_to_send.
+    ;------------------------------
+    LDY #$02                           ; start after the 2-byte next-T/S trailer
+    LDA payload_next_track
+    BNE send_next_byte                 ; nonzero → not the last sector (stream full 254)
+
+    ; Last sector path:
+    ;   payload_total_bytes is the count of bytes to transmit (from $0402 upward).
+    ;   We set total_bytes_to_send = count + 1 so that the loop exits when
+    ;   Y has advanced exactly 'count' steps from its initial $02.
+    LDX payload_total_bytes
+    INX
+    STX total_bytes_to_send
+
+send_next_byte:
+    LDA buffer1_addr,Y                 ; fetch next payload byte
+    JSR fast_byte_send                 ; transmit to C64
+    INY
+    CPY total_bytes_to_send            ; compare progress vs target ($00 for non-final)
+    BNE send_next_byte                 ; keep sending until Y == target (or Y wraps to $00)
+
+
+    ; Indicate activity and restore a known drive state
+    ;   • Toggle the front-panel LED: bit 3 of drive_ctrl_port ($1C00).
+    ;   • Reinitialize the stepper phase byte (motor_phase at $02FE) so the
+    ;     next read starts from a clean phase alignment.
+    LDA drive_ctrl_port
+    EOR #$08                          ; flip LED bit (bit 3)
+    STA drive_ctrl_port
+    ; Reset stepper phase
+    LDA #$00
+    STA motor_phase
+
+    ; Publish next T/S from the sector trailer
+    ;   The trailer at $0400/$0401 contains “next track/sector”.
+    ;   Store them into the controller helpers that Stage 5/6 consult.
+    LDA payload_next_sector
+    STA next_sector
+    LDA payload_next_track
+    STA next_track
+
+    ; Decide what to do next:
+    ;   A still holds payload_next_track (from the LDA above).
+    ;   • If next_track == 0 → loading complete → terminate this job.
+    ;   • Else if next_track == job0_track → same track → read next sector now.
+    ;   • Otherwise (different track) → terminate this job so the job loop
+    ;     can step the head and relaunch.
+    BEQ terminate_job                 ; next_track == 0 → finished
+    CMP job0_track
+    BNE terminate_job                 ; different track → let job loop handle step
+    JMP read_raw_sector               ; same track → continue locally with next sector
+
+;------------------------------
+terminate_job:
+    ; Signal successful completion to the DOS job engine and return
+    JMP JOB_TERMINATION               ; (ROM routine clears bit7, sets $01, RTI)
+
+check_retries_pending:
+    DEX
+    BNE sync_and_validate_header      ; more header attempts available → try again
+
+    ; Out of header retries → hard reset the drive to abort the load
+reset_drive:
+    JMP (DSKINT)                      ; indirect via ROM RESET vector (soft DOS reset)
+
+
+;============================================================
+; Job loop from stage 5 (copied here to make things clearer)
+;============================================================
+job_loop:
+    ; Neutralize IEC bus bookkeeping before (re)starting a job:
+    ;   Clear talker, listener, and secondary address mirrors so no stale
+    ;   addressing lingers from a prior operation.
+    LDA #$00
+    STA talker_addr
+    STA current_secondary_addr
+    STA listener_addr
+
+    ; Post Job #0 = EXECUTE buffer #0 ($0300):
+    ;   Writing JOB_EXEC_OPCODE to job0_code (with bit7 set by DOS) causes the
+    ;   IRQ-driven job engine to jump to the code at $0300 when IRQs are enabled.
+    LDA #JOB_EXEC_OPCODE
+    STA job0_code
+
+    ; Let the DOS job engine run (service Job #0):
+    CLI
+
+job_completion_wait:
+    ; Poll until the job completes:
+    ;   While bit 7 of job0_code is set (negative), the job is still running.
+    LDA job0_code
+    BMI job_completion_wait
+
+    ; Job finished — freeze the scheduler, then check result code in A:
+    ;   $01 = OK; any value ≥ $02 indicates an error.
+    SEI
+    CMP #JOB_RESULT_ERR_MIN
+    BCS reset_drive
+
+    ; Prime the next operation:
+    ;   Copy next_track (published by the sector reader) into job0_track.
+    ;   Sector selection is handled elsewhere before the next read.
+    LDA next_track
+    STA job0_track
+
+    ; If there’s more to load (next_track ≠ 0), loop to launch the next job.
+    BNE job_loop
+
+    ; No more work — verify the shared sentinel (must be $00), else reset.
+    LDA sentinel
+    BNE reset_drive
+
+    ; All good: return to the caller (exits the custom fast loader and
+    ; resumes the prior drive context / normal DOS service).
+    RTI
+
+
+;===============================================================================
+; Tight serial sender: sends A to C64 as 8 bits (4 bit-pairs), fastest possible
+;===============================================================================
+fast_byte_send:
+    ; Latch the byte to send
+    STA temp                         ; keep original in TEMP for bit extraction
+
+wait_for_atn_signal:
+    ; Handshake: wait for the receiver’s “ready/edge” on the IEC handshake pin.
+    ; We poll VIA #2 ($1800); shifting into C lets us test the lowest bit quickly.
+    LDA serial_data_port
+    LSR A
+    BCC wait_for_atn_signal          ; stay until the edge/level indicates “go”
+
+    ; Begin transmit window: raise the clock/control strobe
+    ; (this implementation uses bit 3 of $1800 as the transmit strobe).
+    LDA #$08
+    STA serial_data_port
+
+    ; Transmit 8 bits as 4 encoded pairs (MSB→LSB):
+    ; Each loop:
+    ;   - pulls two bits out of TEMP (bit7, then bit6, …),
+    ;   - packs them into A in the pattern expected by the bus pins, and
+    ;   - writes that 2-bit “symbol” to the serial port.
+    ; After 4 iterations, all 8 bits have been sent.
+    LDX #$04
+next_bit_pair:
+    LDA #$00                         ; clear accumulator for a fresh 2-bit symbol
+
+    ; Extract next payload bit (current bit7 of TEMP) → C → A bit0 → shift to align
+    ASL temp                         ; TEMP <<= 1, old bit7 → C
+    ROL A                            ; A bit0 := C (first payload bit)
+    ASL A                            ; align within A for output pins
+
+    ; Extract next payload bit (new bit7 of TEMP) → C → A bit0 → shift to align
+    ASL temp                         ; TEMP <<= 1, old bit6 → C
+    ROL A                            ; A bit0 := C (second payload bit)
+    ASL A                            ; final align before output
+
+    ; Emit the encoded 2-bit symbol to the bus
+    STA serial_data_port
+    DEX
+    BNE next_bit_pair
+
+    ; Small settle delay (timing pad)
+    LDX #$01
+    DEX
+    BNE *+2
+    NOP
+    NOP
+
+    ; Release the lines (return bus to idle)
+    LDA #$00
+    STA serial_data_port
+    RTS

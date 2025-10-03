@@ -1,0 +1,339 @@
+;===============================================================================
+; Stage 6 - C64 Fast Receiver (Computer-side)
+;-------------------------------------------------------------------------------
+; Purpose
+;   • Prepare the serial bus lines and screen state for a tight, IRQ-free
+;     receive loop.
+;   • Receive the main game file from the 1541 fast sender, writing into memory
+;     at the pointer in $AE/$AF (advanced as bytes arrive).
+;   • For intermediate sectors, skip the 2-byte trailer (next T/S).
+;     For the final sector, stop after bytes_in_last_sector.
+;   • Restore VIC/serial state, ZP pointers and KERNAL filename length; close
+;     any open files (CLALL) and return.
+;
+; High-level flow
+;   1) SEI. Force IEC CLK low; release ATN/DATA high (open-collector idle).
+;   2) Save/patch $D011 (vertical scroll = %1011) to keep timing stable.
+;   3) Load the destination pointer from the parameter block ($9C01/$9C02)
+;      into $AE/$AF.
+;   4) First sector:
+;        - Y starts at 4 (so $AE:$AF + Y = $0400 when load address is $03FC).
+;        - Read two bytes (these are the next T/S trailer; they’ll be skipped).
+;   5) For all *intermediate* sectors, branch to an inline “LDY #$02” using
+;      the BIT $02A0 trick, so we always skip the first two trailer bytes.
+;   6) Main receive loop:
+;        - Repeatedly JSR fast_byte_read (stores to ($AE),Y) then INY,
+;          until Y wraps to $00 (i.e., 256-byte boundary).
+;        - Add $FE to $AE:$AF (we actually consumed $FE bytes here).
+;        - Decrement full_sector_count; if not zero → branch to LDY #$02 and
+;          continue with the next sector (skip trailer again).
+;   7) Final sector:
+;        - LDY #$02 (skip trailer), then read until Y == bytes_in_last_sector.
+;   8) Restore $D011 and $DD00, restore B7/AF/AE, CLI, CLC, CLALL, RTS.
+;
+; Notes
+;   • CIA2 serial port bits are inverted by open-collector bus wiring here:
+;       CLK OUT bit4: 1 = force low, 0 = release (high via pull-up)
+;       ATN OUT bit3: 0 = release high, 1 = force low (we keep it released)
+;       DATA OUT bit5: 0 = release high, 1 = force low (we keep it released)
+;   • The BIT $02A0 “in-place branch” lands on bytes $A0,$02 (= LDY #$02),
+;     so the mid-stream path sets Y quickly without an extra label.
+;===============================================================================
+
+;----------------------------
+; KERNAL
+;----------------------------
+CLALL                   = $FFE7  ; Close ALL logical files/channels.
+                                 ; Also restores default I/O and sends UNLISTEN/UNTALK on IEC.
+
+;----------------------------
+; VIC-II
+;----------------------------
+vic_screen_control_register_1 = $D011  ; VIC-II control #1 (raster MSB, bitmap, screen on/off, vscroll).                                       
+VIC_CTRL1_SCROLLED_25   = $0B          ; %00001011 → 25-row mode with vertical scroll bits = %11.
+                                       
+
+;----------------------------
+; CIA2: Serial Bus Port A ($DD00)
+;----------------------------
+cia2_port_a_data_register = $DD00      ; CIA2 Port A data register (IEC + VIC bank select).
+                                       ; Bit mapping on C64:
+                                       ;   PA7 = DATA IN   (input, from bus)
+                                       ;   PA6 = CLK  IN   (input, from bus)
+                                       ;   PA5 = DATA OUT  (open collector, 1=drive low, 0=release high)
+                                       ;   PA4 = CLK  OUT  (open collector, 1=drive low, 0=release high)
+                                       ;   PA3 = ATN  OUT  (open collector, 1=drive low, 0=release high)
+                                       ;   PA2 = RS232 TXD (unused here)
+                                       ;   PA1:PA0 = VIC bank select (11 → bank 0 @ $0000–$3FFF)
+
+;CIA_ATNOUT_BIT          = %00001000    ; Bit 3 mask (ATN OUT). 1 drives ATN low; 0 releases (pull-up → high).
+CIA_CLKOUT_BIT          = %00010000    ; Bit 4 mask (CLK OUT). 1 drives CLK low; 0 releases (high).
+;CIA_DATAOUT_BIT         = %00100000    ; Bit 5 mask (DATA OUT). 1 drives DATA low; 0 releases (high).
+
+CIA_CLEAR_ATN_DATA_MASK = %11010111    ; AND-mask to CLEAR bits 5 and 3 (DATA/ATN OUT) in PRA.
+                                       ; Using:  PRA := (PRA OR CLKOUT_BIT) AND CIA_CLEAR_ATN_DATA_MASK
+                                       ; releases DATA/ATN lines (0 = released), while we can still force CLK low.
+
+CIA_PRA_PHASE1          = %01100011    ; “Phase 1” posture before sampling:
+                                       ;   PA6=1 (CLK IN readback high), PA5=1 (DATA OUT forced low),
+                                       ;   PA3=0, PA4=0 (ATN/CLK released), RS232=0, VIC bank=%11.
+                                       ; Used while waiting for CLK IN to go LOW (edge detect).
+
+CIA_PRA_PHASE2          = %10000111    ; “Phase 2” posture for the sampling window:
+                                       ;   PA7=1 (DATA IN readback high), PA5..PA3 released,
+                                       ;   RS232=1, VIC bank=%11. Lines are in receive-friendly state.
+
+;CIA_CLKIN_BIT           = %01000000    ; PA6 mask (CLK IN). With `BIT $DD00` the PA6 value is copied into V flag:
+                                       ;   BVS → CLK IN high,  BVC → CLK IN low. Handy for fast polling.
+
+;----------------------------
+; Parameter block (from earlier stage)
+;----------------------------
+full_sector_count       = $9C00        ; Count of full 256-byte sectors remaining to receive.
+load_address_lo         = $9C01        ; Initial destination pointer (low) provided by the configurator.
+load_address_hi         = $9C02        ; Initial destination pointer (high).
+bytes_in_last_sector    = $9C03        ; Exact byte count to read in the final (partial) sector.
+
+;----------------------------
+; Zero-page pointers / vars
+;----------------------------
+dest_ptr_lo             = $AE          ; Destination write pointer (low) for the incoming stream.
+dest_ptr_hi             = $AF          ; Destination write pointer (high). ($AE/$AF is advanced as we fill RAM.)
+filename_length         = $B7          ; KERNAL filename-length scratch (saved/restored around fast receive).
+recv_scratch            = $02          ; One-byte assembly buffer for fast_byte_read (builds the received byte here).
+
+;===============================================================================
+; Fast-load over serial: setup & first sector prelude
+;===============================================================================
+;Address is $9C79
+* = $9C79
+stage6_start:
+    ; Halt asynchronous activity during the tight receive loop
+    SEI
+
+    ; Put the IEC lines into a known, safe state (preserve CIA2 PRA on stack):
+    ;   • ORA #CIA_CLKOUT_BIT → set PA4=1 → actively drive CLK LOW.
+    ;   • AND #CIA_CLEAR_ATN_DATA_MASK → clear PA5/PA3 bits → release DATA/ATN (pull-ups → HIGH).
+    ; This guarantees the bus isn’t mid-transaction when we begin our custom handshake.
+    LDA cia2_port_a_data_register
+    PHA
+    ORA #CIA_CLKOUT_BIT
+    AND #CIA_CLEAR_ATN_DATA_MASK
+    STA cia2_port_a_data_register
+
+    ; Snapshot and set VIC-II control ($D011) to a known, no-DMA state (preserve on stack):
+    ;   $0B = %0000_1011 → 25-row text (bit3=1), vertical scroll=3 (bits2–0=011),
+    ;                      **screen disabled** (bit4=0).
+    ; Turning the screen off removes VIC badlines (no character DMA), which keeps CPU timing stable
+    ; during the fast receive. The particular scroll value is inconsequential; the key is DEN=0.
+    LDA vic_screen_control_register_1
+    PHA
+    LDA #VIC_CTRL1_SCROLLED_25
+    STA vic_screen_control_register_1
+
+    ; Initialize the destination write pointer ($AE/$AF) from the parameter block:
+    ;   This is where the incoming stream will be stored.
+    LDA load_address_lo
+    STA dest_ptr_lo
+    LDA load_address_hi
+    STA dest_ptr_hi
+
+
+    ;----------------------------------
+    ; Read first sector: pre-fill trailer, then start payload at $0402
+    ;----------------------------------
+    ; Our destination pointer was initialized to $03FC. By starting with Y=$04,
+    ; the first two received bytes land at:
+    ;   ($03FC),Y = $0400 → payload_next_track
+    ;   ($03FC),Y = $0401 → payload_next_sector / total-bytes (alias on last sector)
+    ; These two “trailer” bytes are intentionally written first so the memory
+    ; layout matches the drive-side convention. We will then set Y=2 and stream
+    ; the actual payload into $0402.., skipping over the trailer when sending.
+    LDY #$04                        ; ($03FC + $04) = $0400 base target
+    JSR fast_byte_read              ; write trailer byte 1 → $0400
+    JSR fast_byte_read              ; write trailer byte 2 → $0401
+
+    ; Branch-into-operand trick to set Y quickly:
+    ;   The instruction “BIT $02A0” assembles to the 3 bytes: 2C A0 02
+    ;     2C = BIT abs,  A0 02 = also*a valid opcode/imm pair: LDY #$02
+    ;   When we execute it here, BIT $02A0 is harmless. Later, a branch targets
+    ;   the second byte of this instruction (the $A0), so the CPU executes the
+    ;   embedded two-byte sequence “LDY #$02” without storing that opcode twice.
+    ;   This saves space and avoids an extra literal
+    BIT $02A0
+
+    ;------------------------------------------------------------------------------
+    ; Inline branch target for “set Y = 2”
+    ; Reaching this label (e.g., via BNE set_y_to_two) lands on the operand bytes
+    ; of the BIT above, which are $A0,$02 — the encoding of:  LDY #$02
+    ;------------------------------------------------------------------------------	
+set_y_to_two = * - 2
+	; (control lands here → CPU executes $A0,$02 = LDY #$02)
+	; LDY #$02  ; executed by falling into the embedded operand bytes
+
+	;===============================================================================
+	; Main receive loop — intermediate sectors (send full 254-byte payloads)
+	;   • We already wrote the 2-byte trailer at $0400/$0401.
+	;   • Now stream bytes $0402..$04FF (254 bytes) into RAM via fast_byte_read.
+	;   • Y indexes within the destination page; when Y wraps, we’ve done 256 writes.
+	;===============================================================================
+receive_loop:
+    JSR fast_byte_read              ; write byte to (dest_ptr),Y
+    INY
+    BNE receive_loop                ; keep going until Y wraps from $FF → $00
+
+    ; We consumed $FE bytes this page (skipped the first 2 at $00,$01),
+    ; so advance the destination pointer by $FE and keep the same page-aligned Y.
+    LDA dest_ptr_lo
+    CLC
+    ADC #$FE
+    STA dest_ptr_lo
+    BCC next_sector
+    INC dest_ptr_hi
+
+next_sector:
+    DEC full_sector_count           ; more full sectors to receive?
+    BNE set_y_to_two                ; yes → skip the 2-byte trailer again (LDY #$02)
+
+	;===============================================================================
+	; Final sector — stop early at bytes_in_last_sector (Y starts at $02)
+	;   • bytes_in_last_sector is an end INDEX in the $0400 page coordinate system:
+	;       - trailer occupies $00,$01
+	;       - payload occupies $02..(bytes_in_last_sector-1)
+	;     Starting from Y=$02, we stop when Y == bytes_in_last_sector, i.e.
+	;     we receive exactly (bytes_in_last_sector - 2) bytes for the last sector.
+	;===============================================================================
+    LDY #$02
+last_sector_loop:
+    JSR fast_byte_read              ; write next payload byte
+    INY
+    CPY bytes_in_last_sector        ; done when Y reaches the configured end index
+    BNE last_sector_loop
+
+	;===============================================================================
+	; Tear-down — restore VIC/IEC state, ZP work vars, and return to the caller
+	;   We unwound the stack in the reverse order we saved:
+	;     (top)  dest_ptr_lo, dest_ptr_hi, filename_length, cia2 PRA, $D011  (bottom)
+	;   Then we re-enable IRQs, clear C (for callers that rely on it), close channels.
+	;===============================================================================
+
+    ; Restore VIC-II control register ($D011) to its original value
+    PLA
+    STA vic_screen_control_register_1
+
+    ; Restore CIA2 Port A ($DD00) — put IEC lines back exactly as they were
+    PLA
+    STA cia2_port_a_data_register
+
+    ; Restore KERNAL filename length scratch ($B7) and destination pointer ($AE/$AF)
+    PLA
+    STA filename_length
+    PLA
+    STA dest_ptr_hi
+    PLA
+    STA dest_ptr_lo
+
+    ; Resume normal operation
+    CLI                             ; re-enable interrupts
+    CLC                             ; leave carry clear (conventional “OK”)
+    JSR CLALL                       ; close any open files/channels; reset IEC state
+    RTS
+
+    ; On return, the main game file load is complete.
+	; Control resumes in the code from stage 3, immediately after its JSR load_main_file call. 
+	; That is covered as stage 7.
+	
+
+;===============================================================================
+; Fast Receiver: Read One Byte from 1541 (2-bit pairs, IRQ-free)
+;-------------------------------------------------------------------------------
+; Purpose
+;   • Sample the IEC serial bus directly via CIA2 and assemble one byte
+;     in RAM, using four 2-bit reads (DATA IN, CLK IN) without interrupts.
+;   • Store the received byte at (DEST_PTR),Y. Neither DEST_PTR nor Y are modified.
+;
+; Input: ($AE/$AF) = destination base, Y = destination offset
+; Clobbers: A, X, RECV_SCRATCH; preserves: $AE/$AF and Y
+
+; How it works (high level)
+;   1) Phase 1: Program CIA2 PRA so CLK OUT is released high. 
+;		Wait until CLK IN (PA6) goes LOW.
+;   2) Phase 2: Program CIA2 PRA for the sampling window (keep ATN/DATA released). 
+;		Small fixed delay for edge placement.
+;   3) Loop 4 times: on each iteration read the CIA port, use shifts/rotates to pack
+;      PA7/PA6 (DATA IN/CLK IN) into bits 1:0, 3:2, 5:4, 7:6 of a byte at $02.
+;      This reconstructs the 8-bit payload delivered as 4 encoded bit-pairs.
+;   4) Invert all bits (EOR #$FF) to account for the open-collector polarity,
+;      then write to (DEST_PTR),Y and return.
+;
+; Notes
+;   • CIA2 Port A bits on the C64 IEC bus:
+;       PA7 = DATA IN (input), PA6 = CLK IN (input),
+;       PA5 = DATA OUT (open collector), PA4 = CLK OUT (open collector),
+;       PA3 = ATN OUT (open collector)
+;   • BIT abs sets N=bit7 and V=bit6 of the tested byte; here we use BVS/BVC
+;     as a fast test of CLK IN (PA6).
+;   • Cycle counts in comments refer to NMOS 6502 timing.
+;===============================================================================
+fast_byte_read:
+    ;------------------------------
+    ; Phase 1 — setup bus, wait for a clean sampling edge
+    ;   Put CIA2 PRA into the “phase 1” state:
+    ;     - DATA OUT held low, CLK/ATN released, CLK IN readback high.
+    ;   Then wait until CLK IN (PA6) goes LOW so we can sample at a stable point.
+    ;   Note: BIT copies PA6 into V, so BVS means “CLK IN still HIGH”.
+    ;------------------------------
+    LDA #CIA_PRA_PHASE1
+    STA cia2_port_a_data_register
+
+wait_for_clk_low:
+    BIT cia2_port_a_data_register     ; PA6 → V
+    BVS wait_for_clk_low              ; loop until CLK IN = LOW
+
+    ;------------------------------
+    ; Phase 2 — enable sampling, short fixed settle delay
+    ;   Switch CIA2 PRA to the “phase 2” posture used while sampling; then
+    ;   burn a small, fixed delay so we read near the center of the bit cell.
+    ;   18-cycle delay: LDX #4 (2) + 4×(DEX 2 + BNE 2) = 18 cycles total.
+    ;------------------------------
+    LDA #CIA_PRA_PHASE2
+    STA cia2_port_a_data_register
+
+    LDX #$04
+delay4:
+    DEX
+    BNE delay4
+
+    ;------------------------------
+    ; Read 4 bit-pairs and pack them into recv_scratch (LSB-first)
+    ;   Each iteration (~26 cycles):
+    ;     • Read CIA2 PRA: PA7=DATA IN, PA6=CLOCK IN from the serial bus.
+    ;     • Use ASL/ROL/LSR to move those two bits into recv_scratch:
+    ;         - First move PA7 (DATA) into C, then into recv_scratch bit0.
+    ;         - Then move PA6 (CLK) into C, then into the next bit of recv_scratch.
+    ;     • After 4 iterations we have 8 bits (4 pairs) assembled into recv_scratch.
+    ;   The bit-pair order follows the bus encoding used by the sender; the
+    ;   final EOR below accounts for the open-collector polarity (released=‘1’).
+    ;------------------------------
+    LDX #$04
+read_pair:
+    LDA cia2_port_a_data_register     ; [PA7:PA6:...]=[DATA:CLK:...]
+    ASL A                             ; move DATA (PA7) → C
+    ROL A                             ; (keep timing alignment)
+    ROL recv_scratch                  ; C → bit0 of recv_scratch
+    LSR A                             ; bring CLK (PA6) → C
+    NOP                               ; timing pad for stable sampling
+    ROL recv_scratch                  ; C → next bit (forms the 2-bit symbol)
+    DEX
+    BNE read_pair
+
+    ; Account for IEC line polarity:
+    ;   DATA/CLK are open-collector; “released” reads as logic ‘1’.
+    ;   We invert to get conventional logic for the assembled byte.
+    LDA recv_scratch
+    EOR #$FF
+
+    ; Store the received byte to (dest_ptr),Y
+    STA (dest_ptr_lo),Y
+    RTS
+

@@ -1,0 +1,375 @@
+;===============================================================================
+; Stage 9 - 1541 Drive - Protection Check (executes from buffer #1 at $0400, T18/S8)
+;-------------------------------------------------------------------------------
+; Purpose
+;   • Decrypt the encrypted portion of this sector ($0412..$04AD) in-place.
+;   • Verify disk readability across three adjacent track positions: Track 35.0 → 35.5 → 36.0,
+;     scanning sectors 16 down to 0 on each position. Record the last error seen.
+;   • If no errors occur anywhere in the sweep, write $FF to $01FF (validation_flag)
+;     so the C64 can verify success via an M-R command.
+;   • Park the head at Track 18, Sector 0 (via Job #0 seek), then hand off to
+;     self-wipe after restoring read mode.
+;
+; Notes
+;   • Decryption loop: Y runs 0..BYTE_COUNT inclusive, XORing each byte at
+;     encrypted_data+Y with XOR_KEY. With BYTE_COUNT=$9B, bytes $0412..$04AD are
+;     decrypted (156 bytes total).
+;   • Job engine semantics: while Job #0 is running, its code byte has bit 7 set.
+;     When bit 7 clears, the job is finished. We poll that bit using BMI.
+;   • stop_head_and_set_read_mode: the “clear bit 1” path is unreachable as written
+;     because ORA #$0E guarantees Z=0; BNE always takes the branch. Left intact.
+;   • Usage of "@w" operators (tass64 syntax) is needed to replicate the exact original code
+;===============================================================================
+
+;------------------------------------------------------------------------------
+; Half-tracks on the 1541 and how this protection uses them
+;------------------------------------------------------------------------------
+; The 1541’s head is driven by a 4-phase stepper. Advancing the coil *phase*
+; by one step (00→01→10→11→00) moves the head **half a track**; two steps make
+; a **full track**. Commodore DOS typically positions on full tracks only, but
+; the hardware can be parked on the “in-between” half-track (e.g., 35.5).
+;
+; Why half-tracks matter:
+;   • The head’s read gap is wider than a track, so when you park at 35.5 you
+;     partially “see” both 35.0 and 36.0. Unless a disk was *mastered* with
+;     deliberate half-track content, the signal there is marginal and normal
+;     sector reads tend to fail. Many copiers can’t reliably write half-track
+;     data or extra out-of-range tracks.
+;
+; What this protection does:
+;   1) Decrypts a small routine embedded in the sector so it can run on the
+;      drive CPU (see copy_protection_check).
+;   2) Initializes a **sweep** around the boundary of interest:
+;         start at track 35.0  → half-step to 35.5 → step to 36.0
+;      For each position it tries to read *every sector* on that track
+;      (sector 16 down to 0) using the DOS job engine.
+;   3) If **any** read on any of those attempts returns an error status,
+;      it logs the failure. Only if the entire sweep succeeds does it write
+;      $FF to validation_flag ($01FF). The host later samples that via M-R.
+;
+; What this proves:
+;   • A genuine disk is expected to have readable sector layouts across the
+;     tested positions (including the half-track boundary), or at least to be
+;     mastered in a way that this exact read pattern completes without error.
+;     Poor copies commonly miss half-track or “extra” track content and will
+;     yield read errors somewhere in the sweep → flag stays clear → fail.
+;------------------------------------------------------------------------------
+
+;----------------------------
+; VIA / I/O registers (drive)
+;----------------------------
+drive_controller_port   = $1C00 ; VIA #1 Port B — stepper coils & LED latch.
+								;   bits 1–0 : stepper phase (00..11), advance modulo-4
+								;   bit 3    : front-panel LED (1 = on)
+								;   other    : preserved as-is by this code
+						   
+drive_peripheral_control_register         = $1C0C  	; VIA #1 Peripheral Control Register.
+													;   This build uses bits 3–1 to force **read mode** and to
+													;   gate the stepper pulse generator (see stop_head_and_set_read_mode).
+timer1_hi         = $1805  ; VIA #1 Timer-1 high counter — polled as a short settle delay
+                           ;   (BIT $1805 / BMI waits while the high bit is set).
+validation_flag   = $01FF  ; Sentinel byte that the C64 samples via DOS “M-R”.
+                           ;   Written as $FF on success by this routine.
+
+;----------------------------
+; Job #0 shared state (drive DOS workspace)
+;----------------------------
+job_0_code          = $0000 ; Job engine code/status for Job #0.
+                            ;   bit 7 = 1 → job running (BMI loops until clear)
+                            ;   on completion the byte holds a status ($01 = OK).
+job_0_track         = $0006 ; Target track for the current job.
+job_0_sector        = $0007 ; Target sector for the current job.
+half_steps_remaning = $0008 ; Half-step sweep countdown (2 → try 35.0, 35.5, 36.0).
+last_read_error     = $0009 ; Last non-zero error code encountered during the sweep.
+temp                 = $0044 ; Scratch used by stepper/coil cycling code.
+
+; Job codes
+JOB_CODE_READ      = $80    ; Post a READ-SECTOR job (bit 7 set → engine runs it).
+JOB_CODE_SEEK      = $B0    ; Post a SEEK (position to job_0_track / job_0_sector).
+
+;----------------------------
+; Encrypted region metadata within this sector
+;----------------------------
+;encrypted_data       = $0412 ; Start of in-sector payload that is XOR-decrypted in place.
+
+
+;===============================================================================
+; Entry — decrypt, sweep reads across half-tracks, set validation flag on success
+;===============================================================================
+* = $0400
+copy_protection_check:
+    ;-------------------------------------------------------------------------
+    ; In-place XOR-decode of the sector payload at $0412..$04AD
+	;
+    ;   • Cipher:  byte := byte EOR XOR_KEY  (constant key = $BA)
+    ;   • Range :  offsets 0..BYTE_COUNT inclusive (BYTE_COUNT=$9B)
+    ;              → $0412 + $009B = $04AD (last decoded byte)
+    ;   • Purpose: prepares the drive-side protection routine/data so it can run.
+    ;
+    ; IRQs are disabled so the DOS IRQ job engine (and timer-driven housekeeping)
+    ; can’t preempt this tight loop while we patch code in-place.
+    ;-------------------------------------------------------------------------
+    SEI
+
+    ; Y := 0 using the LDY #$FF / INY idiom, then walk the byte range 0..$9B
+    LDY #$FF
+decrypt_next_byte:
+    INY                                 ; Y = 0 on first iteration
+
+    ; A := mem[$0412 + Y] ⊕ $BA  →  mem[$0412 + Y]  (absolute,Y addressing)
+    LDA encrypted_data,Y
+    EOR XOR_KEY                         ; XOR_KEY = $BA
+    STA encrypted_data,Y
+
+    ; Stop when Y == BYTE_COUNT (inclusive bound → last = $0412+$9B = $04AD)
+    CPY BYTE_COUNT                      ; BYTE_COUNT = $9B
+    BNE decrypt_next_byte
+
+    ; ---------- start of code that was encrypted ----------
+encrypted_data:
+    ;-------------------------------------------------------------------------
+    ; Initialize disk I/O state before the protection sweep
+	;
+    ;   • stop_head_and_set_read_mode:
+    ;       - puts the VIA/drive in *read* posture (PCR bits 3–1)
+    ;       - neutralizes any pending step pulse so the head is stable
+    ;       - readies the DOS job engine fields for a clean READ attempt
+    ;-------------------------------------------------------------------------
+    JSR stop_head_and_set_read_mode
+
+    ; Clear the last error latch used by the sweep (0 = “no error yet”)
+    LDX #$00
+    STX @w last_read_error
+
+    ;-------------------------------------------------------------------------
+    ; Set up a 3-position sweep via half-steps:
+    ;   half_steps_remaining = 2  → positions tried will be:
+    ;     start (no step) → +½ track → +1 track  (e.g., 35.0 → 35.5 → 36.0)
+    ;-------------------------------------------------------------------------
+    LDX #$02
+    STX @w half_steps_remaning
+
+    ;-------------------------------------------------------------------------
+    ; Seed the starting logical position:
+    ;   Start at Track $23 (decimal 35). The sector is assigned later in the flow.
+    ;-------------------------------------------------------------------------
+    LDA #$23
+    STA @w job_0_track
+
+first_sector:
+    ;-------------------------------------------------------------------------
+    ; Begin a sweep at the highest-numbered sector on the current track.
+	;
+    ;   • job_0_sector := $10 (decimal 16), the last sector on track 35
+    ;   • A := JOB_CODE_READ (post a READ-SECTOR job)
+    ;-------------------------------------------------------------------------
+    LDY #$10
+    STY @w job_0_sector
+    LDA #JOB_CODE_READ
+
+read_next_sector:
+    ;-------------------------------------------------------------------------
+    ; Post “read sector” to the DOS job engine and wait for completion.
+	;
+    ;   wait_for_job_completion leaves the final status in A:
+    ;     $01 = OK, any other (≠$01) = error
+    ;-------------------------------------------------------------------------
+    STA @w job_0_code                  ; launch Job #0: READ sector
+    JSR wait_for_job_completion
+    CMP #$01
+    BEQ check_if_next_sector           ; success → keep scanning next sector
+    STA @w last_read_error             ; failure → remember last nonzero error code
+
+check_if_next_sector:
+    ;-------------------------------------------------------------------------
+    ; Walk sectors downward on this track (16 → 0).
+    ; Keep attempting reads until we’ve tried them all.
+    ;-------------------------------------------------------------------------
+    DEC @w job_0_sector
+    BPL read_next_sector               ; still ≥0? → try next lower sector
+
+    ;-------------------------------------------------------------------------
+    ; All sectors on this track tried — nudge the head by half a track and
+    ; repeat the sweep (e.g., 35.0 → 35.5 → 36.0) until out of half-steps.
+    ;-------------------------------------------------------------------------
+    JSR step_half_track_forward
+    DEC @w half_steps_remaning
+    BPL first_sector                   ; more half-steps to try? → resweep
+
+    ;-------------------------------------------------------------------------
+    ; Revert the head back into track 35:
+	;
+    ;   Perform a small backward settle sequence using 2 half-steps.
+    ;-------------------------------------------------------------------------
+    LDY #$02
+step_back:
+    JSR step_half_track_backward
+    DEY
+    BPL step_back
+
+    ;-------------------------------------------------------------------------
+    ; If ANY read error was seen during the sweep, do not assert the pass flag.
+    ; last_read_error holds the most recent non-$01 status from the job engine.
+    ;-------------------------------------------------------------------------
+    LDA @w last_read_error
+    BNE wrap_up
+
+    ;-------------------------------------------------------------------------
+    ; Success path: write “pass” sentinel $FF at $01FF.
+	;
+    ; The C64 later samples this via DOS M-R; the host inverts it so that
+    ; disk_decryption_checksum becomes $00 for “OK”.
+    ;-------------------------------------------------------------------------
+    LDA #$FF
+    STA validation_flag
+
+wrap_up:
+    ;-------------------------------------------------------------------------
+    ; Re-home the head and leave the drive in a clean READ posture, then hand off.
+	;
+    ;   • Target: Track $12 (decimal 18), Sector $00 — the DOS “home” area
+    ;     (directory/BAM zone) is a safe resting place after the sweep.
+    ;   • Post a SEEK job to move the head, wait for completion, then reassert
+    ;     the VIA/drive read-mode posture before continuing.
+    ;-------------------------------------------------------------------------
+    LDA #$12
+    STA @w job_0_track               ; seek target track = 18
+    LDA #$00
+    STA @w job_0_sector              ; seek target sector = 0
+    LDA #JOB_CODE_SEEK
+    STA @w job_0_code                ; post SEEK to the job engine
+    JSR wait_for_job_completion      ; block until the head is positioned
+
+    JSR stop_head_and_set_read_mode  ; ensure PCR/lines reflect READ state
+
+    JMP wipe_code         			; proceed to wipe the code
+;===============================================================================
+; Stop disk head and force read mode
+;===============================================================================
+stop_head_and_set_read_mode:
+    ;-------------------------------------------------------------------------
+    ; Force the VIA’s Peripheral Control Register (PCR) into a known *read* posture.
+	;
+    ;   • ORA #$0E sets bits 3..1 = 1. On this 1541 wiring, those bits gate the
+    ;     read path and inhibit step pulses so the head is stable for header scans.
+    ;   • The result of ORA #$0E can never be zero, so BNE is an unconditional
+    ;     skip over the legacy/alternative path below (space-saving idiom).
+    ;-------------------------------------------------------------------------
+    LDA drive_peripheral_control_register
+    ORA #$0E
+    BNE write_back                      ; always taken (A ≠ 0 after ORA #$0E)
+
+    ;-------------------------------------------------------------------------
+    ; (Unreachable in current build) — legacy “stop stepper” variant:
+    ;   Clearing bit 1 here would explicitly disable the step-pulse output.
+    ;   Kept as documentation of the intended effect; never executes due to BNE.
+    ;-------------------------------------------------------------------------
+    LDA drive_peripheral_control_register
+    AND #$FD                             ; clear bit 1
+
+write_back:
+    STA drive_peripheral_control_register
+    RTS
+;===============================================================================
+; Wait until Job #0 finishes
+;===============================================================================
+wait_for_job_completion:
+    ;-------------------------------------------------------------------------
+    ; Wait for the DOS job engine (IRQ-driven) to finish Job #0.
+	;
+    ;   • CLI enables IRQs so the scheduler can run and service the posted job.
+    ;   • Poll job_0_code: while bit 7 = 1 (negative), the job is still running.
+    ;   • When bit 7 clears, the value in A is the final status byte
+    ;       ($01 = OK, any ≥ $02 = error).
+    ;   • SEI re-disables IRQs so the caller can stage the next job safely.
+    ;-------------------------------------------------------------------------
+    CLI                                 ; let job engine run
+wait_loop:
+    LDA @w job_0_code
+    BMI wait_loop                       ; bit 7 = busy → keep waiting
+    SEI                                 ; pause job engine
+    RTS
+;===============================================================================
+; Half-track head stepping helpers
+;===============================================================================
+;Backward step entry point
+step_half_track_backward:
+	;-------------------------------------------------------------------------
+	; Half-step the head *backward* by rotating the stepper phase to the previous state.
+	;
+    ;   The low 2 bits of drive_controller_port encode the coil phase (00→01→10→11→00).
+    ;   Loading the whole port keeps the upper control bits intact; we only change bits 0–1.
+    ;-------------------------------------------------------------------------
+    LDX drive_controller_port                 ; X := current port value (all 8 bits)
+    DEX                                       ; X := X - 1 → move to previous phase (wrap handled below)
+    JMP cycle_head_bits
+
+;Forward step entry point
+step_half_track_forward:
+    ; Half-step the head *forward* by advancing to the next stepper phase.
+    LDX drive_controller_port
+    INX                                       ; X := X + 1 → move to next phase (wrap handled below)
+
+cycle_head_bits:
+    ;-------------------------------------------------------------------------
+    ; Commit the new phase to the VIA while preserving non-stepper bits:
+	;
+    ;   • Keep only the phase in bits 0–1 (AND #$03).
+    ;   • Clear bits 0–1 in the live port, then OR in the new phase.
+    ;-------------------------------------------------------------------------
+    TXA
+    AND #$03                                  ; isolate modulo-4 phase (00..11)
+    STA @w temp
+    LDA drive_controller_port                 ; fetch current port to preserve non-phase bits
+    AND #$FC                                  ; clear bits 0–1 (phase field)
+    ORA @w temp                               ; insert new phase
+    STA drive_controller_port                 ; update coil drive (LED/other bits unchanged)
+
+    ;-------------------------------------------------------------------------
+    ; Short mechanical/electrical settle:
+	;
+    ;   Prime Timer 1 high and spin until its MSB clears. BIT copies bit7 into N;
+    ;   BMI loops while the high bit is set, giving the head time to settle.
+    ;-------------------------------------------------------------------------
+    LDA #$D0
+    STA timer1_hi
+wait_timer_hi:
+    BIT timer1_hi                              ; N := bit7 of the counter high byte
+    BMI wait_timer_hi                          ; loop while MSB still 1
+    RTS
+;===============================================================================
+; End of decrypted region: constants embedded in sector
+;===============================================================================
+* = $04AE
+
+XOR_KEY:
+    .BYTE $BA
+    .BYTE $00                            ; padding (from original layout)
+
+BYTE_COUNT:
+    .BYTE $9B
+    .BYTE $00                            ; padding
+;===============================================================================
+; Self-destruct: clear the rest of this drive's buffer memory.
+;
+; Prevents re-execution or post-mortem inspection.
+;===============================================================================
+wipe_code:
+    ;-------------------------------------------------------------------------
+    ; Scrub the in-RAM, now-decrypted protection stub so it can’t be reused/read.
+	;
+    ;   • Fill byte comes from RAM $0001 (commonly 0 in this build); whatever is
+    ;     there is replicated across the target range.
+    ;   • Target region begins at label copy_protection_check and is $B2 bytes long.
+    ;-------------------------------------------------------------------------
+    LDA @w $0001
+    LDY #$00
+clear_next:
+    STA copy_protection_check,Y   ; write fill byte to code being erased
+    INY
+    CPY #$B2                      ; done after $B2 bytes (Y == $B2)
+    BCC clear_next
+
+    ; Resume normal IRQ-driven DOS activity after the self-erase
+    CLI
+    RTS

@@ -1,0 +1,117 @@
+;===============================================================================
+; Stage 7 - Game file decryptor
+;-------------------------------------------------------------------------------
+; Purpose
+;   • Initialize a byte-wise XOR stream decrypt over a fixed memory window.
+;   • Key schedule: KEY := (KEY + ADDEND) mod 256 after every byte.
+;   • Decrypts [$9D20 .. $9F63] in-place, then jumps to stage_9.
+;   • Forces control to resume at $0400 after decryption by priming the stack
+;     with (return_address - 1) = $03FF so that an RTS vectors to $0400.
+;   • Forces control to resume at $0400 after decryption by priming the stack
+;     with (return_address - 1) = $03FF so that an RTS vectors to $0400.
+;	  This RTS will happen at the end of stage 11, kickstarting the main game code.
+;
+; Context
+;   • The “main file” payload is already resident in RAM (e.g., $0400–$9B04).
+;   • The decryption key and addend are stored in-line at $9FD9/$9FDA.
+;===============================================================================
+
+;----------------------------
+; Zero-page working pointers
+;----------------------------
+decrypt_ptr_lo          = $FB    ; Current decrypt pointer (lo) used by (ptr),Y addressing
+decrypt_ptr_hi          = $FC    ; Current decrypt pointer (hi)
+xor_key                 = $FD    ; Rolling XOR key (updated each byte by adding xor_addend)
+xor_addend              = $FE    ; Per-byte key increment: xor_key := xor_key + xor_addend
+
+;----------------------------
+; Constants / addresses
+;----------------------------
+DECRYPT_START_ADDR      = $9D20  ; Start address of encrypted region
+DECRYPT_END_ADDR_LO     = $64    ; Loop ends when ptr == $9F64 (lo byte)
+DECRYPT_END_ADDR_HI     = $9F    ; Loop ends when ptr == $9F64 (hi byte)
+;key_init_value_address  = $9FD9  ; Absolute address holding initial XOR key byte
+;addend_init_value_address = $9FDA  ; Absolute address holding initial addend byte
+RETURN_TARGET_ADDR      = $0400  ; Target PC after final RTS (stack primed to $03FF) - the entry point of the main game code
+stage8_start = $9FAE
+
+* = $9FD9
+key_init_value_address: .BYTE $13          ; Initial XOR key for decryption
+addend_init_value_address: .BYTE $A7       ; Initial addend for decryption
+
+;===============================================================================
+; Entry: set up decrypt window, seed key schedule, run, then continue
+;===============================================================================
+* = $9F6E
+stage7_start:
+    ; Initialize decrypt window base pointer → $9D20
+    ;   (We’ll use (decrypt_ptr_lo),Y with Y=0 for all accesses.)
+    LDA #<DECRYPT_START_ADDR
+    STA decrypt_ptr_lo
+    LDA #>DECRYPT_START_ADDR
+    STA decrypt_ptr_hi
+
+    ; Seed the key schedule:
+    ;   xor_key    := [key_init_value_address]
+    ;   xor_addend := [addend_init_value_address]
+    ; On each byte, KEY := KEY + ADDEND (mod 256).
+    LDA key_init_value_address
+    STA xor_key
+    LDA addend_init_value_address
+    STA xor_addend
+
+    ; Arrange an RTS to land at $0400 after all stages finish:
+    ;   Push $03 (hi) then $FF (lo). RTS pulls lo,hi → $03FF and adds 1 → $0400.
+    LDA #> (RETURN_TARGET_ADDR - 1)
+    PHA
+    LDA #< (RETURN_TARGET_ADDR - 1)
+    PHA
+
+    ; Decrypt in place the region [$9D20 .. $9F63]
+    JSR decrypt_memory
+
+    ; Continue with the next stage (entry at $9FAE in the following file)
+    JMP stage8_start
+
+
+;===============================================================================
+; In-place XOR stream decrypt from DECRYPT_PTR up to (but not including) $9F64
+;   Inputs:
+;     decrypt_ptr_lo/hi  = current pointer (starts at $9D20)
+;     xor_key            = initial key byte
+;     xor_addend         = per-byte increment added to xor_key
+;   Clobbers: A, Y
+;   Detail:
+;     - Process byte at (ptr), then increment ptr.
+;     - Loop terminates when ptr == $9F64, so the last processed byte is $9F63.
+;===============================================================================
+decrypt_memory:
+    LDY #$00                            ; keep Y=0: simplest (ptr),Y addressing
+next_byte:
+    ; (*ptr) := (*ptr) XOR KEY
+    LDA (decrypt_ptr_lo),Y
+    EOR xor_key
+    STA (decrypt_ptr_lo),Y
+
+    ; KEY := KEY + ADDEND
+    LDA xor_key
+    CLC
+    ADC xor_addend
+    STA xor_key
+
+    ; ptr := ptr + 1
+    INC decrypt_ptr_lo
+    BNE end_offset_check
+    INC decrypt_ptr_hi
+
+end_offset_check:
+    ; Stop once ptr reaches $9F64 (exclusive upper bound)
+    LDA decrypt_ptr_lo
+    CMP #DECRYPT_END_ADDR_LO
+    BNE next_byte
+    LDA decrypt_ptr_hi
+    CMP #DECRYPT_END_ADDR_HI
+    BNE next_byte
+
+    RTS
+
