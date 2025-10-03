@@ -1,0 +1,115 @@
+; ------------------------------------------------------------
+; Stage 2 — C64 Autoloader Stub
+; ------------------------------------------------------------
+;
+; This stage will simply load stage 3 from another file on the disk.
+;
+;	On being loaded:
+;   • Plant $DB,$02 at $0302/$0303 (BASIC warm-start vector) so that
+;     a BASIC warm start returns to stage2_start ($02DB).
+;
+;	On execution:
+;   • Blank screen, set SID master volume.
+;   • LOAD the next file via KERNAL (equivalent to: LOAD "  1987   ",8,1),
+;     honoring the load address in the file header ($9C00 in this build).
+;   • Tail-call the stage 3 loader at stage3_start ($9F64).
+;
+; Device/SA
+;   device #8, secondary address #1 (load to address in file)
+; ------------------------------------------------------------
+
+;----------------------------
+; File / device constants
+;----------------------------
+FILE_LFN                       = $02    ; Our logical file number (“file #2”)
+DEVICE_1541                    = $08    ; Disk drive device number
+SA_USE_HEADER                  = $01    ; SA=1 → use address from PRG header
+
+;----------------------------
+; Loader linkage / metadata
+;----------------------------
+FILENAME_LENGTH                = $09    ; Length (bytes) of PETSCII filename below.
+stage3_start                   = $9F64  ; Entry point of the next-stage loader once loaded.
+
+;----------------------------
+; VIC-II / SID registers
+;----------------------------
+vic_screen_control_register_1  = $D011  ; VIC-II Control #1:
+                                        ;   bit 7 = raster line MSB
+                                        ;   bit 6 = extended background mode
+                                        ;   bit 5 = bitmap mode
+                                        ;   bit 4 = screen on/off (0 = screen off)
+                                        ;   bits 3-0 = vertical scroll
+                                        ; We write $00 here to blank the main screen.
+vic_border_color_register      = $D020  ; Border color (low 4 bits). We set to black (0).
+sid_volume_and_filter_select_reg = $D418 ; SID master volume & filter select:
+                                          ;   bits 0–3 = master volume (0..15)
+                                          ;   bits 4–7 = filter enable/mode flags
+                                          ; We write $0F to maximize volume.
+
+;----------------------------
+; KERNAL entry points
+;----------------------------
+SETLFS                         = $FFBA  ; Set Logical File, device, Secondary Address
+                                        ;   A = LFN, X = device (8=disk), Y = SA
+SETNAM                         = $FFBD  ; Set filename
+                                        ;   A = length, X/Y = pointer to name (lo/hi)
+LOAD                           = $FFD5  ; LOAD/VERIFY
+                                        ;   A = 0 → LOAD, A≠0 → VERIFY
+                                        ;   If SA=0 → load to X/Y address
+                                        ;   If SA=1 → use two-byte load address from file header
+
+; ------------------------------------------------------------
+; Stage 3 loader filename
+; ------------------------------------------------------------
+* = $02D2                                ; PRG load address on disk.
+                                         ; Offsets +$30/+$31 reach $0302/$0303 (BASIC warm-start vector).
+filename:
+    .text   "  1987   "			 ;Filename of stage 3 loader
+
+; ------------------------------------------------------------
+; Autoloader entry
+; ------------------------------------------------------------
+stage2_start:
+    ; Set screen border to black and turn screen updates off (bit 4 of vic_screen_control_register_1 = 0).
+    LDA #$00
+    STA vic_border_color_register
+    STA vic_screen_control_register_1
+
+    ; Set SID master volume to max (lower 4 bits of sid_volume_and_filter_select_reg).
+    LDA #$0F
+    STA sid_volume_and_filter_select_reg
+
+    ; Set logical file: file #2, device #8, secondary address #1
+	LDA #FILE_LFN
+    LDX #DEVICE_1541
+    LDY #SA_USE_HEADER
+    JSR SETLFS
+
+    ; Set name: length=9, name pointer -> filename
+    LDA #FILENAME_LENGTH
+    LDX #<filename
+    LDY #>filename
+    JSR SETNAM
+
+    ; LOAD operation: A=0 → LOAD (not VERIFY). Secondary address = 1,
+    ; so KERNAL uses the two-byte load address from the file header
+    ; (the file specifies a load address of $9C00).
+    LDA #$00
+    JSR LOAD
+
+    ; Chain to the stage 3 loader (stage3_start at $9F64).
+    JMP stage3_start
+
+basic_warm_start_vector:
+    ; BASIC warm-start vector ($0302/$0303) contents:
+    ;   .BYTE <stage2_start, >stage2_start  ; $0302 = $DB, $0303 = $02
+    ; This makes a BASIC warm start jump to stage2_start ($02DB).
+    .BYTE <stage2_start, >stage2_start
+
+; ------------------------------------------------------------
+; Notes on the warm-start hijack
+; • The payload plants $DB,$02 — little-endian $02DB — into $0302/$0303.
+; • After the KERNAL LOAD completes and BASIC returns to immediate mode,
+;   a BASIC warm start uses that vector, returning control to stage2_start.
+; ------------------------------------------------------------

@@ -1,0 +1,256 @@
+; ------------------------------------------------------------
+; Stage 1 - BASIC LOAD hijacking
+;
+; This stage will hijack a regular LOAD operation, taking control of the execution
+; and continuing with the next stage.
+;
+; After a successful KERNAL LOAD, BASIC performs a “warm start” (the READY path),
+; which indirect-jumps via the writable vector at $0302/$0303.
+;
+; If the loaded data overwrites that vector with <entry_lo, entry_hi>, the warm
+; start is redirected to our code: JMP ($0302) → entry point.
+;
+; In practice, a PRG whose load address and length reach $0302/$0303 (e.g., load
+; at $02D2 with ≥$28 bytes) will plant the entry address there and hijack control.
+; ------------------------------------------------------------
+
+        .cpu    "6502"
+
+; ------------------------------------------------------------
+; Why a file with load address $02D2 overwrites the BASIC warm start vector
+; ------------------------------------------------------------
+; PRG file format:
+;
+;   [lo-byte load addr]
+;	[hi-byte load addr]
+;	[payload bytes…]
+;
+; The KERNAL LOAD (with SA=1) copies the payload to memory starting at the
+; load address, incrementing the destination for each byte.
+;
+; Note on SA (secondary address) argument for KERNAL LOAD:
+;   SA = 0  → load to the address in X/Y registers (absolute load; header ignored).
+;   SA = 1  → load to the address in the file header (first two bytes).
+; Other SA values are device-dependent; on 1541 disks, 0/1 are the common cases.
+;
+; Addresses of interest on the C64:
+;   $0200–$02FF : BASIC line-input / editor buffer
+;   $0300–$033B : Cassette buffer & various vectors
+;   $0302/$0303 : BASIC warm start vector (used by the trampoline at $A480)
+;                 The interpreter does: JMP ($0302) on a warm start.
+;
+; If a file’s load address is $02D2, the first payload byte goes to $02D2 and
+; subsequent bytes fill upward. The warm start vector begins at $0302.
+;
+; Distance from $02D2 to $0302:
+;   $0302 - $02D2 = $30 bytes (48 decimal)
+;
+; Therefore, after the first $30 payload bytes are copied, the next two bytes
+; will be written to:
+;   payload[+$30] -> $0302 (warm start vector low byte)
+;   payload[+$31] -> $0303 (warm start vector high byte)
+;
+; By placing the little-endian address of our entry point at those two payload
+; positions (e.g., $DB,$02 for $02DB), the LOAD will *patch the vector* so that
+; the next BASIC warm start will jump directly to our code.
+;
+; In short:
+;   PRG @ $02D2 + payload ≥ $31 bytes  ⇒  overwrites $0302/$0303
+;   Overwrite $0302/$0303 with <stage2_start, >stage2_start
+;   ⇒ BASIC warm start trampoline (JMP ($0302)) transfers control to us.
+; ------------------------------------------------------------
+
+; On-disk PRG bytes (header + payload)
+;Data on disk:
+;        .word   $02D2                   ; PRG load address (=$D2,$02)
+;		 .text   "  1987   "			 ;Filename of stage 2 loader
+;        .byte   $A9,$00,$8D,$20,$D0,$8D,$11,$D0,$A9,$0F,$8D,$18,$D4,$A9
+;        .byte   $02,$A2,$08,$A0,$01,$20,$BA,$FF,$A9,$09,$A2,$D2,$A0,$02,$20,$BD
+;        .byte   $FF,$A9,$00,$20,$D5,$FF,$4C,$64,$9F
+;        .byte   $DB,$02                  ; data written into warm start vector
+
+; ============================================================
+; C64 LOAD routines (selected snippets)
+; ------------------------------------------------------------
+; Purpose
+;   - Parse BASIC command args (filename, device, SA).
+;   - Perform LOAD (or VERIFY) via KERNAL.
+;   - On LOAD success:
+;       * Print "READY."
+;       * Update start-of-BASIC variables pointer
+;       * Reset BASIC engine and do a warm start.
+;
+; Inputs / Conventions
+;   - set_params_for_load_save parses the BASIC line and sets:
+;       * filename/length via SETNAM
+;       * logical file, device, SA via SETLFS
+;   - load_verify_flag ($0A): 0 = LOAD, nonzero = VERIFY
+;   - For LOAD with SA=0, KERNAL uses X/Y as target address.
+;     This code loads X from $2B and Y from $2C (start of BASIC).
+;     For LOAD with SA=1, the address comes from the file header.
+;
+; Side Effects
+;   - On LOAD success in immediate mode:
+;       * X/Y from KERNAL LOAD are stored to start_of_basic_vars ($2D/$2E).
+;       * Prints "READY." and resets BASIC + warm start.
+;
+; ============================================================
+
+; KERNAL/BASIC flags, pointers, and vectors
+LOAD_OPERATION_ENUM          = $00    ; A value for KERNAL LOAD: 0 = LOAD (vs VERIFY)
+load_verify_flag             = $0A    ; Local flag mirrored into A before JSR LOAD (0=LOAD, ≠0=VERIFY)
+
+start_of_basic_program_text  = $2B    ; TXTTAB (lo/hi): start of BASIC program area in RAM
+start_of_basic_vars          = $2D    ; VARTAB (lo/hi): start of BASIC variables area
+basic_execute_ptr            = $7A    ; TXTPTR (lo/hi): current BASIC text pointer (immediate vs program mode)
+basic_warm_start_vector      = $0302  ; Warm-start vector used by BASIC trampoline at $A480 (JMP ($0302))
+
+; KERNAL / BASIC ROM routines
+;basic_warm_start_trampoline  = $A480  ; BASIC ROM: warm start entry (trampoline via JMP ($0302))
+;reset_basic_warm_start       = $A52A  ; BASIC ROM: composite “reset + warm start”
+                                      ; does: reset execution, clear variables/stack,
+                                      ; rebuild BASIC line links, then JMP $A480 (warm start)
+rebuild_line_chaining        = $A533  ; BASIC ROM: rebuild linked-list pointers for BASIC lines
+reset_execution_and_clear_vars = $A659 ; BASIC ROM: reset execution, clear variables, flush stack
+print_string                 = $AB1E  ; BASIC ROM: print zero-terminated PETSCII string
+                                      ;   A=low, Y=high pointer; string ends with $00
+program_mode 				 = $E1B5  ; Dummy address to make file listing consistent with ROM
+io_error 					 = $E1D1  ; Dummy address to make file listing consistent with ROM
+set_params_for_load_save     = $E1D4  ; KERNAL: parse BASIC LOAD/SAVE args → calls SETNAM/SETLFS
+real_LOAD					 = $F49E  ; Real address of the LOAD routine (accessed via jump table)
+real_READST					 = $FE07  ; Real address of the READST routien (accessed via jump table)
+;READST                       = $FFB7  ; KERNAL READ STATUS → A
+                                      ;   (e.g., bit6=$40=read error; other bits per IEC status)
+;LOAD                         = $FFD5  ; KERNAL LOAD/VERIFY
+                                      ;   A=0 → LOAD, A≠0 → VERIFY
+                                      ;   SA=0 → load to X/Y address
+                                      ;   SA=1 → load to address in file header
+									  
+
+; ------------------------------------------------------------
+; "\r\nREADY.\r\n" string
+; ------------------------------------------------------------
+*=$A376
+READY_STRING:
+        .byte $0D,$0A
+		.text "READY."
+		.byte $0D,$0A,$00
+
+; ------------------------------------------------------------
+; BASIC warm start (vector trampoline)
+; ------------------------------------------------------------
+*=$A480
+basic_warm_start_trampoline:
+        JMP (basic_warm_start_vector)
+
+*=$A52A 
+reset_basic_warm_start:
+        ; Reset BASIC engine, rebuild chain, and warm start
+        JSR reset_execution_and_clear_vars
+        JSR rebuild_line_chaining
+        JMP basic_warm_start_trampoline
+
+; ============================================================
+;Entry of the LOAD routine of interest is at load_entry
+; ============================================================
+; ------------------------------------------------------------
+; Set to LOAD mode, parse args, perform LOAD
+; ------------------------------------------------------------
+*=$E168
+load_entry:
+        ; Set load/verify mode to LOAD
+        LDA #LOAD_OPERATION_ENUM
+        STA load_verify_flag
+
+        ; Parse BASIC args (sets SETNAM/SETLFS): filename, device, SA
+        JSR set_params_for_load_save
+
+        ; Invoke KERNAL LOAD (via jump table)
+        LDA load_verify_flag
+        LDX start_of_basic_program_text       ; X = default BASIC start (lo)
+        LDY start_of_basic_program_text+1     ; Y = default BASIC start (hi)
+        JSR LOAD
+
+        ; Any I/O error? (C set on error)
+        BCS io_error
+
+        ; Was this LOAD or VERIFY? Branch if LOAD
+        LDA load_verify_flag
+        BEQ load_operation
+
+        ; --- VERIFY path (not included in snippet) ---
+        ; ...
+
+; ------------------------------------------------------------
+; LOAD success path
+; ------------------------------------------------------------
+*=$E195
+load_operation:
+        ; Check I/O status word; ignore bit 6 (read error) via AND #$BF
+        JSR READST
+        AND #$BF
+        BEQ no_errors
+        JMP io_error
+
+        ; --- io_error (not included in snippet) ---
+        ; ...
+
+*=$E1A1
+no_errors:
+        ; Immediate vs Program mode? Check high byte of BASIC execute ptr
+        LDA basic_execute_ptr+1
+        CMP #$02
+        BNE program_mode
+        ; --- (program mode snippet not included) ---
+        ; Save new start-of-BASIC variables (KERNAL LOAD returns end+1 in X/Y)
+        STX start_of_basic_vars
+        STY start_of_basic_vars+1
+
+        ; Print "READY."
+        LDA #<READY_STRING
+        LDY #>READY_STRING
+        JSR print_string
+		JMP reset_basic_warm_start
+				
+; ------------------------------------------------------------
+; Jump-table for READST and LOAD
+; ------------------------------------------------------------
+*=$FFB7
+READST:
+    JMP real_READST
+
+*=$FFD5
+LOAD:
+    JMP real_LOAD
+
+; ------------------------------------------------------------
+; Technical note on Immediate mode vs. Program mode
+; ------------------------------------------------------------
+; The BASIC interpreter keeps a pointer to the current token stream
+; in TXTPTR = $7A/$7B (here named basic_execute_ptr).
+;
+;  • Immediate mode:
+;     - User typed a command at the READY prompt (intended for immediate execution).
+;     - TXTPTR points into the line-input buffer at $0200–$02FF.
+;     - Therefore the HIGH byte of TXTPTR is $02.
+;
+;  • Program mode:
+;     - Interpreter is executing a stored BASIC line.
+;     - TXTPTR points into the program area starting at $0801.
+;     - Therefore the HIGH byte of TXTPTR is ≥ $08 (typically $08).
+;
+; Detection used here:
+;     LDA basic_execute_ptr+1  ; $7B (HIGH byte of TXTPTR)
+;     CMP #$02
+;     BEQ immediate_mode       ; $02xx → immediate mode
+;     BNE program_mode         ; otherwise → program mode
+;
+; Why it matters after LOAD:
+;  • Immediate mode:
+;     - Update start_of_basic_vars ($2D/$2E) with X/Y returned by LOAD,
+;       print "READY.", reset the BASIC engine, then warm start so the
+;       newly loaded program is ready from the prompt.
+;  • Program mode:
+;     - Skip READY/reset noise and return to the caller so a loader
+;       program can continue under its own control.
+; ------------------------------------------------------------

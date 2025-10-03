@@ -1,0 +1,321 @@
+;============================================================
+; Stage 3 — Drive Configurator (C64 → 1541 hand-off)
+;------------------------------------------------------------
+;
+;   This is a small C64-side stub that sets up the bus and tells the 1541 to
+;   start its own loader. 
+;
+; 	From that point, the drive runs a small program that fast-streams the main file 
+;	to the C64, while the C64 listens with a matching fast-receiver. 
+;	When the transfer finishes, the C64 continues startup.
+;
+; Purpose
+;   • Suppress KERNAL messages on the C64.
+;   • Open the 1541 command channel (#15) and bind C64 LFN #2 to drive
+;     buffer “#2” (filename “#2”).
+;   • Write a sentinel byte to 1541 RAM at $07FF using DOS M-W.
+;   • Issue DOS B-E “2 0 18 11” so the 1541 loads T18/S11 into buffer #2
+;     and EXECUTEs it (enters the drive-side loader).
+;
+;
+; Parameter block copied to $9C00–$9C03:
+;
+;   [$9C00] full sector count ($98)
+;   [$9C01–$9C02] load address pointer ($03FC)
+;   [$9C03] bytes in last sector ($34)
+;
+; These values are consumed by the fast-load protocol at a later stage.
+;============================================================
+;------------------------------------------------------------------------------
+; Commodore IEC Command Channel (#15) — what it is and how to use it
+;------------------------------------------------------------------------------
+; What is “#15”?
+;   • On CBM disk drives (e.g., 1541), logical file #15 is the *command/error*
+;     channel. You send DOS commands to the drive on #15, and you can also read
+;     back human-readable status lines (e.g., "00,OK,00,00").
+;
+; How to open it (device 8 shown):
+;   1) SETNAM with length=0 (the command channel takes no filename at OPEN time)
+;   2) SETLFS  A=15 (LFN), X=8 (device), Y=15 (secondary address)
+;   3) OPEN    (creates the #15 channel)
+;
+; Sending a DOS command on #15:
+;   • CHKOUT with A=15 routes CHROUT to the command channel.
+;   • Stream the command bytes with CHROUT:
+;       - ASCII/PETSCII commands like "I", "UJ", "U1:5 0 18 8", "B-E 2 0 18 11"
+;       - Some commands include *binary* arguments after the letters,
+;         e.g., "M-W", <addr_lo>,<addr_hi>,<len>,<data…>
+;   • CLRCHN when done (sends UNLISTEN / restores default I/O).
+;
+; Reading status or responses:
+;   • CHKIN with A=15 then CHRIN to read the returned status line(s).
+;   • READST ($FFB7) gives the I/O status byte for the last bus op, but
+;     the full DOS error text comes from reading #15.
+;
+;------------------------------------------------------------------------------
+
+;------------------------------------------------------------------------------
+; 1541 DOS drive commands used here (sent on command channel #15)
+;------------------------------------------------------------------------------
+; B-E  — Block Execute
+;   Purpose: Read one disk block into a drive RAM buffer and immediately execute it.
+;   Syntax : "B-E" <channel> <drive> <track> <sector>
+;            Example used:  B-E 2 0 18 11
+;              • channel=2  → use the buffer bound to "#2" (opened earlier on the C64)
+;              • drive=0    → first drive unit on the IEC bus
+;              • track=18, sector=11 → source block on disk
+;   Effect : The 256-byte block is loaded into the buffer associated with <channel>
+;            (e.g., buffer #0 at $0300, buffer #1 at $0400 on a 1541), and the drive
+;            jumps to the start of that buffer to run the code there. The executed
+;            code is responsible for returning (e.g., via RTI) or taking over.
+;   Notes  : Bytes need to be sent on LFN #15 (command channel) with CHKOUT #15 + CHROUT,
+;            then CLRCHN to UNLISTEN. Standard DOS errors (if any) are reported on #15.
+;
+; M-W  — Memory Write
+;   Purpose: Poke raw bytes directly into 1541 RAM.
+;   Syntax : "M-W" <addr_lo>, <addr_hi>, <len>, <data…>
+;            Example used:  M-W $FF, $07, $01, $00   ; write one $00 to $07FF
+;   Effect : Writes <len> bytes starting at the given RAM address inside the drive.
+;   Notes  : The address/length/data that follow "M-W" are raw bytes, not PETSCII
+;            digits. Need to stream them over LFN #15 with CHKOUT/CHROUT and then CLRCHN. 
+;------------------------------------------------------------------------------
+
+;----------------------------
+; KERNAL routine addresses
+;----------------------------
+SETMSG  = $FF90   ; Toggle OS/KERNAL messages (A=0 → suppress, A≠0 → enable)
+SETLFS  = $FFBA   ; A=LFN, X=DEV, Y=SA → set logical file/device/secondary
+SETNAM  = $FFBD   ; A=len, X/Y=ptr → set filename for next OPEN
+OPEN    = $FFC0   ; Open logical file: uses prior SETLFS/SETNAM
+CHKOUT  = $FFC9   ; Route CHROUT to LFN A (e.g., 15 for command channel)
+CLRCHN  = $FFCC   ; Restore default I/O (sends UNLISTEN/UNTALK on IEC as needed)
+CHROUT  = $FFD2   ; Output one byte to current channel (IEC serial when CHKOUT’d)
+CLALL   = $FFE7   ; Close all logical files/channels
+
+;----------------------------
+; Channels / device / misc
+;----------------------------
+DEVICE_1541 = $08 ; Standard disk drive device number
+
+LFN_CMD = $0F     ; LFN 15 = DOS command channel on the drive
+;SA_CMD  = $0F     ; SA 15  = command channel secondary address
+
+;LFN_DATA = $02    ; LFN 2  = data/logical channel we bind to drive buffer “#2”
+;SA_DATA  = $02    ; SA 2   = secondary address used with “#2”
+
+MSG_OFF  = $00    ; SETMSG argument to suppress KERNAL messages
+
+;----------------------------
+; Parameter block destination (consumed by fastloader later)
+;----------------------------
+param_base           = $9C00        ; Base of parameter block
+full_sector_count    = param_base+0 ; Number of full 256-byte sectors to stream
+load_address_lo      = param_base+1 ; Low byte of initial target pointer on C64
+load_address_hi      = param_base+2 ; High byte of initial target pointer on C64
+bytes_in_last_sector = param_base+3 ; Byte count for final (partial) sector
+
+;----------------------------
+; Zero page / variables
+;----------------------------
+end_address_of_load = $AE    ; ($AE/$AF) generic 16-bit pointer used by loader
+filename_length     = $B7    ; KERNAL filename length workspace (used by SETNAM)
+filename_len_shadow = $9D1B  ; Scratch copy to restore filename length later
+
+;----------------------------
+; Drive RAM & command sizes
+;----------------------------
+DRIVE_RAM_TOP      = $07FF   ; Top of 1541 RAM (used here as a sentinel byte)
+MW_DATA_LEN        = $01     ; DOS M-W “length” field → write 1 byte
+MW_DATA_VALUE      = $00     ; The byte value written by M-W (our sentinel = $00)
+
+LEN_MEM_WRITE_CMD  = $07     ; Length of “M-W” command string we send on #15
+LEN_BLOCK_EXEC_CMD = $0D     ; Length of “B-E 2 0 18 11” command string
+
+;----------------------------
+; Small constants
+;----------------------------
+HASH2_LEN = $02    ; PETSCII length of “#2” (bind LFN 2 to drive buffer #2)
+
+;========================================
+; Entry point
+;========================================
+* = $9F64 
+stage3_start:
+    ;----------------------------------
+    ; Silence KERNAL status/messages (A=0 → suppress “SEARCHING/LOADING/READY.”
+    ; and IEC error prints). Keeps the screen quiet during the fast-loader handshake.
+    ;----------------------------------
+    LDA #MSG_OFF
+    JSR SETMSG
+
+    ;----------------------------------
+    ; Prepare for the configurator:
+    ;   Y=0 is the expected entry index for load_main_file.
+    ;   It uses Y to copy the 4-byte parameter block to $9C00
+    ;   and to walk small command buffers it emits on #15.
+    ;----------------------------------
+    LDY #$00
+    JSR load_main_file
+
+;----------------------------------------
+; Data used by load_main_file
+;----------------------------------------
+* = $9D06
+buffer_2_string:
+    .BYTE $23,$32      ; "#2" (bind LFN 2 to drive buffer #2)
+
+; "B-E 2 0 18 11" — Block EXECUTE: channel 2, drive 0, track 18, sector 11.
+; Read T18/S11 into buffer #2 and EXECUTE it (enters drive-side loader).
+block_execute_command:
+    .BYTE $42,$2D,$45,$20,$32,$20,$30,$20,$31,$38,$20,$31,$31
+	
+; "M-W", <lo>, <hi>, <len>, <data>
+;   M-W $07FF, $01, $00  → write one byte $00 at 1541 RAM $07FF (top of RAM).
+mem_write_command:
+    .BYTE $4D,$2D,$57, <DRIVE_RAM_TOP, >DRIVE_RAM_TOP, MW_DATA_LEN, MW_DATA_VALUE
+
+file_params:
+    .BYTE $98          ; Full sector count (152)
+    .WORD $03FC        ; Load-address pointer = $03FC (lo/hi)
+    .BYTE $34          ; Bytes in last sector (52)
+
+;========================================
+; Load main file
+;========================================
+* = $9C04
+
+load_main_file:
+    ;----------------------------------
+    ; Prologue: save the ZP state this routine will clobber
+    ;   end_address_of_load ($AE/$AF) is a 16-bit pointer used by later KERNAL calls.
+    ;   filename_length ($B7) is KERNAL’s working length for SETNAM.
+    ; These are pushed so they can be restored after the drive handshake.
+    ;----------------------------------
+    LDA end_address_of_load        ; save $AE (low)
+    PHA 
+    LDA end_address_of_load + 1    ; save $AF (high)
+    PHA 
+    LDA filename_length            ; save $B7
+    PHA 
+
+    ;----------------------------------
+    ; Start clean: close any open logical files/channels (#15, #2, etc.)
+    ; Prevents stale LISTEN/TALK state on the IEC bus before we send commands.
+    ;----------------------------------
+    JSR CLALL
+
+    ;----------------------------------
+    ; Copy the 4-byte parameter block into working RAM at $9C00–$9C03:
+    ;   [$9C00] full_sector_count    → number of whole 256-byte sectors to stream
+    ;   [$9C01] load_address_lo      → initial C64 destination pointer (low)
+    ;   [$9C02] load_address_hi      → initial C64 destination pointer (high)
+    ;   [$9C03] bytes_in_last_sector → trailing byte count for the final (partial) sector
+    ; Y is the index (expected 0 on entry).
+    ;----------------------------------
+    LDA file_params,Y      
+    STA full_sector_count
+    LDA file_params+1,Y    
+    STA load_address_lo
+    LDA file_params+2,Y    
+    STA load_address_hi
+    LDA file_params+3,Y    
+    STA bytes_in_last_sector
+
+    ; Save Y for later restoration (this routine repurposes Y in output loops).
+    ; We preserve it now so subsequent code can recover the original index.
+    TYA 
+    PHA
+
+    ;----------------------------------
+    ; Open the DOS command channel (LFN=15, DEV=8, SA=15).
+    ; For the command channel, KERNAL requires a zero-length filename.
+	;
+    ; Sequence:
+    ;   filename_length := 0 → SETLFS(A=15,X=8,Y=15) → OPEN
+	;
+    ; After OPEN, CHKOUT #15 will route CHROUT to the command channel.
+    ;----------------------------------
+    LDY #$00
+    STY filename_length
+    LDA #LFN_CMD                  ; A = 15 (command channel)
+    TAY                           ; Y = 15 (we'll pass it to SETLFS)
+    LDX #DEVICE_1541              ; X = 8 (drive)
+    JSR SETLFS
+    JSR OPEN
+
+    ;----------------------------------
+    ; Bind C64 LFN #2 to the 1541’s buffer “#2”.
+    ; SETNAM expects: A = length, X/Y = pointer (lo/hi) to PETSCII string.
+    ; Using the filename "#2" causes the 1541 DOS to attach *drive buffer #2*
+    ; to the logical file we open as LFN 2 with SA=2.
+    ;
+    ; Sequence:
+    ;   SETNAM "#2" (len=2, ptr→string) →
+    ;   SETLFS(A=2,X=8,Y=2) →
+    ;   OPEN         ; creates the data/logical channel bound to buffer #2
+    ;
+    ;----------------------------------
+    LDY #>buffer_2_string                      ; Y = hi(ptr to "#2")  (example: $9D06)
+    LDX #<buffer_2_string                      ; X = lo(ptr to "#2")
+    LDA #HASH2_LEN                ; A = 2 (length of "#2")
+    JSR SETNAM
+    TAY                           ; Y := A (see NOTE above; for SETLFS, Y must be SA=2)
+    LDX #DEVICE_1541              ; X = 8 (drive)
+    JSR SETLFS                    ; expects A=LFN (2), X=DEV (8), Y=SA (2)
+    JSR OPEN
+
+    ; Restore the previously saved KERNAL filename length into a shadow copy.
+    ; We keep it around for later so subsequent OPENs can rebuild state.
+    PLA
+    STA filename_len_shadow
+
+
+    ;----------------------------------
+    ; Write a sentinel to 1541 RAM via DOS on #15:
+	;
+    ;   Command:  "M-W", <addr_lo>, <addr_hi>, <len>, <data...>
+	;
+    ;   Here:     M-W $07FF, $01, $00  → store one byte $00 at $07FF (top of RAM).
+	;
+    ;   Flow:     CHKOUT #15 → stream bytes with CHROUT → CLRCHN (UNLISTEN/restore).
+	;
+    ; NOTE: KERNAL CHKOUT expects A=LFN (15). 
+    ;----------------------------------
+    LDX #LFN_CMD
+    JSR CHKOUT
+    LDY #$00
+send_mw_byte:
+    LDA mem_write_command,Y
+    JSR CHROUT
+    INY
+    CPY #LEN_MEM_WRITE_CMD          ; 7 bytes: "M-W", lo, hi, len, value
+    BNE send_mw_byte
+    JSR CLRCHN
+
+    ;----------------------------------
+    ; Kick the drive-side loader:
+	;
+    ;   Command:  "B-E 2 0 18 11"
+	;
+    ;   Meaning:  Block EXECUTE → bind to channel 2 (“#2”), drive 0, track 18, sector 11.
+    ;             Loads the block into drive buffer #2 and EXECUTEs it there.
+	;
+    ;   Flow:     CHKOUT #15 → stream command with CHROUT → CLRCHN.
+	;
+    ; NOTE: CHKOUT needs A=15 (LFN 15).
+    ;----------------------------------
+    LDX #LFN_CMD
+    JSR CHKOUT
+    LDY #$00
+send_be_byte:
+    LDA block_execute_command,Y
+    JSR CHROUT
+    INY
+    CPY #LEN_BLOCK_EXEC_CMD         ; 13 bytes: "B-E 2 0 18 11"
+    BNE send_be_byte
+    JSR CLRCHN
+
+    ; After B-E, the 1541 begins executing its loader from buffer #2 (stage4_start).
+    ; The C64 side is done configuring and will proceed to the fast-receive
+    ; path (Stage 6, stage6_start), which listens on the custom IEC
+    ; protocol while the drive streams the main file.

@@ -1,0 +1,583 @@
+;===============================================================================
+; Stage 8 — Copy-Protection / Integrity Checks (C64 side)
+;-------------------------------------------------------------------------------
+; What this stage does
+;   1) Compute an XOR checksum of the copy protection sector (Track 18 / Sector 8)
+;      and store it at copy_protection_sector_checksum.
+;   2) Instruct the 1541 to EXECute T18/S8 (B-E 2 0 18 8), then issue M-R to read
+;      a byte from drive RAM; invert it and stash as disk_decryption_checksum.
+;   3) Compute an XOR checksum over the "game code decryptor" [$9D20 .. $9D8D) and store it.
+;   4) (Elsewhere) decrypt_game_code; finally, securely wipe the decrypted area.
+;
+; How the 1541 channels are used
+;   • #15 is the command channel (LFN=15, SA=15). We send “B-E …” and “M-R …” here.
+;   • #2 is opened with filename “#1”, binding it to drive buffer #1 used by B-E.
+;   • For U1, we open #5, send “U1:5 0 18 8” on the device/SA=$0F path, then CHKIN #5
+;     and read the returned bytes to form our checksum.
+;
+; Screen blackout
+;   • To hide transitions, set border to black ($D020=0) and clear bit 4 of $D011
+;     (turn main screen off; border remains).
+;
+; Conventions
+;   • Clobbers: unless noted, routines here modify A,X,Y.
+;   • Zero-page scratch: checksum=$FE, clear_ptr_lo=$FB, clear_ptr_hi=$FC.
+;===============================================================================
+;------------------------------------------------------------------------------
+; 1541 DOS "U1" — Block Read to the host (raw sector over IEC)
+;------------------------------------------------------------------------------
+; What it does
+;   • Reads one 256-byte disk block (track/sector) and streams its raw contents
+;     to a *data channel* you choose (an already OPENed LFN).
+;   • This bypasses the DOS file layer
+;     and includes the first two bytes of the sector (link T/S) that normal file
+;     reads usually hide. You must read the exact number of bytes you want.
+;
+; Syntax sent on the command channel (#15)
+;   "U1:" <channel> <drive> <track> <sector> [<CR>]
+;     <channel> = the logical file number you opened for data (e.g., 5)
+;     <drive>   = 0 for the first drive unit
+;     <track>,<sector> = block location to read
+;
+; Typical host sequence
+;   1) OPEN command channel (#15).          ; SETLFS 15,8,15 / SETNAM len=0 / OPEN
+;   2) OPEN data channel LFN=N with "#".    ; SETLFS N,8,N / SETNAM "#",len=1 / OPEN
+;   3) LISTEN 8, SECOND $6F, send "U1:N 0 T S\r\0" with CIOUT, then UNLSN.
+;   4) CHKIN N, then read bytes with CHRIN. ; up to 256 bytes available (raw block)
+;   5) CLRCHN / CLOSE when done.
+;
+; Notes 
+;   • We bind LFN #5 to "#", then send "U1:5 0 18 8" to fetch T18/S8.
+;   • We only read $C0 (=192) bytes for a quick XOR fingerprint, but U1 would
+;     happily supply the full 256 if requested.
+;------------------------------------------------------------------------------ 
+
+; Execution resumes at the "stage8_start" address
+
+;----------------------------
+; KERNAL routines
+;----------------------------
+SECOND  = $FF93  ; Send secondary address in A (SA | $60) after LISTEN
+CIOUT   = $FFA8  ; Output one byte (A) while LISTEN is active (command/data to device)
+UNLSN   = $FFAE  ; Send UNLISTEN on IEC (ends device “listening”)
+LISTEN  = $FFB1  ; Put device in A into LISTEN state on the IEC bus
+SETLFS  = $FFBA  ; Set Logical File/Device/Secondary (A=LFN, X=DEV, Y=SA) for next OPEN
+SETNAM  = $FFBD  ; Set filename pointer/length for next OPEN  (A=len, X/Y=ptr)
+OPEN    = $FFC0  ; Open a logical file/channel previously configured by SETLFS/SETNAM
+CLOSE   = $FFC3  ; Close logical file/channel in A
+CHKIN   = $FFC6  ; Make LFN in A the current INPUT channel (CHRIN will read from it)
+CHKOUT  = $FFC9  ; Make LFN in A the current OUTPUT channel (CHROUT will write to it)
+CLRCHN  = $FFCC  ; Restore default I/O (sends UNLISTEN/UNTALK on IEC as needed)
+CHRIN   = $FFCF  ; Input one byte into A from current input channel
+CHROUT  = $FFD2  ; Output one byte (A) to current output channel
+
+;----------------------------
+; VIC-II
+;----------------------------
+vic_border_color_register = $D020        ; Border color register
+vic_screen_control_register_1    = $D011        ; Control #1: vscroll (0–2), 24/25 rows, screen on/off, etc.
+VIC_CTRL1_SCRN = %11101111  ; AND mask to clear bit 4 of $D011 → disable main screen (no badlines)
+
+;----------------------------
+; Logical channels / device
+;----------------------------
+DEVICE_1541   = $08   ; Standard disk drive device number
+LFN_CMD       = $0F   ; Logical File 15 → command/status channel on the 1541
+;SA_CMD        = $0F   ; Secondary address used with the command channel
+LFN_BUF       = $02   ; Logical File 2 → we bind it to drive buffer “#1”
+;SA_BUF        = $02   ; Secondary address used with that data channel
+
+;----------------------------
+; Scratch / state variables
+;----------------------------
+checksum                   = $FE   ; 1-byte XOR accumulator (reused across routines)
+clear_ptr_lo               = $FB   ; Zero-page pointer lo (used to clear a RAM range)
+clear_ptr_hi               = $FC   ; Zero-page pointer hi
+
+game_code_decryptor_ptr_lo = $FB   ; Alias: base pointer (lo) for "game code decryptor" checksum routine
+game_code_decryptor_ptr_hi = $FC   ; Alias: base pointer (hi) — same ZP pair as clear_ptr_*
+;game_code_decryptor_checksum = $9dd7 ; Result of XOR checksum over "game code decryptor" ($9D20..$9D8C)
+decrypt_game_code = $9D20			;Decryptor routine of game code - covered in stage 10
+
+copy_protection_sector_checksum  = $9D44 ; Stashed XOR checksum of T18/S8 (copy protection sector)
+
+* = $9E9D
+disk_decryption_checksum:         ; 1-byte result from drive M-R (read from $01FF), inverted:
+    .BYTE $AC                     ;   if drive returns $FF (pass), we store $00 after EOR #$FF
+
+;===============================================================================
+; Integrity checks
+;
+;   Out: copy_protection_sector_checksum, disk_decryption_checksum, game_code_decryptor_checksum
+;   Clobbers: A,X,Y
+;===============================================================================
+* = $9D8E
+check_integrity:
+    ; 1) XOR checksum of the protection sector → copy_protection_sector_checksum
+    JSR checksum_copy_protection_sector
+    ; 2) EXEC copy protection sector in the drive + read/flip 1 byte from drive RAM → disk_decryption_checksum
+    JSR validate_copy_protection
+    ; 3) XOR checksum over game code decryptor → game_code_decryptor_checksum
+    JSR checksum_game_code_decryptor
+    RTS
+
+;===============================================================================
+; Execution of the copy-protection sector in the 1541 and sample of RAM
+;------------------------------------------------------------------------------
+; What we do:
+;
+;   1) Bind C64 LFN #2 to the drive’s buffer “#1” (filename "#1"), and open the
+;      DOS command channel (#15).
+;   2) Send 'B-E 2 0 18 8' on #15:
+;        • B-E (Block-Execute) loads Track 18 / Sector 8 into the buffer tied to
+;          channel 2 (here: drive buffer #1) and immediately JUMPs to it.
+;        • The code in that sector runs on the 1541’s 6502. It performs the drive-
+;          side authenticity checks (layout/timing/ID patterns).
+;        • On success, that routine arranges a known byte in drive RAM.
+;   3) Send 'M-R $01FF' on #15:
+;        • M-R (Memory-Read) asks the 1541 to read 1 byte from $01FF.
+;        • If the protection code passed, that first byte is $FF. We invert it
+;          (EOR #$FF) and store $00 in disk_decryption_checksum to mean “OK”.
+;        • Any other value → inversion yields non-zero (failure marker).
+;
+; Why $01FF?
+;   • $01FF is a convenient, stable location at the top of page $01 in 1541 RAM.
+;     The protection code can place a “pass” sentinel ($FF) there.
+;   • An unspecified memory-read length argument will cause the default of 1 byte to be used.
+;
+; How the result is used
+;   • The inverted status (0 = pass, ≠0 = fail) is combined with other checks,
+;     e.g. the XOR checksum of T18/S8, to gate or influence decryption logic.
+;===============================================================================
+validate_copy_protection:
+    ;-------------------------------------------------------------------------
+    ; Open the 1541 DOS command/status channel (LFN #15).
+	;
+    ;   SETLFS: A=LFN (15), X=DEV (8), Y=SA (15)
+    ;   SETNAM: A=0 → command channel takes no filename at OPEN time
+    ;   OPEN   : creates LFN #15; CHKOUT/CHROUT later send DOS commands on it
+    ;-------------------------------------------------------------------------
+    LDA #LFN_CMD
+    TAY
+    LDX #DEVICE_1541
+    JSR SETLFS
+    LDA #$00                    ; filename length = 0 (required for #15)
+    JSR SETNAM
+    JSR OPEN
+
+    ;-------------------------------------------------------------------------
+    ; Open a data/logical channel (LFN #2) bound to the drive’s buffer “#1”.
+	;
+    ;   SETLFS: A=2 (LFN), X=8 (device), Y=2 (secondary address)
+    ;   SETNAM: filename = "#1" (len=2) → CBM DOS binds this channel to buffer #1
+    ;            The upcoming "B-E 2 0 18 8" command will then EXECute from that buffer.
+    ;   OPEN   : creates LFN #2 associated with drive buffer #1
+    ;-------------------------------------------------------------------------
+    LDA #LFN_BUF
+    TAY
+    LDX #DEVICE_1541
+    JSR SETLFS
+    LDA #$02                    ; length of the string "#1"
+    LDX #<FILENAME_BUFFER1
+    LDY #>FILENAME_BUFFER1
+    JSR SETNAM
+    JSR OPEN
+
+
+    ;-------------------------------------------------------------------------
+    ; Send the “Block Execute” DOS command on channel #15:
+	;
+    ;   Command string: "B-E 2 0 18 8"
+    ;     - B-E      : read a block into the buffer bound to channel <2> and EXECUTE it
+    ;     - 2        : the channel
+    ;     - 0        : drive number
+    ;     - 18 8     : track 18, sector 8 (the copy protection block)
+    ;
+    ; Flow:
+    ;   CHKOUT #15 → stream 12 bytes via CHROUT → CLRCHN (UNLISTEN/commit)
+    ;
+    ; NOTE: KERNAL CHKOUT expects A=LFN (15).
+    ;-------------------------------------------------------------------------
+    LDX #LFN_CMD
+    JSR CHKOUT
+	
+    ; Walk the 12-byte command string and send it to the command channel
+    LDX #$00
+send_execute_cmd:
+    LDA block_execute_18_8_cmd,X   ; "B","-","E"," ","2"," ","0"," ","1","8"," ","8"
+    JSR CHROUT
+    INX
+    CPX #$0C                       ; 12 bytes total
+    BNE send_execute_cmd
+
+    ; Done sending — CLRCHN issues UNLISTEN and restores default I/O
+    JSR CLRCHN
+
+    ;-------------------------------------------------------------------------
+    ; Issue a drive RAM read (M-R) on channel #15:
+	;
+    ;   Command syntax:  "M-R", <addr_lo>, <addr_hi>, <len>
+    ;   Intended here   : "M-R", $FF, $01  → read 1 byte from $01FF
+    ;
+    ; Flow:
+    ;   CHKOUT #15 → stream command bytes with CHROUT → CLRCHN.
+    ;
+    ; Notes/caveats:
+    ;   • CHKOUT expects A=LFN (15). 
+    ;   • The first LDX #$FF is immediately overwritten by LDX #$00 (no effect).
+    ;-------------------------------------------------------------------------
+    LDX #LFN_CMD
+    JSR CHKOUT
+    LDX #$FF                       ; (overwritten below; no functional effect)
+    LDX #$00
+send_memory_read_cmd:
+    LDA memory_read_sentinel_cmd,X ; "M","-","R",$FF,$01
+    JSR CHROUT
+    INX
+    CPX #$05                       ; sends 5 bytes
+    BNE send_memory_read_cmd
+    JSR CLRCHN
+
+    ;-------------------------------------------------------------------------
+    ; Read one status byte from the command channel (#15)
+	;
+    ;   • CHKIN expects A=LFN (15). 
+    ;   • The drive-side EXEC block returns $FF on success; we invert to store $00
+    ;     for “pass” (convenient zero-meaning-OK convention).
+    ;-------------------------------------------------------------------------
+    LDX #LFN_CMD
+    JSR CHKIN
+    JSR CHRIN
+    EOR #$FF
+    STA disk_decryption_checksum
+
+    ;-------------------------------------------------------------------------
+    ; Tidy up: restore default I/O and close our channels
+    ;-------------------------------------------------------------------------
+    JSR CLRCHN                 ; UNLISTEN/UNTALK, restore default I/O
+    LDA #LFN_CMD
+    JSR CLOSE                  ; close #15 (command channel)
+    LDA #LFN_BUF
+    JSR CLOSE                  ; close #2  (data/buffer channel)
+
+    ;-------------------------------------------------------------------------
+    ; Black out the display to hide loader transitions:
+	;
+    ;   • Border := black ($00).
+    ;   • Clear bit 4 of $D011 (DEN=0) via AND mask → main screen off, no badlines.
+    ;-------------------------------------------------------------------------
+    LDA #$00
+    STA vic_border_color_register
+    LDA vic_screen_control_register_1
+    AND #VIC_CTRL1_SCRN        ; mask clears screen-enable bit
+    STA vic_screen_control_register_1
+    RTS
+
+
+;===============================================================================
+; Compute checksum of the copy protection sector (T18/S8) via U1
+;------------------------------------------------------------------------------
+;
+; What U1 does
+;   • U1 is a 1541 DOS command that streams a *raw disk block* (track/sector)
+;     directly to a host data channel that you choose (an already OPENed LFN).
+;   • Unlike normal file I/O, U1 bypasses the DOS file layer; you receive the
+;     sector exactly as stored (including the link/header trailer bytes).
+;
+; How we use it
+;   1) OPEN a data channel LFN (e.g., #5) bound to “#” so the drive provides
+;      raw block bytes on that channel.
+;   2) On the command channel (#15), send:  "U1:<lfn> <drive> <track> <sector>\r"
+;        Example in this code: "U1:5 0 18 8" → read T18/S8 to LFN #5.
+;   3) CHKIN the data channel (#5) and read bytes with CHRIN.
+;      We read $C0 (192) bytes here—enough for a fingerprint—though
+;      the full sector is 256 bytes.
+;
+; The checksum we compute
+;   • A simple 8-bit XOR accumulator over the returned byte stream:
+;        checksum := 0
+;        for each byte b read from LFN #5:
+;            checksum := checksum XOR b
+;   • This produces a compact signature of the protection sector’s contents.
+;     A mismatch vs. the expected value indicates tampering or a different layout.
+;   • The resulting one-byte checksum is stored (e.g., at copy_protection_sector_checksum)
+;     and later combined with other signals (like the drive-side M-R sentinel) to
+;     decide whether to proceed with decryption.
+;===============================================================================
+* = $9E10
+checksum_copy_protection_sector:
+    ;-------------------------------------------------------------------------
+    ; Open a temporary data channel for U1 block-read (“#”, LFN #5, SA #5) and
+    ; position the drive to track 18 / sector 8. The helper also zeroes the
+    ; running XOR accumulator ‘checksum’.
+    ;-------------------------------------------------------------------------
+    JSR open_file_for_sector_checksum
+
+    ;-------------------------------------------------------------------------
+    ; Issue U1:5 0 18 8 and XOR the returned $C0 bytes into ‘checksum’.
+	;
+    ; (U1 reads the full 256-byte block including the 2-byte header trailer.)
+    ;-------------------------------------------------------------------------
+    JSR checksum_track_18_sector_8
+
+    ;-------------------------------------------------------------------------
+    ; Close LFN #5 and publish the result: stash the XOR into
+    ; copy_protection_sector_checksum for later integrity comparison.
+    ;-------------------------------------------------------------------------
+    LDA #$05
+    JSR CLOSE
+    LDA checksum
+    STA copy_protection_sector_checksum
+    RTS
+
+
+;===============================================================================
+; Open a logical file for the sector checksum: LFN 5 on device 8, SA 5, filename “#”
+;===============================================================================
+open_file_for_sector_checksum:
+    ;-------------------------------------------------------------------------
+    ; Open a temporary data channel on the 1541 for the U1 block-read:
+	;
+    ;   • SETLFS: A=5 (LFN), X=8 (device), Y=5 (SA)
+    ;   • SETNAM: filename="#", len=1 (conventional placeholder; content irrelevant)
+    ;   • OPEN  : creates LFN #5, which checksum_track_18_sector_8 will CHKIN and read from
+    ;-------------------------------------------------------------------------
+    LDA #$05
+    LDX #DEVICE_1541
+    LDY #$05
+    JSR SETLFS
+    LDA #$01
+    LDX #<FILENAME_HASH
+    LDY #>FILENAME_HASH
+    JSR SETNAM
+    JSR OPEN
+    RTS
+
+
+;===============================================================================
+; Send U1 block-read for T18/S8 and XOR $C0 bytes from channel #5
+; Note: we read $C0 (192) bytes for this checksum (not the full 256 needed elsewhere).
+;===============================================================================
+checksum_track_18_sector_8:
+    ;-------------------------------------------------------------------------
+    ; Put device 8 into LISTEN and send secondary address for the command path
+	;
+    ;   LISTEN A=8 → device #8 will accept command/data
+    ;   SECOND A=$6F → ($60 OR $0F) selects SA=$0F on the IEC bus
+    ;-------------------------------------------------------------------------
+    LDA #DEVICE_1541
+    JSR LISTEN
+    LDA #$6F
+    JSR SECOND
+
+    ;-------------------------------------------------------------------------
+    ; Stream the DOS command string: "U1:5 0 18 8" + CR + NUL
+	;
+    ;   We preserve X across CIOUT by parking it on the stack (PHA/PLA).
+    ;   The loop stops on the zero terminator in the table.
+    ;-------------------------------------------------------------------------
+    LDX #$00
+next_cmd_char:
+    TXA
+    PHA
+    LDA full_block_read_18_8_cmd,X   ; table includes trailing $0D,$00
+    BEQ end_of_cmd_string
+    JSR CIOUT                         ; send next byte while drive is LISTENing
+    PLA
+    TAX
+    INX
+    BNE next_cmd_char
+end_of_cmd_string:
+    PLA                               ; balance the extra PHA from the BEQ path
+    JSR UNLSN                         ; end LISTEN (command is now queued)
+
+    ;-------------------------------------------------------------------------
+    ; Prepare to checksum the returned data bytes from channel #5
+    ;-------------------------------------------------------------------------
+    LDA #$00
+    STA checksum
+
+    ;-------------------------------------------------------------------------
+    ; Make LFN #5 the current INPUT channel so CHRIN reads from it
+    ;-------------------------------------------------------------------------
+    LDX #$05
+    JSR CHKIN
+
+    ;-------------------------------------------------------------------------
+    ; Read $C0 bytes from #5 and XOR into “checksum”
+	;
+    ;   (This build fingerprints only the first $C0 bytes—sufficient for its check.)
+    ;-------------------------------------------------------------------------
+    LDX #$C0
+read_loop:
+    TXA                               ; save X (loop counter) across CHRIN/EOR/STA
+    PHA
+    JSR CHRIN                         ; A := next byte from device
+    EOR checksum
+    STA checksum
+    PLA
+    TAX
+    DEX
+    BNE read_loop
+
+    ;-------------------------------------------------------------------------
+    ; Restore default I/O channels (sends UNLISTEN/UNTALK as needed) and return
+    ;-------------------------------------------------------------------------
+    JSR CLRCHN
+    RTS
+
+
+;===============================================================================
+; XOR checksum of the game code decryptor (RAM Region: $9D20..$9D8D)
+;   Out: game_code_decryptor_checksum
+;   Clobbers: A,Y, game_code_decryptor_ptr_lo/hi
+;===============================================================================
+checksum_game_code_decryptor:
+    ;-------------------------------------------------------------------------
+    ; Set base pointer to game code decryptor start ($9D20).
+	;
+    ; We keep Y=0 and advance the base pointer itself, which makes it easy
+    ; to compare against the absolute end address later.
+    ;-------------------------------------------------------------------------
+    LDA #$20
+    STA game_code_decryptor_ptr_lo
+    LDA #$9D
+    STA game_code_decryptor_ptr_hi
+
+    ;-------------------------------------------------------------------------
+    ; Initialize 1-byte XOR accumulator and index.
+    ;-------------------------------------------------------------------------
+    LDA #$00
+    STA game_code_decryptor_checksum
+    LDY #$00
+
+checksum_next_byte:
+    ;-------------------------------------------------------------------------
+    ; Accumulate XOR with the next byte at (ptr).
+    ;-------------------------------------------------------------------------
+    LDA (game_code_decryptor_ptr_lo),Y
+    EOR game_code_decryptor_checksum
+    STA game_code_decryptor_checksum
+
+    ;-------------------------------------------------------------------------
+    ; Advance the pointer to the next address (keep Y at 0).
+    ;-------------------------------------------------------------------------
+    INC game_code_decryptor_ptr_lo
+    BNE region_end_check
+    INC game_code_decryptor_ptr_hi
+
+region_end_check:
+    ;-------------------------------------------------------------------------
+    ; Termination test: stop when ptr == $9D8D (exclusive upper bound).
+    ; Therefore, the last processed byte is at $9D8C.
+    ;-------------------------------------------------------------------------
+    LDA game_code_decryptor_ptr_lo
+    CMP #$8D
+    BNE checksum_next_byte
+    LDA game_code_decryptor_ptr_hi
+    CMP #$9D
+    BNE checksum_next_byte
+    RTS
+
+;-------------------------------------------------------------------------------
+; Data / tables used above
+;-------------------------------------------------------------------------------
+* = $9E9E
+block_execute_18_8_cmd:
+    .text "B-E 2 0 18 8"   ; 12 bytes
+
+memory_read_sentinel_cmd:
+    .text "M-R"
+	.BYTE $FF, $01                        ; 5 bytes
+	
+FILENAME_BUFFER1:
+    .text "#1"                     ; “#1” → bind LFN to drive buffer #1
+
+FILENAME_HASH:
+    .BYTE "#"
+	
+; U1 reads a full block to drive RAM; for this checksum we read $C0 (192) bytes.
+full_block_read_18_8_cmd:
+    .text "U1:5 0 18 8"
+	.BYTE $0D, $00
+
+; Variable placed by original build in-line within code; kept here as data.
+* = $9DD7
+game_code_decryptor_checksum:
+    .BYTE $FF
+
+
+;===============================================================================
+; Stage 8 entry — Integrity checks, then game code decryption + secure wipe
+;===============================================================================
+* = $9FAE
+stage8_start:
+    ; Run the composed on-disk and in-RAM checks, then decrypt the game code
+    JSR check_integrity_and_decrypt_game_code
+
+    ;-------------------------------------------------------------------------
+    ; Secure erase of the decrypted code: zero $9D20..$9FBB (668 bytes total)
+    ;
+    ; Setup:
+    ;   clear_ptr := $9D00
+    ;   Y := $20 so the first store hits $9D20
+    ;
+    ; Loop shape:
+    ;   - Write A=$00 to (clear_ptr),Y
+    ;   - If Y == $BB and clear_ptr_hi == $9F → done (final byte $9FBB cleared)
+    ;   - Else INY; if INY wrapped → INC clear_ptr_hi (move to next page)
+    ;   - Repeat
+    ;
+    ; Coverage:
+    ;   Page $9Dxx : $9D20..$9DFF
+    ;   Page $9Exx : $9E00..$9EFF
+    ;   Page $9Fxx : $9F00..$9FBB
+    ;-------------------------------------------------------------------------
+    LDA #$00
+    STA clear_ptr_lo
+    LDA #$9D
+    STA clear_ptr_hi
+
+    LDA #$00
+    LDY #$20
+
+clear_byte:
+    STA (clear_ptr_lo),Y
+    CPY #$BB
+    BEQ end_of_region_check
+
+move_to_next_byte:
+    INY
+    BNE clear_byte                  ; if Y didn’t wrap, continue within the page
+    INC clear_ptr_hi                ; Y wrapped → advance to next page
+    JMP clear_byte
+
+end_of_region_check:
+    LDX clear_ptr_hi
+    CPX #$9F
+    BNE move_to_next_byte           ; not on last page yet → keep clearing
+    RTS                             ; last page reached and Y==$BB → all done
+
+
+;===============================================================================
+; Combined integrity + decryption dispatcher
+;===============================================================================
+check_integrity_and_decrypt_game_code:
+    ;-------------------------------------------------------------------------
+    ; Orchestrate post-load validation and decryption
+	;
+    ;   1) JSR check_integrity
+    ;        - Runs the drive EXEC + M-R probe and the on-disk (T18/S8) checksum,
+    ;          and computes the in-RAM Region-B checksum. Results are stashed in
+    ;          their respective bytes for later comparisons.
+	;
+    ;   2) JSR decrypt_game_code
+    ;        - Decrypts the designated game code region(s) in place.
+    ;          (Implementation lives in the Stage 10 file.)
+	;
+    ;   On return, both steps have completed; no registers are preserved.
+    ;-------------------------------------------------------------------------
+    JSR check_integrity
+    JSR decrypt_game_code            ; implemented in the Stage 10 module
+    RTS
+

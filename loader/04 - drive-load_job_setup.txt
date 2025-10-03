@@ -1,0 +1,194 @@
+;============================================================
+; Stage 4 - 1541 Drive Code (T18/S11 → executes at $0500 in buffer #2)
+;------------------------------------------------------------
+; Purpose:
+;   • Read the next block (T18/S12) into buffer #0 using the 1541
+;     ROM’s direct block-read routine, then jump into the job loop
+;     hosted in that buffer.
+;   • Validate an “expected index” sentinel (provided by the C64
+;     before this block runs) and derive next track/sector from a
+;     tiny lookup table indexed by Y.
+;   • Fingerprint the 1541 ROM (byte at $E5C6) and store either
+;     $37 or $00 into a shared sentinel at $07FF for later checks.
+;
+; Behavior notes:
+;   • Interrupts are disabled (SEI) after the first direct read so
+;     the 1541 job queue won’t run until a later CLI in the flow.
+;   • Y is loaded from $07FF (EXPECT_IDX). Expected value is #$00;
+;     if changed by the C64, it selects a different entry in the
+;     (track_ptr, sector_ptr) tables.
+;============================================================
+
+;------------------------------------------------------------------------------
+; 1541 DOS “job table” — how the drive’s job engine works (quick reference)
+;------------------------------------------------------------------------------
+; What is a “job”?
+;   The 1541 DOS runs a small scheduler (“job engine”) in its IRQ handler. A job is
+;   a request to DOS to do something asynchronously: read a sector, seek, or
+;   execute code from a buffer, etc. You post a job by filling a few RAM fields and
+;   setting the job code byte with bit 7 = 1 (meaning “busy/running”).
+;
+; Where are the fields?
+;   This project uses the standard DOS work-area layout for Job #0:
+;     JOB0_CODE    = $0000   ; job code / status (bit 7 = busy while running)
+;     JOB0_TRACK   = $0006   ; target track for the operation
+;     JOB0_SECTOR  = $0007   ; target sector for the operation
+;
+;   Other jobs live in adjacent bytes, but we drive everything via Job #0.
+;
+; Buffer selection (5 buffers on a 1541):
+;   The 1541 maintains five 256-byte data buffers in RAM, numbered 0..4:
+;     buffer #0 → $0300–$03FF
+;     buffer #1 → $0400–$04FF
+;     buffer #2 → $0500–$05FF
+;     buffer #3 → $0600–$06FF
+;     buffer #4 → $0700–$07FF
+;   The byte job_number ($F9) selects which buffer the next operation targets.
+;   Example: job_number = 0 → the DOS places/executes data in $0300..$03FF.
+;   Note: $0700–$07FF (buffer #4) is also used by DOS for directory/BAM and,
+;   in this build, we store a sentinel at $07FF—take care not to clobber it.
+;
+; Posting a job (typical sequence):
+;   1) Write JOB0_TRACK / JOB0_SECTOR with the desired T/S.
+;   2) Set job_number ($F9) to the buffer you want (0..4).
+;   3) Write JOB0_CODE with the desired operation code:
+;        $80 = READ sector 
+;        $B0 = SEEK to track/sector
+;        $E0 = EXECUTE buffer (jump to start of selected buffer)
+;      When IRQs are enabled (CLI), the job engine notices the request and runs it.
+;
+; Completion & status:
+;   While the job is running, bit 7 of JOB0_CODE stays set (≥$80). When the job
+;   finishes, DOS clears bit 7 and leaves a status code:
+;     $01 = OK (success)
+;     any ≠$01 = error (last error code)
+;   Poll pattern used here:
+;       do { A = JOB0_CODE } while (A & $80)   ; bit 7 set → still busy
+;       ; A now holds the final status (compare to #$01)
+;
+; ROM helper for direct reads:
+;   $D460 (direct_block_read) performs a one-sector read into the buffer selected
+;   by job_number using track_zp ($80) / sector_zp ($81). We use it to bootstrap
+;   the first controller block before switching to the general job loop.
+;
+; Why SEI/CLI around jobs?
+;   SEI (disable IRQs) pauses the scheduler so you can stage fields (track, sector,
+;   job number, code) atomically. CLI (enable IRQs) lets DOS run and service the
+;   posted job. Our code SEIs before staging and relies on later code to CLI when
+;   it’s safe for DOS to proceed.
+;------------------------------------------------------------------------------
+
+;----------------------------
+; Named constants
+;----------------------------
+TRACK_18         = $12        ; track 18
+SECTOR_12        = $0C        ; sector 12
+JOBNUM_BUFFER0   = $00        ; job number that targets drive buffer #0
+SENTINEL_CLEAR   = $00        ; value stored to sentinel when ROM check fails
+
+;----------------------------
+; 1541 ROM routines
+;----------------------------
+direct_block_read   = $D460     ; read one block to buffer by job number
+error_table_mid     = $E5C6     ; middle of ROM error-table region
+
+;----------------------------
+; 1541 work RAM / ZP
+;----------------------------
+track_zp            = $80       ; track number for direct read
+sector_zp           = $81       ; sector number for direct read
+job_number          = $F9       ; current job number (0 → buffer #0)
+
+next_track          = $0A       ; shared helper: “next track”
+next_sector         = $0B       ; shared helper: “next sector”
+job0_track          = $06       ; job #0’s track store
+total_bytes_to_send = $0C       ; shared byte counter (cleared here)
+
+;----------------------------
+; Shared sentinel / ROM check
+;----------------------------
+sentinel            = $07FF     ; shared C64↔1541 sentinel byte
+expected_index      = $07FF     ; same location read back as an index
+error_magic         = $37       ; value used to set sentinel if matched
+
+;----------------------------
+; Entry point in next buffer
+;----------------------------
+job_loop            = $03A4     ; entry in buffer #0 (loaded from T18/S12)
+
+;Start address: $0500
+* = $0500
+stage4_start:
+    ; Read the next controller block into drive buffer #0
+    ;   • Source on disk : Track 18 / Sector 12 (next stage)
+    ;   • ROM routine    : direct_block_read ($D460)
+    ;   • Parameters     : track_zp ($80) = track, sector_zp ($81) = sector
+    ;   • Destination    : job_number ($F9) selects buffer (0 → buffer #0 @ $0300)
+    ;   • Outcome        : buffer #0 now contains the job loop we’ll jump to later
+    LDA #TRACK_18
+    STA track_zp
+    LDA #SECTOR_12
+    STA sector_zp
+    LDA #JOBNUM_BUFFER0
+    STA job_number
+    JSR direct_block_read
+
+    ; Freeze the DOS job scheduler until we’ve staged our state:
+    ;   SEI disables IRQs, which prevents the ROM’s job queue from advancing
+    ;   any pending jobs. We’ll re-enable interrupts later when handing off.
+    SEI
+
+    ; Select the T/S lookup entry:
+    ;   Y := expected_index (written earlier by the C64 at $07FF).
+    ;   This index chooses entries in track_ptr/sector_ptr. If it’s wrong,
+    ;   we’ll fetch the wrong T/S and the next read will fail.
+    ;   Expected value for this build: #$00.
+    LDY expected_index
+
+    ; Brief settle delay:
+    ;   Burn a few cycles to let the mechanics/bus state settle before
+    ;   touching the tables. The loop ends on X wrap to $00.
+    LDX #$00
+wait_loop:
+    INX
+    BNE wait_loop                 ; spin until X wraps (short delay)
+
+
+    ; Publish the next track/sector for the upcoming job (buffer #0 consumer):
+    ;   • Lookup tables: track_ptr/sector_ptr indexed by Y (set above).
+    ;   • next_track/next_sector: shared helpers consumed by the job loop and
+    ;     fast-sender code that just got loaded into buffer #0.
+    ;   • job0_track: mirrors the chosen track into Job #0’s track slot.
+    ;   • X is $00 here (from the delay wrap), so STX clears fields below.
+    LDA track_ptr,Y
+    STA next_track               ; tell the controller which track to read next
+    STA job0_track               ; mirror into Job #0’s track store
+    LDA sector_ptr,Y
+    STA next_sector              ; tell the controller which sector to read next
+
+    STX job_number               ; ensure job number = 0 (target buffer #0)
+    STX total_bytes_to_send      ; reset shared byte counter to 0
+
+
+    ; ROM fingerprint: record drive ROM signature in a shared sentinel
+    ;   • Read byte at $E5C6 (in the ROM error-table region).
+    ;   • If it matches the expected signature ($37), store $37 at $07FF;
+    ;     otherwise store $00. The C64 will consult this later as part of
+    ;     integrity/compatibility checks.
+    LDA error_table_mid
+    CMP #error_magic
+    BEQ set_sentinel
+    LDA #SENTINEL_CLEAR
+set_sentinel:
+    STA sentinel
+
+    ; Handoff to the controller/job loop we just loaded into buffer #0.
+    ;   Jumps to stage 5, job_loop ($03A4). That code will re-enable IRQs when it’s
+    ;   ready to let the DOS job engine proceed.
+    JMP job_loop
+
+; Next track/sector lookup
+track_ptr:
+    .BYTE $13                   ; next track (19)
+sector_ptr:
+    .BYTE $03                   ; next sector (3)

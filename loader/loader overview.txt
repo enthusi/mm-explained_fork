@@ -1,0 +1,179 @@
+;===============================================================================
+; Maniac Mansion loader code
+;
+; What this loader does (for people not familiar with the C64's technical details)
+;-------------------------------------------------------------------------------
+; What are we looking at?
+;
+;   This code is a custom “fast loader” system for the Commodore 64 and its 1541
+;   floppy disk drive. The 1541 has its own 6502 CPU and firmware. 
+;	They talk over a slow serial bus (IEC), so games often ship faster, 
+;	smarter loaders that replace the standard disk routines with a coordinated pair 
+;	of programs: one on the C64, one on the drive. This codebase is one of those.
+;
+; How does it start?
+;
+;   • C64 programs (PRG files) include a two-byte load address followed by data.
+;   • This loader’s first PRG is placed so that, when loaded into RAM, it also
+;     overwrites the BASIC “warm-start” pointer (a vector the C64 uses to resume
+;     after LOAD). After the KERNAL finishes loading and returns to BASIC, BASIC
+;     performs a warm start—now pointing to our code—so the loader gains control
+;     naturally, without patching ROM or typing RUN.
+;
+; What is a "fast loader" here?
+;
+;   • The drive side: a small program runs inside the 1541 and reads sectors
+;     from disk using the 1541's built-in hardware/ROM helpers (it understands
+;     the on-disk GCR encoding), then streams decoded data to the C64 using a
+;     custom, tighter-timed serial protocol.
+;   • The C64 side: a matching receiver samples the serial lines at precise
+;     intervals and reconstructs bytes in RAM—much faster than the stock KERNAL.
+;
+; What are "tracks", "sectors", and "GCR"?
+;
+;   • The floppy is laid out as concentric tracks, each with numbered sectors.
+;   • The 1541 stores data using GCR (Group Code Recording), a scheme that turns
+;     each 8-bit byte into a bit pattern safe for magnetic media. The drive can
+;     decode this back into bytes; our code lets it read and check a sector, then
+;     send the result quickly to the C64.
+;
+; Why so many “stages”?
+;
+;   To keep each step small and robust, the loader is split into stages (01..10).
+;   Each stage does one job well—set up the drive, stream data, verify integrity,
+;   decrypt code—then hands off to the next. At the end, the game starts from
+;   RAM as if it had always been there.
+;
+; Where does copy protection fit in?
+;
+;   Commercial disks sometimes rely on odd disk layouts or precise timing that
+;   cheap copiers miss. This loader asks the 1541 to run a tiny routine directly
+;   from a special sector (“execute a block”), and then the C64 reads a single
+;   “pass/fail” byte back from the drive’s RAM. It also reads a known sector
+;   via a raw “U1” command and computes a simple checksum. These signals feed
+;   into the final decryption step—wrong disk, wrong layout → wrong keys → code
+;   won’t decrypt into anything runnable.
+;
+; High-level flow (in simpler terms)
+;
+;   1) Gain control after LOAD using BASIC’s normal warm-start pointer.
+;
+;   2) Blank the screen and load the next piece by filename.
+;
+;   3) Open the drive’s “command channel”, prep a data channel, and tell the 1541
+;      to load and execute the drive-side fastloader.
+;
+;   4) On the drive, read a sector, decode it, and stream its bytes to the C64.
+;      The first two bytes in each sector say where to go next; the last sector
+;      says how many bytes are real. Repeat until the whole payload is sent.
+;
+;   5) On the C64, receive those bytes into memory at speed (no IRQs, tight timing).
+;
+;   6) Do integrity checks:
+;        • Read a “fingerprint” sector raw (U1) and XOR all its bytes.
+;        • Ask the 1541 to run a protection block (B-E), then read one byte of
+;          drive RAM (M-R) as the result.
+;        • XOR-checksum a small region of our own code to detect tampering.
+;
+;   7) Use those check results to build decryption values.
+;
+;   8) Decrypt the game code in RAM, erase the temporary loader code, and jump
+;      into the game’s normal entry point in memory.
+;
+; Half-tracks as part of copy protection
+;
+;   The 1541’s head can be nudged half a track at a time. Some protections rely
+;   on data existing (or *not* existing) across boundaries like 35.0 → 35.5 → 36.0.
+;   The drive code briefly scans those positions and tries reads; if anything
+;   looks wrong (as it often does on a clone), it won’t set the “pass” byte.
+;
+; What are “U1”, “B-E”, and “M-R”?
+;
+;   • U1: “read a raw block” directly to a chosen channel (no file layer).
+;   • B-E: “block-execute”—load a disk block into a drive buffer and jump into it
+;          on the 1541’s CPU (lets protection code run in the drive).
+;   • M-R: “memory read”—have the drive send back bytes from its own RAM.
+;
+;
+; End result
+;
+;   By combining a fast on-disk reader (in the 1541), a tight serial receiver (on
+;   the C64), and integrity/protection checks that influence decryption, only the
+;   intended disk produces the right keys and a correct, runnable program image.
+;===============================================================================
+
+;===============================================================================
+; Stage pipeline (with summaries of very specific technical details)
+;
+; Read each stage's file for full details and commented source.
+;-------------------------------------------------------------------------------
+; Stage 01 — Load Hijack (computer-load_hijacking)
+;   • PRG loads at $02D2 and, by length, overwrites $0302/$0303 (BASIC warm-start
+;     vector). When the KERNAL performs a warm start, JMP ($0302) transfers control
+;     into the loader’s entry.
+;
+; Stage 02 — Autoloader (computer-autoloader)
+;   • Blank the screen/border, set SID master volume. KERNAL LOAD (SA=1) the next
+;     stage by name, then tail-call its entry address.
+;
+; Stage 03 — Drive Configurator (computer-drive_configurator)
+;   • Open #15 (command) and bind LFN #2 to drive buffer “#2” (“#2”).
+;   • DOS M-W $07FF,$01,$00 writes a sentinel into 1541 RAM.
+;   • DOS B-E “2 0 18 11” loads/executes T18/S11 in buffer #2 (enters drive code).
+;   • Copy a 4-byte parameter block to $9C00..$9C03:
+;       [$9C00] full sector count, [$9C01..$9C02] initial load address, [$9C03] bytes in final sector.
+;
+; Stage 04 — Drive Job Setup (drive-load_job_setup)
+;   • Drive code block-reads the next controller into buffer #0 and enters a job
+;     loop. Validates a host-provided index, fingerprints ROM, and publishes a
+;     shared sentinel at $07FF.
+;
+; Stage 05 — Drive Fast Send (drive-fast_send)
+;   • Per sector:
+;       - SYNC → compare 8 GCR header bytes (CONHDR) → read 256 data bytes
+;         plus overflow → decode (GCRBIN) → verify checksum (CHKBLK).
+;       - Stream decoded payload to the C64 with a custom bit-pair sender.
+;     The first two decoded bytes carry *next track/sector*; final sectors carry a
+;     byte count. A controller publishes next T/S and decides same-track continuation
+;     vs. job termination for track changes.
+;
+; Stage 06 — Computer Fast Receive (computer-fast_receive)
+;   • Disable IRQs; set CIA2/VIC to deterministic states.
+;   • Receive bytes by sampling CIA2 bus pins; assemble 2 bits per sample.
+;   • For each sector: skip the 2-byte trailer (next T/S) in memory; for
+;     intermediate sectors read 254 bytes (Y wraps), advance dest by +$FE; for
+;     the last sector stop at “bytes in last sector”. Restore state/close channels.
+;
+; Stage 07 — Intermediate Decryptor (computer-decryptor)
+;   • In-place XOR stream decrypt over $9D20..$9F63 with key := key + addend.
+;   • Prime return so a later RTS jumps to $0400 (main entry), then jump to Stage 08.
+;
+; Stage 08 — Integrity Checks (computer-integrity-checks)
+;   • U1:5 0 18 8 → XOR-fingerprint of T18/S8 (stored for later).
+;   • B-E 2 0 18 8 → EXEC drive protection code; M-R $01FF,$23 → read a byte;
+;     invert so $00 denotes “pass”. XOR-checksum Region-B in RAM. After final
+;     decryption, securely wipe the decrypted window.
+;
+; Stage 09 — Drive Copy-Protection Check (drive-copy_protection-check)
+;   • Decrypt an in-sector stub, then sweep half-tracks: 35.0 → 35.5 → 36.0.
+;     Scan sectors 16..0 at each position. Any read error → no pass flag; a
+;     perfect sweep writes $FF to $01FF. Re-home head and restore read posture.
+;
+; Stage 10 — Final Decryptor (computer-game_code_decryptor)
+;   • XOR-checksum Stage-8 bytes and patch it into an immediate (self-mod).
+;   • Seed a 3-byte mixer (B4/B5/B6) from:
+;       (a) sector checksum (U1), (b) drive result (M-R), (c) Stage-8 checksum.
+;   • Ensure RAM at $A000–$BFFF, then decrypt $0400..$13FF in place with a
+;     rolling XOR derived from the mixer. Control returns to Stage 08 to self-erase,
+;     then a primed RTS vectors to $0400 (start of main program).
+;
+; Technical Notes
+;   • U1 sends raw sector bytes over a chosen data channel; here we read $C0 to
+;     fingerprint T18/S8. B-E loads/executes a block on the drive CPU; M-R streams
+;     drive RAM back to the host for sampling. 
+;   • The fast link encodes data as 4 × 2-bit symbols per byte; the receiver
+;     assembles them via CIA2 polling with fixed delays.
+;   • Half-track scanning verifies geometry/timing characteristics not typically
+;     reproduced by casual copies; failure propagates into decryption seeds.
+;===============================================================================
+

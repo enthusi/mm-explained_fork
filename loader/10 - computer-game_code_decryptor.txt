@@ -1,0 +1,420 @@
+;===============================================================================
+; Stage 10 - C64: Game Code Decryptor — $0400..$13FF in-place
+;-------------------------------------------------------------------------------
+; Purpose
+;   • Compute a checksum over a small code region (“stage 8” bytes) and stash it
+;     as an immediate operand for a later LDA (self-modifying code).
+;   • Seed a 3-byte mixing state (B4/B5/B6) from:
+;       - disk_sector_18_8_checksum  (from T18/S8)
+;       - disk_copy_protection_checksum   (drive-side result, inverted)
+;       - stage_8_code_checksum      (computed here)
+;   • For each byte in $0400..$13FF:
+;       - Update a rolling XOR byte at $FF via update_rolling_xor
+;         (which also mutates B4/B5/B6),
+;       - XOR the target byte with $FF.
+;   • CPU port is set to expose RAM under $A000–$BFFF during decrypt.
+;
+; If any copy-protection or integrity check fails,
+; decryption will use invalid seeds and the game code/data will be unusable.
+;
+; Key detail: self-modifying operand
+;   checksum_stage_8 writes the checksum byte at $9D36, which is the operand
+;   of the following instruction:  LDA #$xx
+;   Thus LDA’s immediate value becomes the freshly computed checksum at runtime.
+;===============================================================================
+
+;----------------------------
+; Constants / addresses
+;----------------------------
+CPU_PORT_DDR                = $00        ; 6510 CPU port data-direction register.
+                                          ; Must be set (e.g., $2F) before safely writing CPU_PORT.
+
+CPU_PORT                    = $01        ; 6510 CPU I/O port controlling memory map.
+                                          ; Bit 0 (LORAM) selects RAM/ROM at $A000–$BFFF (see CPU_LORAM_BIT).
+
+CPU_LORAM_BIT               = %00000001  ; CPU_PORT bit 0: 0 = **RAM** visible at $A000–$BFFF,
+                                          ;                                   1 = BASIC ROM visible.
+
+DECRYPT_START               = $0400      ; Start of the in-place decrypt region.
+DECRYPT_PAGES               = $10        ; Number of pages to decrypt (16 → $0400..$13FF).
+
+; runtime state / scratch (mutated by update_rolling_xor)
+rolling_xor                 = $FF        ; Rolling XOR byte applied to each decrypted byte.
+mix_a                       = $B4        ; 3-byte mixer state (“A”), evolves every byte.
+mix_b                       = $B5        ; 3-byte mixer state (“B”), evolves every byte.
+mix_c                       = $B6        ; 3-byte mixer state (“C”), evolves every byte.
+
+; external inputs (produced by earlier stages)
+copy_protection_sector_checksum  = $9D44 ; XOR fingerprint of T18/S8 (via U1), stashed earlier.
+disk_copy_protection_checksum = $9E9D    ; Drive M-R probe result, **inverted** ($00 = pass) from stage 8/9.
+game_code_decryptor_checksum = $9dd7     ; Checksum of the decryptor/code region computed earlier (stage 8/9).
+
+; self-modifying operand location for LDA #imm (patched at runtime by checksum_stage_8)
+stage_8_code_checksum       = $9D36      ; Destination for the “stage 8” checksum; becomes LDA #imm operand.
+
+;----------------------------
+; Zero-page pointers
+;----------------------------
+stage8_ptr_lo               = $FB        ; ZP pointer (lo) used by checksum/decrypt loops.
+stage8_ptr_hi               = $FC        ; ZP pointer (hi).
+
+;===============================================================================
+; Decrypt the game code/data at region $0400–$13FF (in place)
+;===============================================================================
+decrypt_game_code:
+    ;-------------------------------------------------------------------------
+    ; 1) Fold the Stage-8 code into the key schedule:
+	;
+    ;    checksum_stage_8 computes an 8-bit XOR over the designated Stage-8
+    ;    region and *self-modifies* the immediate operand of the LDA below,
+    ;    writing that checksum byte at $9D36 (the byte after the opcode).
+    ;-------------------------------------------------------------------------
+    JSR checksum_stage_8
+
+    ;-------------------------------------------------------------------------
+    ; 2) Seed mixer A:
+	;
+    ;    mix_a := (copy_protection_sector_checksum + disk_copy_protection_checksum) mod 256
+    ;    CLC ensures a pure 8-bit sum; ties the stream to both the raw U1
+    ;    fingerprint and the drive-executed protection probe.
+    ;-------------------------------------------------------------------------
+    LDA copy_protection_sector_checksum
+    CLC
+    ADC disk_copy_protection_checksum
+    STA mix_a
+
+    ;-------------------------------------------------------------------------
+    ; 3) Seed mixer B:
+	;
+    ;    mix_b := (game_code_decryptor_checksum − disk_copy_protection_checksum) mod 256
+    ;    SEC ensures a defined 8-bit subtract; this mixes the integrity of the
+    ;    in-RAM decryptor with the drive probe result (0 = pass, non-zero = fail).
+    ;-------------------------------------------------------------------------
+    LDA game_code_decryptor_checksum
+    SEC
+    SBC disk_copy_protection_checksum
+    STA mix_b
+
+    ;-------------------------------------------------------------------------
+    ; 4) Seed mixer C with the Stage-8 checksum (self-modified immediate):
+	;
+    ;    The operand of this LDA is patched by checksum_stage_8, so A loads
+    ;    that checksum without an extra memory read. This couples the decryption
+    ;    to the exact bytes of the prior stage (tamper → different operand).
+    ;-------------------------------------------------------------------------
+    LDA #$FF                         ; <-- operand byte overwritten at runtime (at $9D36)
+    STA mix_c
+
+
+    ;-------------------------------------------------------------------------
+    ; 5) Ensure RAM is visible at $A000–$BFFF while decrypting
+	;
+    ;    The 6510’s I/O port controls the memory map. We first (re)assert the
+    ;    data-direction register to a sane state, then clear the LORAM bit so
+    ;    BASIC ROM is *switched out* and underlying RAM is writable.
+    ;      CPU_PORT_DDR := $2F   ; standard configuration for making CPU_PORT bits valid
+    ;      CPU_PORT := CPU_PORT & ~CPU_LORAM_BIT   ; clear bit 0 → RAM at $A000–$BFFF
+    ;-------------------------------------------------------------------------
+    LDA #$2F
+    STA CPU_PORT_DDR
+    LDA CPU_PORT
+    AND #~CPU_LORAM_BIT
+    STA CPU_PORT
+
+    ;-------------------------------------------------------------------------
+    ; 6) Set the base pointer for decryption to the start of the region ($0400)
+	;
+    ;    (stage8_ptr_lo/hi is used by the decrypt loop as (ptr),Y.)
+    ;-------------------------------------------------------------------------
+    LDA #<DECRYPT_START
+    STA stage8_ptr_lo
+    LDA #>DECRYPT_START
+    STA stage8_ptr_hi
+
+
+    ;-------------------------------------------------------------------------
+    ; X := page count, Y := intra-page offset
+	;
+    ;   • DECRYPT_PAGES = 16 → process $10 pages × 256 bytes = 4096 bytes total
+    ;   • With stage8_ptr_lo/hi = $0400, this covers $0400..$13FF inclusive.
+    ;-------------------------------------------------------------------------
+    LDX #DECRYPT_PAGES
+    LDY #$00
+
+decrypt_next_byte:
+    ;-------------------------------------------------------------------------
+    ; Advance the stream key and mixers for this byte.
+	;
+    ;   update_rolling_xor mutates:
+    ;     - rolling_xor (the per-byte XOR key),
+    ;     - mix_a/mix_b/mix_c (key schedule state tied to prior integrity signals).
+    ;-------------------------------------------------------------------------
+    JSR update_rolling_xor
+
+    ;-------------------------------------------------------------------------
+    ; In-place decrypt: (*ptr) := (*ptr) XOR rolling_xor
+    ;-------------------------------------------------------------------------
+    LDA (stage8_ptr_lo),Y
+    EOR rolling_xor
+    STA (stage8_ptr_lo),Y
+
+    ;-------------------------------------------------------------------------
+    ; Advance within/across pages:
+	;
+    ;   Y++ walks 0..255 inside the page; on wrap (Y→0) bump high byte and
+    ;   consume one page from X. Stop when X reaches 0.
+    ;-------------------------------------------------------------------------
+    INY
+    BNE decrypt_next_byte
+    INC stage8_ptr_hi
+    DEX
+    BNE decrypt_next_byte
+    RTS
+
+; On return, execution resumes in Stage 8 at label "stage8_start", immediately
+; after the JSR check_integrity_and_decrypt_game_code, to perform the self-erase.
+; When the self-erase finishes, an RTS pulls the preloaded return address from
+; the stack, transferring control to $0400. The stack priming happened in stage 8.
+
+
+;===============================================================================
+; XOR checksum of the “stage 8” code region:
+;
+;   Range: [$9D8E .. $9EBF)  (exclusive upper bound) → 1 byte at $9D36
+;   Side-effect: writes the checksum byte at stage_8_code_checksum ($9D36),
+;                which is the operand of LDA #imm above (self-modifying).
+;===============================================================================
+checksum_stage_8:
+    ;-------------------------------------------------------------------------
+    ; Build an 8-bit XOR checksum over the Stage-8 code region.
+	;
+    ; Region: $9D8E .. $9EBE (exclusive upper bound $9EBF)
+	;
+    ; Implementation detail:
+	;
+    ;   • Keep Y=0 and advance the base pointer itself (stage8_ptr_*),
+    ;     which makes end-of-range comparison trivial.
+    ;   • The result is stored at stage_8_code_checksum — this address is the
+    ;     immediate operand of an LDA #imm elsewhere, so writing here *patches*
+    ;     that instruction at runtime (self-modifying operand).
+    ;
+    ; base pointer := $9D8E
+    ;-------------------------------------------------------------------------
+    LDA #$8E
+    STA stage8_ptr_lo
+    LDA #$9D
+    STA stage8_ptr_hi
+
+    ; acc := 0 (initialize checksum accumulator)
+    LDA #$00
+    STA stage_8_code_checksum
+    LDY #$00
+
+checksum_next_byte:
+    ; acc ^= *ptr
+    LDA (stage8_ptr_lo),Y
+    EOR stage_8_code_checksum
+    STA stage_8_code_checksum
+
+    ; ptr++
+    INC stage8_ptr_lo
+    BNE region_end_check
+    INC stage8_ptr_hi
+
+region_end_check:
+    ; Stop when ptr == $9EBF (exclusive end).
+    ; Therefore the last processed byte is at $9EBE.
+    LDA stage8_ptr_lo
+    CMP #$BF
+    BNE checksum_next_byte
+    LDA stage8_ptr_hi
+    CMP #$9E
+    BNE checksum_next_byte
+    RTS
+
+
+;===============================================================================
+; update_rolling_xor
+;-------------------------------------------------------------------------------
+; Input / output:
+;   mix_a ($B4), mix_b ($B5), mix_c ($B6) are mutated in place.
+;
+; Output:
+;   rolling_xor ($FF) = mix_a ⊕ mix_b ⊕ mix_c after a bit-mixer step.
+;
+; Summary of the bit mixer:
+;
+;   • Extract specific source bits:
+;       A0, A5, B1, B2, B3, B6, C0, C2, C3, C5, C6  → isolated into $50..$5A LSBs
+;   • Build D (in $4F) as three bits:
+;       d0 = (C2&C5) ^ (C6&C5) ^ (C6&C2) ^ C0 ^ C2 ^ C5 ^ A0
+;       d1 = (C0 ^ B6 ^ B2 ^ B1 ^ A0) << 1
+;       d2 = (C3 ^ B6 ^ B3 ^ A5) << 2
+;   • Rotate/shift A,B,C,D in a fixed sequence (see comments) to interleave bits.
+;   • Set $FF := A ⊕ B ⊕ C (post-mix).
+;
+; Registers clobbered: A,X,Y. Uses $4F..$5A as scratch.
+;===============================================================================
+update_rolling_xor:
+    ; Save A,Y,X
+    PHA
+    TYA
+    PHA
+    TXA
+    PHA
+
+    ;-------------------------------------------------------------------------
+    ; ---- extract helper bits into $50..$5A (LSBs hold the selected bits) ----
+    ; $50=A, $51=A>>5, $52=B>>1, $53=B>>2, $54=B>>3, $55=B>>6,
+    ; $56=C, $57=C>>2, $58=C>>3, $59=C>>5, $5A=C>>6
+    ;-------------------------------------------------------------------------
+    LDA mix_a
+    STA $50
+    LSR A
+	LSR A
+	LSR A
+	LSR A
+	LSR A
+    STA $51
+
+    LDA mix_b
+    LSR A
+    STA $52
+    LSR A
+    STA $53
+    LSR A
+    STA $54
+    LSR A
+	LSR A
+	LSR A
+    STA $55
+
+    LDA mix_c
+    STA $56
+    LSR A
+	LSR A
+    STA $57
+    LSR A
+    STA $58
+    LSR A
+	LSR A
+    STA $59
+    LSR A
+    STA $5A
+
+    ;-------------------------------------------------------------------------
+    ; mask all helpers to 1 bit (keep LSB only)
+    ;-------------------------------------------------------------------------
+    LDA #$01
+    STA rolling_xor
+    LDY #$0A
+mask_loop:
+    LDA rolling_xor
+    AND $0050,Y
+    STA $0050,Y
+    DEY
+    BPL mask_loop
+
+    ;-------------------------------------------------------------------------
+    ; ---- build D = d2:d1:d0 in $4F ------------------------------------------
+    ;-------------------------------------------------------------------------
+    ; d0 partials
+    LDA $5A          ; C6
+    TAX
+    AND $57          ; & C2
+    STA $4F
+    TXA              ; C6
+    AND $59          ; & C5
+    EOR $4F
+    STA $4F
+    LDA $57          ; C2
+    AND $59          ; & C5
+    EOR $4F
+    EOR $56          ; ^ C0
+    EOR $57          ; ^ C2
+    EOR $59          ; ^ C5
+    EOR $50          ; ^ A0
+    STA $4F          ; now d0 in bit0
+
+    ; d1 (<<1) | d0
+    LDA $56          ; C0
+    EOR $55          ; ^ B6
+    EOR $53          ; ^ B2
+    EOR $52          ; ^ B1
+    EOR $50          ; ^ A0
+    ASL A            ; <<1
+    ORA $4F
+    STA $4F
+
+    ; d2 (<<2) | previous
+    LDA $58          ; C3
+    EOR $55          ; ^ B6
+    EOR $54          ; ^ B3
+    EOR $51          ; ^ A5
+    ASL A
+	ASL A      		; <<2
+    ORA $4F
+    STA $4F
+
+    ;-------------------------------------------------------------------------
+    ; ---- rotate/shift A,B,C,D in the specified sequence ---------------------
+    ;-------------------------------------------------------------------------
+	;So far, 4F only has the three lower bits set, the other ones are 0
+	;We'll call mix_a, mix_b, mix_c and 4F: A,B,C,D respectively
+	;Below is the sequence of bits and steps performed
+	;B4					B5					B6					Carry		4F
+	;A					B					C								D
+	;a7a6a5a4a3a2a1a0	b7b6b5b4b3b2b1b0	c7c6c5c4c3c2c1c0	x			0_0_0_0_0_d2d1d0
+	;ASL A
+	;A					B					C
+	;a6a5a4a3a2a1a0_0	b7b6b5b4b3b2b1b0	c7c6c5c4c3c2c1c0	a7			0_0_0_0_0_d2d1d0
+	;ROL B
+	;a6a5a4a3a2a1a0_0	b6b5b4b3b2b1b0a7	c7c6c5c4c3c2c1c0	b7			0_0_0_0_0_d2d1d0
+	;ROL C
+	;a6a5a4a3a2a1a0_0	b6b5b4b3b2b1b0a7	c6c5c4c3c2c1c0b7	c7			0_0_0_0_0_d2d1d0
+	;ASL C
+	;a6a5a4a3a2a1a0_0	b6b5b4b3b2b1b0a7	c5c4c3c2c1c0b7_0	c6			0_0_0_0_0_d2d1d0
+	;LSR D
+	;a6a5a4a3a2a1a0_0	b6b5b4b3b2b1b0a7	c5c4c3c2c1c0b7_0	d0			0_0_0_0_0_0_d2d1
+	;ROR C
+	;a6a5a4a3a2a1a0_0	b6b5b4b3b2b1b0a7	d0c5c4c3c2c1c0b7 	0			0_0_0_0_0_0_d2d1
+	;ASL B
+	;a6a5a4a3a2a1a0_0	b5b4b3b2b1b0a7_0	d0c5c4c3c2c1c0b7 	b6			0_0_0_0_0_0_d2d1
+	;LSR D
+	;a6a5a4a3a2a1a0_0	b5b4b3b2b1b0a7_0	d0c5c4c3c2c1c0b7 	d1			0_0_0_0_0_0_0_d2
+	;ROR B
+	;a6a5a4a3a2a1a0_0	d1b5b4b3b2b1b0a7	d0c5c4c3c2c1c0b7 	0			0_0_0_0_0_0_0_d2
+	;LSR A
+	;0_a6a5a4a3a2a1a0	d1b5b4b3b2b1b0a7	d0c5c4c3c2c1c0b7 	0			0_0_0_0_0_0_0_d2
+	;LSR D
+	;0_a6a5a4a3a2a1a0	d1b5b4b3b2b1b0a7	d0c5c4c3c2c1c0b7 	d2			0_0_0_0_0_0_0_0_
+	;ROL A
+	;a6a5a4a3a2a1a0d2	d1b5b4b3b2b1b0a7	d0c5c4c3c2c1c0b7 	0			0_0_0_0_0_0_0_0_
+    ASL mix_a        
+    ROL mix_b        
+    ROL mix_c
+    ASL mix_c
+    LSR $4F
+    ROR mix_c
+    ASL mix_b
+    LSR $4F
+    ROR mix_b
+    LSR mix_a
+    LSR $4F
+    ROL mix_a
+
+    ;-------------------------------------------------------------------------
+    ; FF = A ^ B ^ C (post-mix)
+    ;-------------------------------------------------------------------------
+    LDA mix_a
+    EOR mix_b
+    EOR mix_c
+    STA rolling_xor
+
+    ; Restore X,Y,A
+    PLA
+    TAX
+    PLA
+    TAY
+    PLA
+    RTS
