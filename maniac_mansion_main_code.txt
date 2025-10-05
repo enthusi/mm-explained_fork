@@ -1559,6 +1559,7 @@ irq_handler = $fffe
 ; This routine will also reset the repeat counter and value to #00.
 ; After reading the dictionary, the compressed_data_ptr will be advanced by 4.
 ;===========================================
+decompress_mode = $29
 compressed_data_ptr = $27
 mode_counter = $2a
 symbol_to_repeat = $2b
@@ -1582,10 +1583,10 @@ copy_loop:
 .C:0117  69 00       ADC #$00
 .C:0119  85 28       STA >compressed_data_ptr
 ;------------------------------------------------
-;Reset mode counter and symbol
+;Reset mode counter and mode
 .C:011b  A9 00       LDA #$00
 .C:011d  85 2A       STA mode_counter
-.C:011f  85 29       STA symbol_to_repeat
+.C:011f  85 29       STA decompress_mode
 .C:0121  60          RTS
 ;===========================================
 ; Get the next decompressed byte
@@ -1649,7 +1650,7 @@ DIRECT_MODE = #$00
 RUN_MODE = #$FF
 
 get_next_decompressed_byte:
-;Save .Y in stack as we'll overwrite it
+;Save .Y as we'll overwrite it
 .C:0122  84 2D       STY y_temp
 ;Is there an ongoing repetition? (mode_counter != 0)
 ;If so, handle the repetition
@@ -1666,7 +1667,7 @@ get_next_decompressed_byte:
 ;Byte < #40 - direct mode
 ;--------------------------------------------------
 ;Set the byte read as the repetition counter
-;As this is necessarily < #40, this limits long runs expressed in this manner to 63 repetitions
+;As this is necessarily < #40, this limits long runs expressed in this manner to 64 repetitions
 .C:012f  85 2A       STA mode_counter
 ;Set the mode, as we'll need to read another byte later to get the value to be repeated
 .C:0131  A9 00       LDA DIRECT_MODE
@@ -5860,7 +5861,7 @@ set_cursor_color:
 .C:17d8  8D D9 0F    STA cursor_sprite_color
 ;--------------------------------------------------
 do_keyboard:
-.C:17db  20 62 20    JSR keyboard_handling
+.C:17db  20 62 20    JSR scan_keyboard
 ;--------------------------------------------------
 ;map_in_io
 .C:17de  A0 25       LDY #$25
@@ -8265,7 +8266,7 @@ zero_lsb_column = $205C
 keycode_ready = $2061
 
 
-keyboard_handling:
+scan_keyboard:
 .C:2062  A0 FF       LDY #$FF
 .C:2064  8C 57 20    STY keyb_column_bits
 .C:2067  8C 59 20    STY keyb_row_bits
