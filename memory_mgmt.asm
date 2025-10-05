@@ -1,3 +1,65 @@
+;===========================================
+; Memory Manager — Free-List + Best-Fit + Local Compaction
+;
+; Overview:
+;   - A singly-linked FREE list manages variable-size blocks. 
+;	- Allocation uses a best-fit scan, optionally splitting the chosen FREE node. 
+;	- A localized compaction step ("move_to_back") bubbles USED blocks left over the leading
+;   FREE region to grow contiguous free space. 
+;	- Periodic coalescing merges adjacent FREE neighbors. 
+;	An AO (address-order) pass can reorder the FREE list to improve coalescing and locality.
+;
+; Block header layout (all addresses little-endian):
+;   FREE node:
+;     +0..+1  size   (lo = tail bytes on last page, hi = full pages)
+;     +2..+3  next   (pointer to next FREE node; $0000 = null)
+;   USED block:
+;     +0..+1  size   (header + payload)
+;     +2      resource_type   
+;     +3      resource_index  
+;
+; Global invariants:
+;   - Null pointer is detected via HI byte == $00 (no headers exist in page $00).
+;   - get_next_block returns X=next.lo, Y=next.hi and sets Z from Y.
+;     STX/STY do not change flags; branches often rely on Z from get_next_block.
+;   - Size fields are (header+payload) for USED and “bytes-on-last-page/pages” encoding.
+;
+; API (high level):
+;   get_free_block (X/Y = payload size):
+;     - Computes size_needed = payload + 4 (FREE header size), seeds the scan,
+;       and dispatches to best-fit. Returns X/Y = allocated header on success (Z=0).
+;       On failure (free list empty or no fit), returns Z=1 (X/Y unspecified).
+;
+;   find_best_free_block:
+;     - Best-fit scan over FREE nodes (ties prefer later). On success sets
+;       free_block to winner and calls allocate_block.
+;
+;   allocate_block:
+;     - Split-or-consume the chosen FREE node. Split if remainder ≥ 4 bytes;
+;       otherwise splice out the node. Maintains last_free_block.
+;
+;   move_to_back:
+;     - While USED blocks immediately follow the leading FREE node, copy each
+;       USED (header+payload) into the FREE region (destination<header), fix
+;       external references, and advance pointers. Rebuild FREE header at end.
+;
+;   coalesce_free_blocks:
+;     - Merge right-adjacent FREE nodes in-place: if next == left+left.size,
+;       link-out right and grow left by right.size. Cascades at same left node.
+;
+;   sort_free_blocks (AO pass):
+;     - For each anchor, finds the lowest-address node < anchor_next and swaps
+;       it into anchor_next by pointer rewiring. In-place, O(n^2), non-stable.
+;       Refresh first_free_block from the stub on exit; update last_free_block.
+;
+; Conventions:
+;   - Registers: A/X/Y clobbered by most routines; branch docs specify Z/C meaning.
+;   - Copy helper (mem_copy_memory):
+;       total_pages = full pages, page_bytes_to_copy = tail bytes on last page,
+;       read_ptr/write_ptr = header addresses; direction safe for overlap.
+;
+;===========================================
+
 ;===============================================================================
 ; Variables
 ;===============================================================================
@@ -15,12 +77,12 @@ right_block           = $59      	; pointer to block at (left_block + left_size)
 ;----------------------------------------
 ; sort_free_blocks vars
 ;----------------------------------------
-curr_block            = $4f      ; node under comparison during scan (alias of free_block storage)
-anchor_block              = $51      ; pass anchor / predecessor for this sweep (often the head stub initially)
-anchor_next               = $53      ; first candidate after anchor_block for this pass
-min_offender          = $55      ; lowest-address node found with addr < anchor_next; $FFFF sentinel = none
+curr_block          = $4f      ; node under comparison during scan (alias of free_block storage)
+anchor_block        = $51      ; pass anchor / predecessor for this sweep (often the head stub initially)
+anchor_next         = $53      ; first candidate after anchor_block for this pass
+min_offender        = $55      ; lowest-address node found with addr < anchor_next; $FFFF sentinel = none
 min_prev            = $57      ; predecessor of min_offender (for relinking); shares ZP with `source`
-curr_prev                = $5746    ; ABS temp: rolling predecessor while scanning
+curr_prev           = $5746    ; ABS temp: rolling predecessor while scanning
 curr_next           = $5748    ; ABS temp: cached anchor_next->next
 min_next            = $574a    ; ABS temp: cached min_offender->next
 
