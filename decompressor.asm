@@ -395,3 +395,127 @@ next_byte_8:
        DEY
        BNE next_byte_8
        RTS
+
+
+; HYBRID RLE + 4-SYMBOL DICTIONARY DECOMPRESSOR — TEXT FLOW DIAGRAM
+; =================================================================
+;
+; [setup_symbol_dictionary]
+; ------------------------
+; ENTRY
+;   │
+;   ├─ Y ← #$03                                ; copy 4 bytes (indices 3..0)
+;   ├─ LOOP:  A ← (compressed_data_ptr),Y
+;   │         symbol_dictionary[Y] ← A
+;   │         Y ← Y-1
+;   │         IF Y ≥ 0 THEN LOOP
+;   │
+;   ├─ Advance compressed_data_ptr by +4       ; skip past dictionary
+;   │
+;   ├─ mode_counter ← 0
+;   ├─ decompress_mode ← 0                     ; clear state
+;   └─ RTS
+;
+;
+; [get_next_decompressed_byte]
+; ----------------------------
+; ENTRY
+;   │
+;   ├─ Save Y into y_temp
+;   │
+;   ├─ IF mode_counter ≠ 0 THEN
+;   │      ├─ mode_counter ← mode_counter - 1  ; continue current op
+;   │      └─ GOTO EMIT
+;   │
+;   ├─ ELSE  (no active op: parse a control byte)
+;   │      ├─ ctrl ← read_next_compressed_data()
+;   │      │
+;   │      ├─ IF ctrl < $40  (DIRECT) THEN
+;   │      │     ├─ mode_counter ← ctrl        ; L (will emit L+1 total)
+;   │      │     ├─ decompress_mode ← $00      ; DIRECT_MODE (bit7=0)
+;   │      │     └─ GOTO EMIT
+;   │      │
+;   │      ├─ IF $40 ≤ ctrl < $80  (AD-HOC RUN) THEN
+;   │      │     ├─ mode_counter ← (ctrl & $3F)       ; L
+;   │      │     ├─ symbol_to_repeat ← read_next_compressed_data()
+;   │      │     ├─ decompress_mode ← $FF             ; RUN_MODE (bit7=1)
+;   │      │     └─ GOTO EMIT
+;   │      │
+;   │      └─ ELSE  (ctrl ≥ $80 → DICTIONARY RUN)
+;   │            ├─ L        ←  ctrl & $1F
+;   │            ├─ index    ← (ctrl >> 5) & 3
+;   │            ├─ mode_counter ← L
+;   │            ├─ symbol_to_repeat ← symbol_dictionary[index]
+;   │            ├─ decompress_mode ← $FF             ; RUN_MODE
+;   │            └─ GOTO EMIT
+;   │
+; EMIT:
+;   │  Decide by decompress_mode bit7:
+;   │
+;   ├─ IF RUN_MODE (bit7=1) THEN
+;   │      A ← symbol_to_repeat
+;   │
+;   ├─ ELSE (DIRECT_MODE, bit7=0)
+;   │      A ← read_next_compressed_data()
+;   │
+;   ├─ Restore Y from y_temp
+;   └─ RTS   ; A = next decompressed byte
+;
+;
+; [read_next_compressed_data]
+; ---------------------------
+; ENTRY
+;   │
+;   ├─ A ← (compressed_data_ptr)               ; with Y=0
+;   ├─ compressed_data_ptr.low  ← +1
+;   ├─ IF low wrapped to 0 THEN
+;   │      compressed_data_ptr.high ← +1
+;   └─ RTS   ; A = fetched byte
+;
+;
+; [skip_compressed_data_16bit]
+; ----------------------------
+; ENTRY
+;   │
+;   ├─ IF data_count == 0 THEN RTS
+;   │
+;   ├─ LOOP:
+;   │     JSR get_next_decompressed_byte       ; discard A
+;   │     IF data_count.low == 0 THEN
+;   │         data_count.high ← data_count.high - 1
+;   │     data_count.low  ← data_count.low - 1
+;   │     IF data_count != 0 THEN LOOP
+;   │
+;   └─ RTS
+;
+;
+; [skip_compressed_data_8bit]
+; ---------------------------
+; ENTRY
+;   │
+;   ├─ Y ← data_count.low
+;   ├─ IF Y == 0 THEN RTS
+;   │
+;   ├─ LOOP:
+;   │     JSR get_next_decompressed_byte       ; discard A
+;   │     Y ← Y - 1
+;   │     IF Y ≠ 0 THEN LOOP
+;   │
+;   └─ RTS
+;
+;
+; FORMAT & STATE (for reference while reading the flow)
+; -----------------------------------------------------
+; • Control byte selects operation and encodes length L (which means “emit L+1 bytes”):
+;     DIRECT           : 00LLLLLL       (ctrl < $40) → then read (L+1) literal bytes
+;     AD-HOC RUN       : 01LLLLLL val   ($40..$7F)   → repeat ‘val’ (L+1) times
+;     DICTIONARY RUN   : 1IILLLLL       (≥ $80)      → index=II (0..3), repeat dict[index] (L+1) times
+; • Internal state across calls:
+;     mode_counter     : remaining outputs for the current op (stores L; the routine emits on entry,
+;                        and pre-decrements on subsequent calls).
+;     decompress_mode  : $00 (DIRECT) / $FF (RUN); only bit7 is tested at EMIT time.
+;     symbol_to_repeat : latched at op start for both AD-HOC and DICT runs.
+;     y_temp           : saves caller’s Y.
+; • Contract: call setup_symbol_dictionary once (copies 4 bytes, advances input by 4, clears state),
+;   then call get_next_decompressed_byte repeatedly to stream the output. The skip_* helpers advance
+;   the same state while discarding data, allowing fast-forwarding within the compressed stream.
