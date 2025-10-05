@@ -146,131 +146,131 @@ SOUND_RESOURCE = $06
 ;
 ;===========================================
 coalesce_free_blocks:
-       ; Load the head of the FREE list into ‘left_block’.
-       LDA first_free_block
-       STA left_block
-       LDA first_free_block + 1
-       STA left_block + 1
+		; Load the head of the FREE list into ‘left_block’.
+		LDA first_free_block
+		STA left_block
+		LDA first_free_block + 1
+		STA left_block + 1
 
-       ; Empty list? If first_free_block == $0000, nothing to merge → return.
-       BEQ exit_1
+		; Empty list? If first_free_block == $0000, nothing to merge → return.
+		BEQ exit_1
 
 compute_adjacent:
-       ;----------------------------------------
-       ; Read the current FREE block’s size (on the left side):
-       ;----------------------------------------
-       LDY #$00
-       LDA (left_block),Y
-       STA left_size
-       INY
-       LDA (left_block),Y
-       STA left_size + 1
+		;----------------------------------------
+		; Read the current FREE block’s size (on the left side):
+		;----------------------------------------
+		LDY #$00
+		LDA (left_block),Y
+		STA left_size
+		INY
+		LDA (left_block),Y
+		STA left_size + 1
 
-       ;----------------------------------------
-       ; Compute the address of the block that would be immediately to the right:
-	   ;
-       ;   right_block = left_block + left_size
-       ;----------------------------------------
-       CLC
-       LDA left_size
-       ADC left_block
-       STA right_block
-       LDA left_size + 1
-       ADC left_block + 1
-       STA right_block + 1
+		;----------------------------------------
+		; Compute the address of the block that would be immediately to the right:
+		;
+		;   right_block = left_block + left_size
+		;----------------------------------------
+		CLC
+		LDA left_size
+		ADC left_block
+		STA right_block
+		LDA left_size + 1
+		ADC left_block + 1
+		STA right_block + 1
 
-       ; Fetch the pointer to the NEXT free block (into X/Y).
-       JSR get_next_block
+		; Fetch the pointer to the NEXT free block (into X/Y).
+		JSR get_next_block
 
-       ; If there is no next block (X:Y == $0000), we’re at the tail → done.
-       BNE adjacency_check
-       RTS
+		; If there is no next block (X:Y == $0000), we’re at the tail → done.
+		BNE adjacency_check
+		RTS
 
 adjacency_check:
-       ;----------------------------------------
-       ; Test right-adjacency:
-	   ;
-       ;   Are we exactly at left_block + block_size ? (i.e., right_block)
-       ;   Compare next_block (X/Y) against right_block (lo/hi).
-       ;----------------------------------------
-       CPX right_block
-       BNE adjacency_check_2
-       CPY right_block + 1
+		;----------------------------------------
+		; Test right-adjacency:
+		;
+		;   Are we exactly at left_block + block_size ? (i.e., right_block)
+		;   Compare next_block (X/Y) against right_block (lo/hi).
+		;----------------------------------------
+		CPX right_block
+		BNE adjacency_check_2
+		CPY right_block + 1
 adjacency_check_2:
-       ; Branch if NOT adjacent (X:Y ≠ right_block).
-       BNE next_block_is_not_adjacent
+		; Branch if NOT adjacent (X:Y ≠ right_block).
+		BNE next_block_is_not_adjacent
 
-       ;----------------------------------------
-       ; Adjacent detected
-       ;----------------------------------------
+		;----------------------------------------
+		; Adjacent detected
+		;----------------------------------------
 	   
 		; Unnecessary code, as X/Y already have the desired values
 		; Keeping here for consistency with original
-       STX right_block
-       STY right_block + 1
+		STX right_block
+		STY right_block + 1
 
-       ;----------------------------------------
-       ; Splice out the second block from the FREE list:
-       ;   first_block.next ← second_block.next
-	   ;
-       ; Copy header +2..+3 (next pointer) from right_block → left_block.
-       ;----------------------------------------
-       LDY #$02
-       LDA (right_block),Y
-       STA (left_block),Y
-       INY
-       LDA (right_block),Y
-       STA (left_block),Y
+		;----------------------------------------
+		; Splice out the second block from the FREE list:
+		;   first_block.next ← second_block.next
+		;
+		; Copy header +2..+3 (next pointer) from right_block → left_block.
+		;----------------------------------------
+		LDY #$02
+		LDA (right_block),Y
+		STA (left_block),Y
+		INY
+		LDA (right_block),Y
+		STA (left_block),Y
 
-       ;----------------------------------------
-       ; Add the two block sizes to form the new, coalesced size in left_block.
-	   ;
-       ; Perform 16-bit addition: left_block.size = left_size + right_block.size
-       ;----------------------------------------
-       LDY #$00
-       CLC
-       LDA left_size
-       ADC (right_block),Y          ; add size.lo
-       STA (left_block),Y              ; write new size.lo
-       INY
-       LDA left_size + 1
-       ADC (right_block),Y          ; add size.hi (+ carry from low-byte add)
-       STA (left_block),Y              ; write new size.hi
+		;----------------------------------------
+		; Add the two block sizes to form the new, coalesced size in left_block.
+		;
+		; Perform 16-bit addition: left_block.size = left_size + right_block.size
+		;----------------------------------------
+		LDY #$00
+		CLC
+		LDA left_size
+		ADC (right_block),Y          ; add size.lo
+		STA (left_block),Y              ; write new size.lo
+		INY
+		LDA left_size + 1
+		ADC (right_block),Y          ; add size.hi (+ carry from low-byte add)
+		STA (left_block),Y              ; write new size.hi
 
-       ;----------------------------------------
-        ; If we just removed the TAIL node (right_block == last_free_block),
-       ; then the newly coalesced first block becomes the new tail.
-       ;----------------------------------------
-       LDA right_block
-       CMP last_free_block
-       BNE continue
-       LDA right_block + 1
-       CMP last_free_block + 1
-       BNE continue
+		;----------------------------------------
+		; If we just removed the TAIL node (right_block == last_free_block),
+		; then the newly coalesced first block becomes the new tail.
+		;----------------------------------------
+		LDA right_block
+		CMP last_free_block
+		BNE continue
+		LDA right_block + 1
+		CMP last_free_block + 1
+		BNE continue
 	   
-       LDA left_block
-       STA last_free_block
-       LDA left_block + 1
-       STA last_free_block + 1
+		LDA left_block
+		STA last_free_block
+		LDA left_block + 1
+		STA last_free_block + 1
 
 continue:
-       ; Continue scanning: fall through to null-check using hi byte of left_block.
-       LDA left_block + 1
-       JMP is_block_null
+		; Continue scanning: fall through to null-check using hi byte of left_block.
+		LDA left_block + 1
+		JMP is_block_null
 
 next_block_is_not_adjacent:
-       ; Not adjacent → advance to the next FREE block and keep checking.
-       JSR get_next_block			;Redundant call - kept here to match the original
-       STX left_block
-       STY left_block + 1
+		; Not adjacent → advance to the next FREE block and keep checking.
+		JSR get_next_block			;Redundant call - kept here to match the original
+		STX left_block
+		STY left_block + 1
 
 ;----------------------------------------
 ; Loop guard: if left_block != $0000, process next candidate; else exit.
 ;----------------------------------------
 is_block_null:
-       BNE compute_adjacent
+		BNE compute_adjacent
 exit_1:
-       RTS
+		RTS
 ;===========================================
 ; Sort Free Blocks by Address (AO pass with localized swaps)
 ;
@@ -336,222 +336,222 @@ exit_1:
 ;===========================================
 * = $574C
 sort_free_blocks:
-       ;----------------------------------------
-       ; Initialize sorting by setting ‘anchor_block’ to point at the
-       ; free block stub. This structure mimics a normal block header,
-       ; holding the first_free_block pointer at offsets +2..+3.
-       ;
-       ; The routine will use anchor_block as the list head during traversal,
-       ; allowing consistent pointer logic for block headers and the stub.
-       ;----------------------------------------
-       LDA #<free_list_head_stub
-       STA anchor_block
-       LDA #>free_list_head_stub
-       STA anchor_block + 1
+		;----------------------------------------
+		; Initialize sorting by setting ‘anchor_block’ to point at the
+		; free block stub. This structure mimics a normal block header,
+		; holding the first_free_block pointer at offsets +2..+3.
+		;
+		; The routine will use anchor_block as the list head during traversal,
+		; allowing consistent pointer logic for block headers and the stub.
+		;----------------------------------------
+		LDA #<free_list_head_stub
+		STA anchor_block
+		LDA #>free_list_head_stub
+		STA anchor_block + 1
 
 setup_comparison:
-       ;----------------------------------------
-       ; Prepare pass state:
-       ;   min_offender ← $FFFF
-       ;     Sentinel meaning “no offender found yet”; any real block address
-       ;     will compare lower and replace it.
-       ;----------------------------------------
-       LDA #$FF
-       STA min_offender
-       STA min_offender + 1
+		;----------------------------------------
+		; Prepare pass state:
+		;   min_offender ← $FFFF
+		;     Sentinel meaning “no offender found yet”; any real block address
+		;     will compare lower and replace it.
+		;----------------------------------------
+		LDA #$FF
+		STA min_offender
+		STA min_offender + 1
 
-       ;----------------------------------------
-       ; Initialize the sliding window at the list head:
-       ;   curr_prev ← anchor_block  (the stub)
-       ; We’ll advance to the first real entry next; keeping curr_prev aligned
-       ; with the node before the current candidate simplifies pointer swaps.
-       ;----------------------------------------
-       LDA anchor_block
-       STA curr_prev
-       LDA anchor_block + 1
-       STA curr_prev + 1
+		;----------------------------------------
+		; Initialize the sliding window at the list head:
+		;   curr_prev ← anchor_block  (the stub)
+		; We’ll advance to the first real entry next; keeping curr_prev aligned
+		; with the node before the current candidate simplifies pointer swaps.
+		;----------------------------------------
+		LDA anchor_block
+		STA curr_prev
+		LDA anchor_block + 1
+		STA curr_prev + 1
 
-       ;----------------------------------------
-       ; Prime the first candidate pair:
-       ;   anchor_next ← anchor_block->next        (read stub’s +2..+3)
-       ;   curr_block ← anchor_next            (mirrored in X/Y for speed)
-       ; If anchor_next == $0000, the list is empty/singleton → nothing to sort.
-       ;----------------------------------------
-       LDY #$02
-       LDA (anchor_block),Y
-       STA anchor_next
-       TAX
-       INY
-       LDA (anchor_block),Y
-       STA anchor_next + 1
-       TAY
-       BNE compare_order            ; nonzero: have a first candidate
-       ; No next block → nothing to sort
-       JMP no_more_blocks
+		;----------------------------------------
+		; Prime the first candidate pair:
+		;   anchor_next ← anchor_block->next        (read stub’s +2..+3)
+		;   curr_block ← anchor_next            (mirrored in X/Y for speed)
+		; If anchor_next == $0000, the list is empty/singleton → nothing to sort.
+		;----------------------------------------
+		LDY #$02
+		LDA (anchor_block),Y
+		STA anchor_next
+		TAX
+		INY
+		LDA (anchor_block),Y
+		STA anchor_next + 1
+		TAY
+		BNE compare_order            ; nonzero: have a first candidate
+		; No next block → nothing to sort
+		JMP no_more_blocks
 
 compare_order:
-       ;----------------------------------------
-       ; Establish the comparison window:
-       ;   curr_block ← X/Y     (candidate under test)
-       ;   curr_next    ← curr_block->next
-       ; We'll verify whether curr_block is in Address Order (AO)
-       ; relative to anchor_next and track any out-of-order offender.
-       ;----------------------------------------
-       STX curr_block
-       STY curr_block + 1
+		;----------------------------------------
+		; Establish the comparison window:
+		;   curr_block ← X/Y     (candidate under test)
+		;   curr_next    ← curr_block->next
+		; We'll verify whether curr_block is in Address Order (AO)
+		; relative to anchor_next and track any out-of-order offender.
+		;----------------------------------------
+		STX curr_block
+		STY curr_block + 1
 
-       ; Read the singly-linked ‘next’ pointer from curr_block header.
-       JSR get_next_block
-       STX curr_next
-       STY curr_next + 1
+		; Read the singly-linked ‘next’ pointer from curr_block header.
+		JSR get_next_block
+		STX curr_next
+		STY curr_next + 1
 
-       ;----------------------------------------
-       ; Address Order (AO) check between curr_block and anchor_next.
-	   ;
-       ; Compute (curr_block - anchor_next) as a 16-bit subtract:
-       ;   SEC; SBC low, then SBC high.
-       ; Interpretation:
-       ;   C=1 (no borrow)  → curr_block ≥ anchor_next  → AO OK → skip to next_comparison
-       ;   C=0 (borrow)     → curr_block <  anchor_next → AO violated → handle offender
-       ;----------------------------------------
-       SEC
-       LDA curr_block
-       SBC anchor_next
-       LDA curr_block + 1
-       SBC anchor_next + 1
-       BCS next_comparison            ; C=1 → in order; continue
+		;----------------------------------------
+		; Address Order (AO) check between curr_block and anchor_next.
+		;
+		; Compute (curr_block - anchor_next) as a 16-bit subtract:
+		;   SEC; SBC low, then SBC high.
+		; Interpretation:
+		;   C=1 (no borrow)  → curr_block ≥ anchor_next  → AO OK → skip to next_comparison
+		;   C=0 (borrow)     → curr_block <  anchor_next → AO violated → handle offender
+		;----------------------------------------
+		SEC
+		LDA curr_block
+		SBC anchor_next
+		LDA curr_block + 1
+		SBC anchor_next + 1
+		BCS next_comparison            ; C=1 → in order; continue
 
-       ;----------------------------------------
-       ; AO violated → record the lowest-address offender seen so far.
-	   ;
-       ; Compare (curr_block - min_offender):
-       ;   C=1 (no borrow)  → curr_block ≥ min_offender → not lower → keep existing
-       ;   C=0 (borrow)     → curr_block <  min_offender → NEW lowest offender
-       ;----------------------------------------
-       SEC
-       LDA curr_block
-       SBC min_offender
-       LDA curr_block + 1
-       SBC min_offender + 1
-       BCS next_comparison            ; C=1 → not lower than current lowest → skip
+		;----------------------------------------
+		; AO violated → record the lowest-address offender seen so far.
+		;
+		; Compare (curr_block - min_offender):
+		;   C=1 (no borrow)  → curr_block ≥ min_offender → not lower → keep existing
+		;   C=0 (borrow)     → curr_block <  min_offender → NEW lowest offender
+		;----------------------------------------
+		SEC
+		LDA curr_block
+		SBC min_offender
+		LDA curr_block + 1
+		SBC min_offender + 1
+		BCS next_comparison            ; C=1 → not lower than current lowest → skip
 
-       ;----------------------------------------
-       ; New lowest-address offender detected — snapshot offender and links:
-	   ;
-       ;   min_offender ← curr_block       (the out-of-order node)
-       ;   min_prev   ← curr_prev          (node before offender)
-       ;   min_next   ← curr_next          (node after offender)
-       ; These will be used later to perform the pointer swap with anchor_next.
-       ;----------------------------------------
-       LDA curr_block
-       STA min_offender
-       LDA curr_block + 1
-       STA min_offender + 1
+		;----------------------------------------
+		; New lowest-address offender detected — snapshot offender and links:
+		;
+		;   min_offender ← curr_block       (the out-of-order node)
+		;   min_prev   ← curr_prev          (node before offender)
+		;   min_next   ← curr_next          (node after offender)
+		; These will be used later to perform the pointer swap with anchor_next.
+		;----------------------------------------
+		LDA curr_block
+		STA min_offender
+		LDA curr_block + 1
+		STA min_offender + 1
 
-       LDA curr_prev
-       STA min_prev
-       LDA curr_prev + 1
-       STA min_prev + 1
+		LDA curr_prev
+		STA min_prev
+		LDA curr_prev + 1
+		STA min_prev + 1
 
-       LDA curr_next
-       STA min_next
-       LDA curr_next + 1
-       STA min_next + 1
+		LDA curr_next
+		STA min_next
+		LDA curr_next + 1
+		STA min_next + 1
 
 next_comparison:
-       ;----------------------------------------
-       ; Slide the comparison window forward:
-       ;   curr_prev    ← curr_block
-       ;   curr_block (X/Y) ← curr_next
-       ; Then continue while curr_block != $0000.
-       ;----------------------------------------
-       LDA curr_block
-       STA curr_prev
-       LDA curr_block + 1
-       STA curr_prev + 1
+		;----------------------------------------
+		; Slide the comparison window forward:
+		;   curr_prev    ← curr_block
+		;   curr_block (X/Y) ← curr_next
+		; Then continue while curr_block != $0000.
+		;----------------------------------------
+		LDA curr_block
+		STA curr_prev
+		LDA curr_block + 1
+		STA curr_prev + 1
 
-       LDX curr_next
-       LDY curr_next + 1
+		LDX curr_next
+		LDY curr_next + 1
 
-       ; If curr_block (X/Y) is null, we reached the end — proceed to swap check.
-       BNE compare_order
+		; If curr_block (X/Y) is null, we reached the end — proceed to swap check.
+		BNE compare_order
 
-       ;----------------------------------------
-       ; End of this sweep: if an out-of-order (min_offender) was found,
-       ; perform a localized re-link to move it directly after anchor_block
-       ; (i.e., swap it into the position of anchor_next).
-       ;
-       ; min_offender == $FFFF → none found → skip swap.
-       ;----------------------------------------
-       LDA min_offender + 1
-       CMP #$FF
-       BEQ next_start_block
+		;----------------------------------------
+		; End of this sweep: if an out-of-order (min_offender) was found,
+		; perform a localized re-link to move it directly after anchor_block
+		; (i.e., swap it into the position of anchor_next).
+		;
+		; min_offender == $FFFF → none found → skip swap.
+		;----------------------------------------
+		LDA min_offender + 1
+		CMP #$FF
+		BEQ next_start_block
 
-       ;----------------------------------------
-       ; Swap min_offender with anchor_next
-       ; Pointer surgery overview (all writes address header +2..+3 “next” fields):
-       ;   anchor_block.next     = min_offender
-       ;   min_prev.next   = anchor_next
-       ;   min_offender.next = anchor_next.next
-       ;   anchor_next.next      = min_next
-       ;----------------------------------------
-       LDY #$02
+		;----------------------------------------
+		; Swap min_offender with anchor_next
+		; Pointer surgery overview (all writes address header +2..+3 “next” fields):
+		;   anchor_block.next     = min_offender
+		;   min_prev.next   = anchor_next
+		;   min_offender.next = anchor_next.next
+		;   anchor_next.next      = min_next
+		;----------------------------------------
+		LDY #$02
 
-       ; anchor_block->next = min_offender
-       LDA min_offender
-       STA (anchor_block),Y
+		; anchor_block->next = min_offender
+		LDA min_offender
+		STA (anchor_block),Y
 
-       ; min_prev->next = anchor_next
-       LDA anchor_next
-       STA (min_prev),Y
+		; min_prev->next = anchor_next
+		LDA anchor_next
+		STA (min_prev),Y
 
-       ; min_offender->next = anchor_next->next
-       LDA (anchor_next),Y
-       STA (min_offender),Y
+		; min_offender->next = anchor_next->next
+		LDA (anchor_next),Y
+		STA (min_offender),Y
 
-       ; anchor_next->next = min_next
-       LDA min_next
-       STA (anchor_next),Y
+		; anchor_next->next = min_next
+		LDA min_next
+		STA (anchor_next),Y
 
-       ; Repeat for the high bytes of the pointers
-       INY
-       LDA min_offender + 1
-       STA (anchor_block),Y
-       LDA anchor_next + 1
-       STA (min_prev),Y
-       LDA (anchor_next),Y
-       STA (min_offender),Y
-       LDA min_next + 1
-       STA (anchor_next),Y
+		; Repeat for the high bytes of the pointers
+		INY
+		LDA min_offender + 1
+		STA (anchor_block),Y
+		LDA anchor_next + 1
+		STA (min_prev),Y
+		LDA (anchor_next),Y
+		STA (min_offender),Y
+		LDA min_next + 1
+		STA (anchor_next),Y
 
 next_start_block:
-       ;----------------------------------------
-       ; Advance the outer pass anchor:
-       ;   anchor_block ← anchor_block->next
-       ; If no further nodes exist, finish by updating the tail pointer.
-       ;----------------------------------------
-       LDA anchor_block
-       STA curr_block
-       LDA anchor_block + 1
-       STA curr_block + 1
+		;----------------------------------------
+		; Advance the outer pass anchor:
+		;   anchor_block ← anchor_block->next
+		; If no further nodes exist, finish by updating the tail pointer.
+		;----------------------------------------
+		LDA anchor_block
+		STA curr_block
+		LDA anchor_block + 1
+		STA curr_block + 1
 	   
-       JSR get_next_block               ; X/Y = anchor_block->next
-       BEQ no_more_blocks               ; null → list exhausted
+		JSR get_next_block               ; X/Y = anchor_block->next
+		BEQ no_more_blocks               ; null → list exhausted
 	   
-       STX anchor_block                 ; step anchor forward
-       STY anchor_block + 1
-       JMP setup_comparison             ; begin next sweep from new anchor
+		STX anchor_block                 ; step anchor forward
+		STY anchor_block + 1
+		JMP setup_comparison             ; begin next sweep from new anchor
 
 no_more_blocks:
-       ;----------------------------------------
-       ; Sorting complete — refresh the recorded tail pointer to the final node.
-       ; (At this point anchor_block holds the last node in the list.)
-       ;----------------------------------------
-       LDA anchor_block
-       STA last_free_block
-       LDA anchor_block + 1
-       STA last_free_block + 1
-       RTS
+		;----------------------------------------
+		; Sorting complete — refresh the recorded tail pointer to the final node.
+		; (At this point anchor_block holds the last node in the list.)
+		;----------------------------------------
+		LDA anchor_block
+		STA last_free_block
+		LDA anchor_block + 1
+		STA last_free_block + 1
+		RTS
 ;===========================================
 ; Get Free Block (Allocator Entry Point)
 ;
@@ -598,31 +598,31 @@ no_more_blocks:
 ;===========================================
 * = $581B	
 get_free_block:
-       ; Capture payload size for allocator (alias of raw_data_size used by allocate_block).
-       STX payload_size
-       STY payload_size + 1
+		; Capture payload size for allocator (alias of raw_data_size used by allocate_block).
+		STX payload_size
+		STY payload_size + 1
 
-       ; Compute total bytes required including the 4-byte block header:
-       ; Total requested bytes (HEADER + payload): size_needed = raw_data_size + 4
-       CLC
-       LDA payload_size
-       ADC #$04
-       STA size_needed
-       LDA payload_size + 1
-       ADC #$00
-       STA size_needed + 1
+		; Compute total bytes required including the 4-byte block header:
+		; Total requested bytes (HEADER + payload): size_needed = raw_data_size + 4
+		CLC
+		LDA payload_size
+		ADC #$04
+		STA size_needed
+		LDA payload_size + 1
+		ADC #$00
+		STA size_needed + 1
 
-       ; Initialize the scan at the head of the FREE list.
-	   ; Check head.hi (null if $00). LDA sets Z, STA does not; BNE uses Z from LDA.
-       LDA first_free_block
-       STA free_block
-       LDA first_free_block + 1
-       STA free_block + 1
+		; Initialize the scan at the head of the FREE list.
+		; Check head.hi (null if $00). LDA sets Z, STA does not; BNE uses Z from LDA.
+		LDA first_free_block
+		STA free_block
+		LDA first_free_block + 1
+		STA free_block + 1
 
-       ; If the FREE list is empty (free_block == $0000), return with Z=1.
-       ; Otherwise, tail-call into the best-fit selector.
-       BNE find_best_free_block
-       RTS
+		; If the FREE list is empty (free_block == $0000), return with Z=1.
+		; Otherwise, tail-call into the best-fit selector.
+		BNE find_best_free_block
+		RTS
 ;===========================================
 ; Find Best Free Block (Best-Fit Allocator)
 ;
@@ -666,135 +666,135 @@ get_free_block:
 ;     - Else: free_block ← best_free_block; JSR allocate_block; return X/Y = best_free_block.
 ;===========================================
 find_best_free_block:
-       ;----------------------------------------
-       ; Initialize “current best” to: size = $FFFF (max) and block = $0000 (none).
-       ; Any real fitting candidate will be smaller than $FFFF and replace this.
-       ;----------------------------------------
-       LDA #$FF
-       STA best_free_size
-       STA best_free_size + 1
-       LDA #$00
-       STA best_free_block
-       LDA #$00
-       STA best_free_block + 1
+		;----------------------------------------
+		; Initialize “current best” to: size = $FFFF (max) and block = $0000 (none).
+		; Any real fitting candidate will be smaller than $FFFF and replace this.
+		;----------------------------------------
+		LDA #$FF
+		STA best_free_size
+		STA best_free_size + 1
+		LDA #$00
+		STA best_free_block
+		LDA #$00
+		STA best_free_block + 1
 
-       ;----------------------------------------
-       ; Seed prev_block with the free-list stub head (acts as the predecessor
-       ; of the first real free block). As we walk the list, prev_block will
-       ; track the node before ‘free_block’ for bookkeeping/surgery later.
-       ;----------------------------------------
-       LDA #<free_list_head_stub
-       STA prev_block
-       LDA #>free_list_head_stub
-       STA prev_block + 1
+		;----------------------------------------
+		; Seed prev_block with the free-list stub head (acts as the predecessor
+		; of the first real free block). As we walk the list, prev_block will
+		; track the node before ‘free_block’ for bookkeeping/surgery later.
+		;----------------------------------------
+		LDA #<free_list_head_stub
+		STA prev_block
+		LDA #>free_list_head_stub
+		STA prev_block + 1
 
 check_candidate:
-       ;----------------------------------------
-       ; Read the candidate FREE block’s size from its header:
-       ;   header +0 = size.lo (tail bytes), header +1 = size.hi (pages)
-       ;----------------------------------------
-       LDY #$00
-       LDA (free_block),Y
-       STA candidate_size
-       INY
-       LDA (free_block),Y
-       STA candidate_size + 1
+		;----------------------------------------
+		; Read the candidate FREE block’s size from its header:
+		;   header +0 = size.lo (tail bytes), header +1 = size.hi (pages)
+		;----------------------------------------
+		LDY #$00
+		LDA (free_block),Y
+		STA candidate_size
+		INY
+		LDA (free_block),Y
+		STA candidate_size + 1
 
-       ;----------------------------------------
-       ; Fit test: does candidate >= size_needed ?
-	   ;
-       ; Compute (candidate - size_needed). 
-	   ; If a borrow occurs (BCC), then candidate < size_needed → it cannot fit → skip to next block.
-       ;----------------------------------------
-       SEC
-       LDA candidate_size
-       SBC size_needed
-       LDA candidate_size + 1
-       SBC size_needed + 1
-       BCC move_to_next_block            ; too small → examine next candidate
+		;----------------------------------------
+		; Fit test: does candidate >= size_needed ?
+		;
+		; Compute (candidate - size_needed). 
+		; If a borrow occurs (BCC), then candidate < size_needed → it cannot fit → skip to next block.
+		;----------------------------------------
+		SEC
+		LDA candidate_size
+		SBC size_needed
+		LDA candidate_size + 1
+		SBC size_needed + 1
+		BCC move_to_next_block            ; too small → examine next candidate
 
-       ;----------------------------------------
-       ; DATA FITS — check whether this candidate improves the current best-fit.
-	   ;
-       ; Compare (best_free_size - candidate_size):
-	   ;
-       ;   If borrow (BCC) → candidate is LARGER than current best → not better.
-       ;   If no borrow    → candidate is <= current best         → accept later.
-       ;----------------------------------------
-       SEC
-       LDA best_free_size
-       SBC candidate_size
-       LDA best_free_size + 1
-       SBC candidate_size + 1
-       BCC move_to_next_block            ; candidate > best → skip, keep current best
+		;----------------------------------------
+		; DATA FITS — check whether this candidate improves the current best-fit.
+		;
+		; Compare (best_free_size - candidate_size):
+		;
+		;   If borrow (BCC) → candidate is LARGER than current best → not better.
+		;   If no borrow    → candidate is <= current best         → accept later.
+		;----------------------------------------
+		SEC
+		LDA best_free_size
+		SBC candidate_size
+		LDA best_free_size + 1
+		SBC candidate_size + 1
+		BCC move_to_next_block            ; candidate > best → skip, keep current best
 
-       ;----------------------------------------
-       ; NEW BEST-FIT FOUND
-	   ;
-	   ; This call to "get_next_block" is not really needed, as X/Y will get overwritten
-	   ; again by the following "get_next_block" call later on - it doesn't harm either
-	   ; Keeping it here as it's present in the original code
-       ;----------------------------------------
-       JSR get_next_block		
+		;----------------------------------------
+		; NEW BEST-FIT FOUND
+		;
+		; This call to "get_next_block" is not really needed, as X/Y will get overwritten
+		; again by the following "get_next_block" call later on - it doesn't harm either
+		; Keeping it here as it's present in the original code
+		;----------------------------------------
+		JSR get_next_block		
 
-       ; Record the new minimum (best) size.
-       LDA candidate_size
-       STA best_free_size
-       LDA candidate_size + 1
-       STA best_free_size + 1
+		; Record the new minimum (best) size.
+		LDA candidate_size
+		STA best_free_size
+		LDA candidate_size + 1
+		STA best_free_size + 1
 
-       ; Record the address of the new best-fit block.
-       LDA free_block
-       STA best_free_block
-       LDA free_block + 1
-       STA best_free_block + 1
+		; Record the address of the new best-fit block.
+		LDA free_block
+		STA best_free_block
+		LDA free_block + 1
+		STA best_free_block + 1
 
-       ; Record the address of the predecessor
-       LDA prev_block
-       STA predecessor
-       LDA prev_block + 1
-       STA predecessor + 1
+		; Record the address of the predecessor
+		LDA prev_block
+		STA predecessor
+		LDA prev_block + 1
+		STA predecessor + 1
 
 move_to_next_block:
-       ;----------------------------------------
-       ; Remember the current candidate as 'prev_block' (predecessor tracking).
-       ; Useful for later list surgery, though not directly used in this pass.
-       ;----------------------------------------
-       LDA free_block
-       STA prev_block
-       LDA free_block + 1
-       STA prev_block + 1
+		;----------------------------------------
+		; Remember the current candidate as 'prev_block' (predecessor tracking).
+		; Useful for later list surgery, though not directly used in this pass.
+		;----------------------------------------
+		LDA free_block
+		STA prev_block
+		LDA free_block + 1
+		STA prev_block + 1
 
-       ; Advance the scan to the next FREE block in the list.
-       JSR get_next_block
-       STX free_block
-       STY free_block + 1
+		; Advance the scan to the next FREE block in the list.
+		JSR get_next_block
+		STX free_block
+		STY free_block + 1
 
-       ; Continue scanning while free_block != $0000.
-       BNE check_candidate
+		; Continue scanning while free_block != $0000.
+		BNE check_candidate
 
-       ;----------------------------------------
-       ; END OF SCAN — commit best-fit (if any) and allocate
-       ; Load the winner back into free_block so allocate_block operates on it.
-       ;----------------------------------------
-       LDA best_free_block
-       STA free_block
-       LDA best_free_block + 1
-       STA free_block + 1
+		;----------------------------------------
+		; END OF SCAN — commit best-fit (if any) and allocate
+		; Load the winner back into free_block so allocate_block operates on it.
+		;----------------------------------------
+		LDA best_free_block
+		STA free_block
+		LDA best_free_block + 1
+		STA free_block + 1
 
-       ; If best_free_block == $0000 → no fitting block was found → return with Z=1.
-       BNE free_block_found
-       RTS
+		; If best_free_block == $0000 → no fitting block was found → return with Z=1.
+		BNE free_block_found
+		RTS
 
 free_block_found:
-       ; Consume/split the chosen FREE block to satisfy the request.
-       JSR allocate_block
+		; Consume/split the chosen FREE block to satisfy the request.
+		JSR allocate_block
 
-       ; Return the allocated block pointer to caller:
-       ;   X = lo(best_free_block), Y = hi(best_free_block), Z=0 (success).
-       LDX best_free_block
-       LDY best_free_block + 1
-       RTS
+		; Return the allocated block pointer to caller:
+		;   X = lo(best_free_block), Y = hi(best_free_block), Z=0 (success).
+		LDX best_free_block
+		LDY best_free_block + 1
+		RTS
 ;===========================================
 ; Compact and Retry Allocation with Resource Release
 ;
@@ -837,46 +837,46 @@ free_block_found:
 * = $58D5
 
 compact_and_release:
-       ;----------------------------------------
-       ; Preserve caller’s requested payload size and force the allocator path:
-       ;   saved_request_size ← payload_size
-       ;   payload_size ← $FFFF  (sentinel to indicate “recompute/use saved size”)
-       ; Rationale: some downstream paths consult payload_size; poisoning it avoids
-       ; accidental reuse while we compact and possibly free resources.
-       ;----------------------------------------
-       LDA payload_size
-       STA saved_request_size
-       LDA payload_size + 1
-       STA saved_request_size + 1
-       LDA #$FF
-       STA payload_size
-       LDA #$FF
-       STA payload_size + 1
+		;----------------------------------------
+		; Preserve caller’s requested payload size and force the allocator path:
+		;   saved_request_size ← payload_size
+		;   payload_size ← $FFFF  (sentinel to indicate “recompute/use saved size”)
+		; Rationale: some downstream paths consult payload_size; poisoning it avoids
+		; accidental reuse while we compact and possibly free resources.
+		;----------------------------------------
+		LDA payload_size
+		STA saved_request_size
+		LDA payload_size + 1
+		STA saved_request_size + 1
+		LDA #$FF
+		STA payload_size
+		LDA #$FF
+		STA payload_size + 1
 
-       ;----------------------------------------
-       ; Phase 1: try to make a large contiguous FREE region by pushing leading
-       ; free space toward higher addresses and merging neighbors.
-       ;----------------------------------------
-       JSR move_free_blocks_to_back
+		;----------------------------------------
+		; Phase 1: try to make a large contiguous FREE region by pushing leading
+		; free space toward higher addresses and merging neighbors.
+		;----------------------------------------
+		JSR move_free_blocks_to_back
 
-       ;----------------------------------------
-       ; Phase 2: attempt allocation with the preserved requested saved_request_size.
-       ; On success, get_free_block returns with Z=0 → branch to exit.
-       ;----------------------------------------
-       LDX saved_request_size
-       LDY saved_request_size + 1
-       JSR get_free_block
-       BNE free_block_found_2
+		;----------------------------------------
+		; Phase 2: attempt allocation with the preserved requested saved_request_size.
+		; On success, get_free_block returns with Z=0 → branch to exit.
+		;----------------------------------------
+		LDX saved_request_size
+		LDY saved_request_size + 1
+		JSR get_free_block
+		BNE free_block_found_2
 
-       ;----------------------------------------
-       ; Phase 3 (fallback): still no block — release resources by priority and retry.
-       ; release_rsrcs_by_priority returns Z=0 when something was released; loop if so.
-       ;----------------------------------------
-       JSR release_rsrcs_by_priority
-       BNE compact_and_release
+		;----------------------------------------
+		; Phase 3 (fallback): still no block — release resources by priority and retry.
+		; release_rsrcs_by_priority returns Z=0 when something was released; loop if so.
+		;----------------------------------------
+		JSR release_rsrcs_by_priority
+		BNE compact_and_release
 
 free_block_found_2:
-       RTS
+		RTS
 ;===========================================
 ; Get pointer to the next block
 ;
@@ -897,16 +897,16 @@ free_block_found_2:
 ;===========================================
 * = $58FF
 get_next_block:
-       ; Y = 2 → address the “next” field (low byte) in the block header
-       LDY #$02
-       ; Load low byte of next pointer → X
-       LDA (block_ptr),Y
-       TAX
-       ; Load high byte of next pointer → Y
-       INY
-       LDA (block_ptr),Y
-       TAY
-       RTS
+		; Y = 2 → address the “next” field (low byte) in the block header
+		LDY #$02
+		; Load low byte of next pointer → X
+		LDA (block_ptr),Y
+		TAX
+		; Load high byte of next pointer → Y
+		INY
+		LDA (block_ptr),Y
+		TAY
+		RTS
 ;===========================================
 ; Allocate from a chosen FREE block (split or consume)
 ;
@@ -954,160 +954,160 @@ get_next_block:
 
 * = $5909
 allocate_block:
-       ;----------------------------------------
-       ; Compute how much of the chosen FREE block will remain after carving out
-       ; the requested payload:
-	   ;
-       ;   remaining_free_space = chosen_block_size - payload_size
-	   ;
-       ;----------------------------------------
-       SEC
-       LDA chosen_block_size
-       SBC payload_size
-       STA remaining_free_space
-       LDA chosen_block_size + 1
-       SBC payload_size + 1
-       STA remaining_free_space + 1
+		;----------------------------------------
+		; Compute how much of the chosen FREE block will remain after carving out
+		; the requested payload:
+		;
+		;   remaining_free_space = chosen_block_size - payload_size
+		;
+		;----------------------------------------
+		SEC
+		LDA chosen_block_size
+		SBC payload_size
+		STA remaining_free_space
+		LDA chosen_block_size + 1
+		SBC payload_size + 1
+		STA remaining_free_space + 1
 
-       ;----------------------------------------
-       ; Is there enough space left to create a NEW free block header?
-	   ;
-       ; We need at least 4 bytes (size lo/hi + next lo/hi). 
-	   ; Perform a 16-bit compare: (remaining_free_space - 4). 
-	   ; If borrow occurs (BCC), there is NOT enough space to split → consume the whole block.
-	   ; Note: C=1 & result==0 means remainder==4 ⇒ header-only FREE node
-       ;----------------------------------------
-       SEC
-       LDA remaining_free_space
-       SBC #$04                      ; subtract header size (low)
-       LDA remaining_free_space + 1
-       SBC #$00                      ; subtract header size (high)
-       BCC consume_whole_block     ; C=0 → remaining_free_space < 4
+		;----------------------------------------
+		; Is there enough space left to create a NEW free block header?
+		;
+		; We need at least 4 bytes (size lo/hi + next lo/hi). 
+		; Perform a 16-bit compare: (remaining_free_space - 4). 
+		; If borrow occurs (BCC), there is NOT enough space to split → consume the whole block.
+		; Note: C=1 & result==0 means remainder==4 ⇒ header-only FREE node
+		;----------------------------------------
+		SEC
+		LDA remaining_free_space
+		SBC #$04                      ; subtract header size (low)
+		LDA remaining_free_space + 1
+		SBC #$00                      ; subtract header size (high)
+		BCC consume_whole_block     ; C=0 → remaining_free_space < 4
 
-       ;--------------------------------
-       ; Split case
-	   ;
-	   ; Carve payload from the front of the chosen FREE block and create a NEW trailing 
-	   ; FREE block with the leftover space.
-	   ;
-       ;   new_free_block = free_block + payload_size
-       ;----------------------------------------
-       CLC
-       LDA free_block
-       ADC payload_size
-       STA new_free_block
-       LDA free_block + 1
-       ADC payload_size + 1
-       STA new_free_block + 1
+		;--------------------------------
+		; Split case
+		;
+		; Carve payload from the front of the chosen FREE block and create a NEW trailing 
+		; FREE block with the leftover space.
+		;
+		;   new_free_block = free_block + payload_size
+		;----------------------------------------
+		CLC
+		LDA free_block
+		ADC payload_size
+		STA new_free_block
+		LDA free_block + 1
+		ADC payload_size + 1
+		STA new_free_block + 1
 
-       ;----------------------------------------
-       ; Link the FREE list to the new trailing block
-	   ;
-	   ; Update the predecessor's next to point at new_free_block.
-       ;----------------------------------------
-       LDY #$02
-       LDA new_free_block
-       STA (predecessor),Y     ; write next.lo
-       INY
-       LDA new_free_block + 1
-       STA (predecessor),Y     ; write next.hi
+		;----------------------------------------
+		; Link the FREE list to the new trailing block
+		;
+		; Update the predecessor's next to point at new_free_block.
+		;----------------------------------------
+		LDY #$02
+		LDA new_free_block
+		STA (predecessor),Y     ; write next.lo
+		INY
+		LDA new_free_block + 1
+		STA (predecessor),Y     ; write next.hi
 
 
-       ;----------------------------------------
-       ; Chain the new trailing FREE block into the list
-	   ;
-       ; Read free_block->next into X/Y, then store into new_free_block header (+2..+3).
-	   ;
-       ;   new_free_block.next = free_block.next
-       ;----------------------------------------
-       JSR get_next_block
-       STY temp                         ; stash hi byte temporarily
-       LDY #$02
-       TXA
-       STA (new_free_block),Y           ; header[2] = next.lo
-       INY
-       LDA temp
-       STA (new_free_block),Y           ; header[3] = next.hi
+		;----------------------------------------
+		; Chain the new trailing FREE block into the list
+		;
+		; Read free_block->next into X/Y, then store into new_free_block header (+2..+3).
+		;
+		;   new_free_block.next = free_block.next
+		;----------------------------------------
+		JSR get_next_block
+		STY temp                         ; stash hi byte temporarily
+		LDY #$02
+		TXA
+		STA (new_free_block),Y           ; header[2] = next.lo
+		INY
+		LDA temp
+		STA (new_free_block),Y           ; header[3] = next.hi
 
-       ;----------------------------------------
-       ; Initialize the size of the new trailing FREE block
-	   ;
-       ;   new_free_block.size = remaining_free_space  (header +0..+1)
-       ;----------------------------------------
-       LDY #$00
-       LDA remaining_free_space
-       STA (new_free_block),Y           ; header[0] = size.lo
-       INY
-       LDA remaining_free_space + 1
-       STA (new_free_block),Y           ; header[1] = size.hi
-       JMP tail_adjust_check  ; update tail pointer if needed
+		;----------------------------------------
+		; Initialize the size of the new trailing FREE block
+		;
+		;   new_free_block.size = remaining_free_space  (header +0..+1)
+		;----------------------------------------
+		LDY #$00
+		LDA remaining_free_space
+		STA (new_free_block),Y           ; header[0] = size.lo
+		INY
+		LDA remaining_free_space + 1
+		STA (new_free_block),Y           ; header[1] = size.hi
+		JMP tail_adjust_check  ; update tail pointer if needed
 
 consume_whole_block:
-       ;----------------------------------------
-       ; Not enough room to hold a new FREE header (remaining_free_space < 4):
-       ; consume the ENTIRE chosen FREE block for this allocation.
+		;----------------------------------------
+		; Not enough room to hold a new FREE header (remaining_free_space < 4):
+		; consume the ENTIRE chosen FREE block for this allocation.
 		;
-       ; Splice the chosen block out of the FREE list:
-       ;   predecessor.next = free_block.next
-       ;----------------------------------------
-       JSR get_next_block
-       STY temp
-       LDY #$02
-       TXA
-       STA (predecessor),Y      ; write next.lo
-       INY
-       LDA temp
-       STA (predecessor),Y      ; write next.hi
+		; Splice the chosen block out of the FREE list:
+		;   predecessor.next = free_block.next
+		;----------------------------------------
+		JSR get_next_block
+		STY temp
+		LDY #$02
+		TXA
+		STA (predecessor),Y      ; write next.lo
+		INY
+		LDA temp
+		STA (predecessor),Y      ; write next.hi
 
-       ;----------------------------------------
-       ; Caller will use the whole block: set requested size to block size.
-	   ;
-       ; (payload_size now equals chosen_block_size)
-       ;----------------------------------------
-       LDA chosen_block_size
-       STA payload_size
-       LDA chosen_block_size + 1
-       STA payload_size + 1
+		;----------------------------------------
+		; Caller will use the whole block: set requested size to block size.
+		;
+		; (payload_size now equals chosen_block_size)
+		;----------------------------------------
+		LDA chosen_block_size
+		STA payload_size
+		LDA chosen_block_size + 1
+		STA payload_size + 1
 
-       ;----------------------------------------
-       ; No trailing FREE block is created in this case.
-	   ;
-       ; Set new_free_block to the list “table” placeholder so downstream
-       ; tail-adjustment logic can treat both paths uniformly.
-       ;----------------------------------------
-       LDA predecessor
-       STA new_free_block
-       LDA predecessor + 1
-       STA new_free_block + 1
+		;----------------------------------------
+		; No trailing FREE block is created in this case.
+		;
+		; Set new_free_block to the list “table” placeholder so downstream
+		; tail-adjustment logic can treat both paths uniformly.
+		;----------------------------------------
+		LDA predecessor
+		STA new_free_block
+		LDA predecessor + 1
+		STA new_free_block + 1
 
 tail_adjust_check:
-       ;----------------------------------------
-       ; Was the CHOSEN free block also the TAIL of the free list?
-	   ;
-       ; If last_free_block == free_block, the block we just split/consumed was the tail.
-       ;----------------------------------------
-       LDA last_free_block
-       CMP free_block
-       BNE tail_adjust_check_2
-       LDA last_free_block + 1
-       CMP free_block + 1
+		;----------------------------------------
+		; Was the CHOSEN free block also the TAIL of the free list?
+		;
+		; If last_free_block == free_block, the block we just split/consumed was the tail.
+		;----------------------------------------
+		LDA last_free_block
+		CMP free_block
+		BNE tail_adjust_check_2
+		LDA last_free_block + 1
+		CMP free_block + 1
 tail_adjust_check_2:
 		;If it wasn't, nothing to adjust, exit
-       BNE exit
+		BNE exit
 
-       ;----------------------------------------
-       ; Yes: update the tail to the new trailing FREE block produced by this op.
-	   ;
-       ; In the split path, new_free_block = (free_block + payload_size).
-       ; In the “no split” path, new_free_block was set to the table placeholder
-       ; so downstream logic treats both cases uniformly.
-       ;----------------------------------------
-       LDA new_free_block
-       STA last_free_block                  
-       LDA new_free_block + 1
-       STA last_free_block + 1
+		;----------------------------------------
+		; Yes: update the tail to the new trailing FREE block produced by this op.
+		;
+		; In the split path, new_free_block = (free_block + payload_size).
+		; In the “no split” path, new_free_block was set to the table placeholder
+		; so downstream logic treats both cases uniformly.
+		;----------------------------------------
+		LDA new_free_block
+		STA last_free_block                  
+		LDA new_free_block + 1
+		STA last_free_block + 1
 exit:
-       RTS
+		RTS
 ;===========================================
 ; Move all leading free space toward higher addresses
 ;
@@ -1156,60 +1156,60 @@ exit:
 * = $59AA
 
 move_free_blocks_to_back:
-       ;----------------------------------------
-       ; Load the head of the free list into the working pointer ‘free_block’.
-       ; This is the leading FREE region we try to push “to the back” (higher addrs).
-       ;----------------------------------------
-       LDA first_free_block
-       STA free_block
-       LDA first_free_block + 1
-       STA free_block + 1
+		;----------------------------------------
+		; Load the head of the free list into the working pointer ‘free_block’.
+		; This is the leading FREE region we try to push “to the back” (higher addrs).
+		;----------------------------------------
+		LDA first_free_block
+		STA free_block
+		LDA first_free_block + 1
+		STA free_block + 1
 
-       ;----------------------------------------
-       ; Read the FREE block’s size from its header:
-       ;   header +0 = size lo (tail bytes on last page)
-       ;   header +1 = size hi (full 256-byte pages)
-       ;----------------------------------------
-       LDY #$00
-       LDA (free_block),Y
-       STA free_block_size
-       INY
-       LDA (free_block),Y
-       STA free_block_size + 1
+		;----------------------------------------
+		; Read the FREE block’s size from its header:
+		;   header +0 = size lo (tail bytes on last page)
+		;   header +1 = size hi (full 256-byte pages)
+		;----------------------------------------
+		LDY #$00
+		LDA (free_block),Y
+		STA free_block_size
+		INY
+		LDA (free_block),Y
+		STA free_block_size + 1
 
 
-       ;----------------------------------------
-       ; Compute the address of the block immediately to the right:
-       ;   source = free_block + free_block_size
-       ; (size is stored as tail-bytes in lo and page count in hi)
-       ;----------------------------------------
-       CLC
-       LDA free_block
-       ADC free_block_size
-       STA source
-       LDA free_block + 1
-       ADC free_block_size + 1
-       STA source + 1
+		;----------------------------------------
+		; Compute the address of the block immediately to the right:
+		;   source = free_block + free_block_size
+		; (size is stored as tail-bytes in lo and page count in hi)
+		;----------------------------------------
+		CLC
+		LDA free_block
+		ADC free_block_size
+		STA source
+		LDA free_block + 1
+		ADC free_block_size + 1
+		STA source + 1
 
-       ;----------------------------------------
-       ; Read the singly-linked list pointer:
-	   ;
-	   ; get_next_block → X=next.lo, Y=next.hi, Z set from Y (TAY inside).
-	   ; BNE means Y≠0 → non-null next (relies on “no headers in page $00” invariant).
-       ;----------------------------------------
-       JSR get_next_block
-       BNE next_block_present
-       RTS
+		;----------------------------------------
+		; Read the singly-linked list pointer:
+		;
+		; get_next_block → X=next.lo, Y=next.hi, Z set from Y (TAY inside).
+		; BNE means Y≠0 → non-null next (relies on “no headers in page $00” invariant).
+		;----------------------------------------
+		JSR get_next_block
+		BNE next_block_present
+		RTS
 
 
 next_block_present:
-       STX next_block
-       STY next_block + 1
+		STX next_block
+		STY next_block + 1
 
-       ; Relocate any USED blocks that sit immediately to the right of the
-       ; leading FREE block so that the FREE region moves “back” (to higher
-       ; addresses). This may repeat internally until the next FREE block
-       ; is adjacent to ‘destination’.
+		; Relocate any USED blocks that sit immediately to the right of the
+		; leading FREE block so that the FREE region moves “back” (to higher
+		; addresses). This may repeat internally until the next FREE block
+		; is adjacent to ‘destination’.
 	   
 		; 'free_block' (alias of 'destination') already points at the FREE head.
 		; 'source' = free_block + size points at the first USED block to the right.
@@ -1219,13 +1219,13 @@ next_block_present:
 		;   - Copy each USED block (header+payload) from source → destination,
 		;   - Advance pointers until source >= next_block,
 		;   - Rebuild the FREE header at the new destination and update first_free_block.	   
-       JSR move_to_back
+		JSR move_to_back
 
 		; The relocated FREE head may now be adjacent to the next FREE block; merge them.
-       JSR coalesce_free_blocks
+		JSR coalesce_free_blocks
 
 		; Re-evaluate the (possibly changed) head; repeat until there is no next FREE block.		   
-       JMP move_free_blocks_to_back
+		JMP move_free_blocks_to_back
 ;===========================================
 ; Move the first free block “to the back” (bubble used blocks left)
 ;
@@ -1289,182 +1289,182 @@ next_block_present:
 
 ; Conventions: source=USED block (header addr), destination=FREE hole (header addr); next_block=next FREE block
 move_to_back:
-       ;----------------------------------------
-       ; Read size of the USED block from its header at 'source':
-	   ;
-       ;   +0 = bytes-on-last-page (0..255)
-       ;   +1 = full 256-byte pages
-	   ;
-       ; size is stored little-endian across these two fields.
-	   ; (size is the full block: header + payload)
-       ;----------------------------------------
-       LDY #$00
-       LDA (source),Y
-       STA block_size             ; low byte: tail bytes
-       INY
-       LDA (source),Y
-       STA block_size + 1         ; high byte: page count
-       INY                        ; Y now points at metadata
+		;----------------------------------------
+		; Read size of the USED block from its header at 'source':
+		;
+		;   +0 = bytes-on-last-page (0..255)
+		;   +1 = full 256-byte pages
+		;
+		; size is stored little-endian across these two fields.
+		; (size is the full block: header + payload)
+		;----------------------------------------
+		LDY #$00
+		LDA (source),Y
+		STA block_size             ; low byte: tail bytes
+		INY
+		LDA (source),Y
+		STA block_size + 1         ; high byte: page count
+		INY                        ; Y now points at metadata
 
-       ;----------------------------------------
-       ; Read resource metadata used for pointer fix-ups after relocation:
-	   ;
-       ;   +2 = resource_type  (e.g., sound, graphics, etc.)
-       ;   +3 = resource_index (which specific instance)
-	   ;
-	   ; For USED blocks, header +2/+3 carry (type,index). FREE blocks use +2/+3 as next.
-       ; We temporarily push 'resource_type' so we can load index into Y,
-       ; then restore A to hold the type for the comparison that follows.
-       ;----------------------------------------
-       LDA (source),Y
-       STA resource_type
-       PHA                        ; save A=resource_type
-       INY
-       LDA (source),Y
-       STA resource_index
-       TAY                        ; Y = resource_index (for table lookups)
-       PLA                        ; A = resource_type (restored)
+		;----------------------------------------
+		; Read resource metadata used for pointer fix-ups after relocation:
+		;
+		;   +2 = resource_type  (e.g., sound, graphics, etc.)
+		;   +3 = resource_index (which specific instance)
+		;
+		; For USED blocks, header +2/+3 carry (type,index). FREE blocks use +2/+3 as next.
+		; We temporarily push 'resource_type' so we can load index into Y,
+		; then restore A to hold the type for the comparison that follows.
+		;----------------------------------------
+		LDA (source),Y
+		STA resource_type
+		PHA                        ; save A=resource_type
+		INY
+		LDA (source),Y
+		STA resource_index
+		TAY                        ; Y = resource_index (for table lookups)
+		PLA                        ; A = resource_type (restored)
 
-       ;----------------------------------------
-       ; If the moved block is a SOUND resource and marked “in use”,
-       ; set a flag so dependent pointers will be refreshed after relocation.
-	   ;
-       ; A currently holds resource_type, Y holds resource_index.
-       ;----------------------------------------
-       CMP #SOUND_RESOURCE         ; resource_type == sound?
-       BNE copy_block_data         ; no → skip reload request
+		;----------------------------------------
+		; If the moved block is a SOUND resource and marked “in use”,
+		; set a flag so dependent pointers will be refreshed after relocation.
+		;
+		; A currently holds resource_type, Y holds resource_index.
+		;----------------------------------------
+		CMP #SOUND_RESOURCE         ; resource_type == sound?
+		BNE copy_block_data         ; no → skip reload request
 
-       LDA sound_memory_attrs,Y    ; load usage attribute for this sound instance
-								   ; Indexing sound_memory_attrs by resource_index.
-       BEQ copy_block_data         ; 0 → not in use → no reload needed
+		LDA sound_memory_attrs,Y    ; load usage attribute for this sound instance
+		; Indexing sound_memory_attrs by resource_index.
+		BEQ copy_block_data         ; 0 → not in use → no reload needed
 
-       LDA #$01
-       STA reload_snd_rsrc_ptrs    ; mark: reload sound resource pointers later
+		LDA #$01
+		STA reload_snd_rsrc_ptrs    ; mark: reload sound resource pointers later
 
 copy_block_data:
-       ;----------------------------------------
-       ; Prepare argument block for mem_copy_memory:
-	   ;
-       ;   page_bytes_to_copy = tail bytes on the last page      	(low  byte of block_size)
-       ;   total_pages = full 256-byte pages to copy      			(high byte of block_size)
-       ;   read_ptr = source pointer (lo/hi)       					(address of the USED block HEADER)
-       ;   write_ptr = destination pointer (lo/hi)  				(address of FREE space to fill)
-       ;
-	   ; Copy length equals block_size (header + payload).
-	   ;
-       ; After setup, mem_copy_memory will copy (total_pages * 256 + page_bytes_to_copy) bytes
-       ; from [read_ptr] to [write_ptr], handling page spans appropriately.
-       ;----------------------------------------
-       LDA block_size
-       STA page_bytes_to_copy
-       LDA block_size + 1
-       STA total_pages
+		;----------------------------------------
+		; Prepare argument block for mem_copy_memory:
+		;
+		;   page_bytes_to_copy = tail bytes on the last page      	(low  byte of block_size)
+		;   total_pages = full 256-byte pages to copy      			(high byte of block_size)
+		;   read_ptr = source pointer (lo/hi)       					(address of the USED block HEADER)
+		;   write_ptr = destination pointer (lo/hi)  				(address of FREE space to fill)
+		;
+		; Copy length equals block_size (header + payload).
+		;
+		; After setup, mem_copy_memory will copy (total_pages * 256 + page_bytes_to_copy) bytes
+		; from [read_ptr] to [write_ptr], handling page spans appropriately.
+		;----------------------------------------
+		LDA block_size
+		STA page_bytes_to_copy
+		LDA block_size + 1
+		STA total_pages
 
-       LDA source
-       STA read_ptr
-       LDA source + 1
-       STA read_ptr + 1
+		LDA source
+		STA read_ptr
+		LDA source + 1
+		STA read_ptr + 1
 
-       LDA destination
-       STA write_ptr
-       LDA destination + 1
-       STA write_ptr + 1
+		LDA destination
+		STA write_ptr
+		LDA destination + 1
+		STA write_ptr + 1
 
-       ; Perform the relocation copy (source → destination).
-       ; Copies (pages*256 + tail_bytes) as prepared above.
-       JSR mem_copy_memory
+		; Perform the relocation copy (source → destination).
+		; Copies (pages*256 + tail_bytes) as prepared above.
+		JSR mem_copy_memory
 
-       ; Fix external references to the moved block.
-       ; API contract: X = resource_index, Y = resource_type.
-       LDX resource_index
-       LDY resource_type
-       JSR update_rsrc_pointers
+		; Fix external references to the moved block.
+		; API contract: X = resource_index, Y = resource_type.
+		LDX resource_index
+		LDY resource_type
+		JSR update_rsrc_pointers
 
-       ; Clear the “reload sound pointers” request flag (consumed).
-       LDA #$00
-       STA reload_snd_rsrc_ptrs
+		; Clear the “reload sound pointers” request flag (consumed).
+		LDA #$00
+		STA reload_snd_rsrc_ptrs
 
-       ;----------------------------------------
-       ; Advance both pointers by the size of the moved USED block:
-	   ;
-       ;   destination ← destination + block_size
-       ;   source      ← source      + block_size
-	   ;
-	   ; Invariant preserved: destination < source.
-	   ; destination now points to the start of the remaining FREE space (immediately after the moved USED block) 
-	   ; source points to the block that originally followed the moved USED block.
-       ;----------------------------------------
-       ; destination += block_size
-       CLC                               
-       LDA destination
-       ADC block_size                   
-       STA destination
-       LDA destination + 1
-       ADC block_size + 1                
-       STA destination + 1
+		;----------------------------------------
+		; Advance both pointers by the size of the moved USED block:
+		;
+		;   destination ← destination + block_size
+		;   source      ← source      + block_size
+		;
+		; Invariant preserved: destination < source.
+		; destination now points to the start of the remaining FREE space (immediately after the moved USED block) 
+		; source points to the block that originally followed the moved USED block.
+		;----------------------------------------
+		; destination += block_size
+		CLC                               
+		LDA destination
+		ADC block_size                   
+		STA destination
+		LDA destination + 1
+		ADC block_size + 1                
+		STA destination + 1
 
-       ; source += block_size
-       CLC
-       LDA source
-       ADC block_size                   
-       STA source
-       LDA source + 1
-       ADC block_size +1                
-       STA source + 1
+		; source += block_size
+		CLC
+		LDA source
+		ADC block_size                   
+		STA source
+		LDA source + 1
+		ADC block_size +1                
+		STA source + 1
 
 
-       ;----------------------------------------
-	   ; The next free block can either:
-	   ; 	-reside immediately after the moved free block
-	   ; 	-reside higher, with at least one block in between
-	   ;
-	   ; If it resides higher, then there's at least one used block in the middle and we can move it to the front.
-	   ; If it resides immediately after, we now have two consecutive free blocks, which can be coalesced.
-	   ;
-       ; Check if there are still USED blocks between our current 'source'
-       ; and the next FREE block ('next_block'). 
-	   ;
-	   ; We perform a 16-bit compare:
-	   ;
-       ;   Compute (source - next_block) with SEC/SBC across low, then high.
-       ;   If result < 0 → borrow → C=0 → next_block > source → keep moving.
-       ;   If result ≥ 0 → C=1 → we've reached/passed next_block → stop moving.
-       ;----------------------------------------
-       SEC
-       LDA source
-       SBC next_block            ; low-byte: source - next_block
-       LDA source + 1
-       SBC next_block + 1            ; high-byte with borrow propagation
-       ; C clear → next_block > source → more used blocks remain to relocate, loop
-       BCC move_to_back
+		;----------------------------------------
+		; The next free block can either:
+		; 	-reside immediately after the moved free block
+		; 	-reside higher, with at least one block in between
+		;
+		; If it resides higher, then there's at least one used block in the middle and we can move it to the front.
+		; If it resides immediately after, we now have two consecutive free blocks, which can be coalesced.
+		;
+		; Check if there are still USED blocks between our current 'source'
+		; and the next FREE block ('next_block'). 
+		;
+		; We perform a 16-bit compare:
+		;
+		;   Compute (source - next_block) with SEC/SBC across low, then high.
+		;   If result < 0 → borrow → C=0 → next_block > source → keep moving.
+		;   If result ≥ 0 → C=1 → we've reached/passed next_block → stop moving.
+		;----------------------------------------
+		SEC
+		LDA source
+		SBC next_block            ; low-byte: source - next_block
+		LDA source + 1
+		SBC next_block + 1            ; high-byte with borrow propagation
+		; C clear → next_block > source → more used blocks remain to relocate, loop
+		BCC move_to_back
 
-       ;----------------------------------------
-       ; Adjacent FREE block now follows the relocated region:
-	   ;
-       ;   Update the free-list HEAD to point at 'destination',
-       ;   then rebuild the FREE block header at 'destination':
-       ;     +0..+1 = size  (free_block_size)
-       ;     +2..+3 = next  (next_block)
-       ;----------------------------------------
-	   ; FREE header written at new destination; list head points here.
-       LDA destination
-       STA first_free_block
-       LDA destination + 1
-       STA first_free_block + 1
+		;----------------------------------------
+		; Adjacent FREE block now follows the relocated region:
+		;
+		;   Update the free-list HEAD to point at 'destination',
+		;   then rebuild the FREE block header at 'destination':
+		;     +0..+1 = size  (free_block_size)
+		;     +2..+3 = next  (next_block)
+		;----------------------------------------
+		; FREE header written at new destination; list head points here.
+		LDA destination
+		STA first_free_block
+		LDA destination + 1
+		STA first_free_block + 1
 
-       LDY #$00
-       LDA free_block_size
-       STA (destination),Y              ; header[0] = size lo
-       INY
-       LDA free_block_size + 1
-       STA (destination),Y              ; header[1] = size hi
-       INY
-       LDA next_block
-       STA (destination),Y              ; header[2] = next lo
-       INY
-       LDA next_block + 1
-       STA (destination),Y              ; header[3] = next hi
-       RTS
+		LDY #$00
+		LDA free_block_size
+		STA (destination),Y              ; header[0] = size lo
+		INY
+		LDA free_block_size + 1
+		STA (destination),Y              ; header[1] = size hi
+		INY
+		LDA next_block
+		STA (destination),Y              ; header[2] = next lo
+		INY
+		LDA next_block + 1
+		STA (destination),Y              ; header[3] = next hi
+		RTS
 ;===========================================
 ; Copy memory: (total_pages * 256 + page_bytes_to_copy) bytes
 ;
@@ -1485,42 +1485,42 @@ copy_block_data:
 ;===========================================
 * = $5C13
 mem_copy_memory:
-       ; Save final-page byte count on the stack
-       LDA page_bytes_to_copy
-       PHA
-       LDX total_pages
+		; Save final-page byte count on the stack
+		LDA page_bytes_to_copy
+		PHA
+		LDX total_pages
 
 next_page:
-       BEQ last_page                   ; X==0 → process the final partial page
+		BEQ last_page                   ; X==0 → process the final partial page
 
-       ; Not the last page: copy a full 256-byte page
-       LDA #$00
-       STA page_bytes_to_copy
-       JMP copy_page
+		; Not the last page: copy a full 256-byte page
+		LDA #$00
+		STA page_bytes_to_copy
+		JMP copy_page
 
 ; It's the last page: restore the true final-byte count
 last_page:
-       PLA
-       STA page_bytes_to_copy
-       BNE copy_page                   ; 0 means nothing left to copy → RTS
-       RTS
+		PLA
+		STA page_bytes_to_copy
+		BNE copy_page                   ; 0 means nothing left to copy → RTS
+		RTS
 
 copy_page:
-       LDY #$00
+		LDY #$00
 ; Copy from read_ptr to write_ptr until Y reaches page_bytes_to_copy
 copy_loop:
-       LDA (read_ptr),Y
-       STA (write_ptr),Y
-       INY
-       CPY page_bytes_to_copy
-       BNE copy_loop
+		LDA (read_ptr),Y
+		STA (write_ptr),Y
+		INY
+		CPY page_bytes_to_copy
+		BNE copy_loop
 
-       ; Finished this page: advance source/dest to next page, decrement page count
-       INC read_ptr + 1
-       INC write_ptr + 1
-       DEX
-       BPL next_page
-       RTS
+		; Finished this page: advance source/dest to next page, decrement page count
+		INC read_ptr + 1
+		INC write_ptr + 1
+		DEX
+		BPL next_page
+		RTS
 
 ;===========================================
 ; sort_free_blocks pseudo_code
