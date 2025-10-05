@@ -396,6 +396,7 @@ next_byte_8:
        BNE next_byte_8
        RTS
 
+
 ; HYBRID RLE + 4-SYMBOL DICTIONARY DECOMPRESSOR — TEXT FLOW DIAGRAM
 ; =================================================================
 ;
