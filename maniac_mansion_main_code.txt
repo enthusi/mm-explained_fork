@@ -1902,10 +1902,10 @@ start_game:
 ;Setup disk read from track 1 sector 0, starting from byte offset #02
 .C:0457  A2 00       LDX #$00
 .C:0459  A0 01       LDY #$01
-.C:045b  20 D3 44    JSR setup_sector_chain
+.C:045b  20 D3 44    JSR disk_init_chain
 .C:045e  A2 02       LDX #$02
 .C:0460  A0 00       LDY #$00
-.C:0462  20 F7 44    JSR read_sector_chain_index_from_offset
+.C:0462  20 F7 44    JSR disk_seek_read_at
 ;Load all object's attributes
 ;The object attributes section starts at $7301
 .C:0465  A2 01       LDX #$01
@@ -1914,11 +1914,11 @@ start_game:
 .C:046b  8D 3C 46    STA sector_memory_copy_counter_lo
 .C:046e  A9 01       LDA #$01
 .C:0470  8D 3D 46    STA sector_memory_copy_counter_hi
-.C:0473  20 1F 45    JSR copy_bytes_from_sector_memory
+.C:0473  20 1F 45    JSR disk_stream_copy_bytes
 ;Setup disk read from track 1 sector 1, starting from byte offset #02
 .C:0476  A2 02       LDX #$02
 .C:0478  A0 01       LDY #$01
-.C:047a  20 F7 44    JSR read_sector_chain_index_from_offset
+.C:047a  20 F7 44    JSR disk_seek_read_at
 ;Load game resources' disk storage data to memory
 ;The storage data section starts at $7401
 .C:047d  A2 01       LDX #$01
@@ -1927,7 +1927,7 @@ start_game:
 .C:0483  8D 3C 46    STA sector_memory_copy_counter_lo
 .C:0486  A9 03       LDA #$03
 .C:0488  8D 3D 46    STA sector_memory_copy_counter_hi
-.C:048b  20 1F 45    JSR copy_bytes_from_sector_memory
+.C:048b  20 1F 45    JSR disk_stream_copy_bytes
 ;Set frame_buffer to #01 ('lights on' memory layout)
 .C:048e  A9 01       LDA #$01
 .C:0490  85 23       STA frame_buffer
@@ -13864,7 +13864,7 @@ dummy_label:
 ;.X = sector, .Y = track
 .C:3ae3  A6 1D       LDX temp_sector
 .C:3ae5  A4 1E       LDY temp_track
-.C:3ae7  20 D3 44    JSR setup_sector_chain
+.C:3ae7  20 D3 44    JSR disk_init_chain
 .C:3aea  60          RTS
 ;===========================================
 ;Arguments: desired disk side ID on .A
@@ -13881,8 +13881,8 @@ read_disk_id:
 ;This is byte 0 in track 1, sector 0
 .C:3af4  A2 00       LDX #$00
 .C:3af6  A0 01       LDY #$01
-.C:3af8  20 EE 44    JSR read_first_sector
-.C:3afb  20 8E 45    JSR read_next_disk_buffer_byte
+.C:3af8  20 EE 44    JSR disk_init_chain_and_read
+.C:3afb  20 8E 45    JSR disk_stream_next_byte
 ;Check if it's the desired Disk ID
 .C:3afe  CD 9C FE    CMP desired_disk_id		
 .C:3b01  D0 04       BNE disk_id_not_equal
@@ -16164,7 +16164,7 @@ next:
 start_sector = $4633
 start_track = $4634
 
-setup_sector_chain:
+disk_init_chain:
 .C:44d3  8E 33 46    STX start_sector
 .C:44d6  8C 34 46    STY start_track
 .C:44d9  A9 00       LDA #$00
@@ -16177,18 +16177,18 @@ setup_sector_chain:
 .C:44ea  8D 3B 46    STA sector_chain_index
 .C:44ed  60          RTS
 ;===========================================
-; read_first_sector
+; disk_init_chain_and_read
 ;
 ;	Input args:	.X, .Y	sector/track to read
 ;
 ; Will reset last_sector/track_loaded and 463A/463B
 ;===========================================
-read_first_sector:
-.C:44ee  20 D3 44    JSR setup_sector_chain
+disk_init_chain_and_read:
+.C:44ee  20 D3 44    JSR disk_init_chain
 .C:44f1  AE 3A 46    LDX read_offset
 .C:44f4  AC 3B 46    LDY sector_chain_index
 ;===========================================
-; read_sector_chain_index_from_offset
+; disk_seek_read_at
 ;
 ;	Input args:	.X	read_offset	- byte offset to start reading from (within a sector's data)
 ;				.Y	sector_chain_index	(the index of the desired sector in a chain)
@@ -16203,7 +16203,7 @@ current_track = $4636
 read_offset = $463A
 sector_chain_index = $463B
 
-read_sector_chain_index_from_offset:
+disk_seek_read_at:
 .C:44f7  8E 3A 46    STX read_offset
 .C:44fa  8C 3B 46    STY sector_chain_index
 .C:44fd  AD 33 46    LDA start_sector
@@ -16217,7 +16217,7 @@ read_sector_chain_index_from_offset:
 ;Keep advancing until we reach the desired index
 .C:450e  AA          TAX
 next_sector_in_chain:
-.C:450f  20 AE 45    JSR compute_next_valid_sector
+.C:450f  20 AE 45    JSR disk_advance_sector_physical
 .C:4512  CA          DEX
 .C:4513  D0 FA       BNE next_sector
 ;Set the read offset
@@ -16225,7 +16225,7 @@ sector_chain_index_reached:
 .C:4515  AD 3A 46    LDA read_offset
 .C:4518  8D 39 46    STA sector_memory_read_offset
 ;Read sector
-.C:451b  20 EB 45    JSR read_sector_into_0300
+.C:451b  20 EB 45    JSR disk_read_sector_into_buffer
 .C:451e  60          RTS
 ;===========================================
 ; Copies bytes from the loaded sector buffer to the destination pointer
@@ -16234,7 +16234,7 @@ sector_chain_index_reached:
 ;				.Y	destination address hi
 ;				sector_memory_copy_counter_lo/hi	total number of bytes to copy
 ;				sector_memory_read_offset - byte offset to start reading from
-;						(this will be used by read_next_disk_buffer_byte)
+;						(this will be used by disk_stream_next_byte)
 ;===========================================
 ;Inline destination pointer from .X/.Y
 write_ptr_lo = $4529
@@ -16242,11 +16242,11 @@ write_ptr_hi = $452A
 sector_memory_copy_counter_lo = $463C
 sector_memory_copy_counter_hi = $463D
 
-copy_bytes_from_sector_memory:
+disk_stream_copy_bytes:
 .C:451f  8E 29 45    STX write_ptr_lo	
 .C:4522  8C 2A 45    STY write_ptr_hi
 read_loop:
-.C:4525  20 8E 45    JSR read_next_disk_buffer_byte
+.C:4525  20 8E 45    JSR disk_stream_next_byte
 .C:4528  8D FF FF    STA $FFFF	;Address inlined (dest_ptr)
 ;Increment destination pointer
 .C:452b  EE 29 45    INC write_ptr_lo
@@ -16273,7 +16273,7 @@ decrement_counter_lo:
 src_ptr_lo = $4631
 src_ptr_hi = $4632
 
-write_sector_from_memory:
+disk_write_sectors_from_buffer:
 .C:4547  8E 31 46    STX src_ptr_lo
 .C:454a  8C 32 46    STY src_ptr_hi
 .C:454d  AD 33 46    LDA sector_desired
@@ -16289,7 +16289,7 @@ try_write:
 .C:4563  84 01       STY processor_port_register
 .C:4565  AE 36 46    LDX track_to_read
 .C:4568  AC 35 46    LDY sector_to_read
-.C:456b  20 41 46    JSR write_sector
+.C:456b  20 41 46    JSR disk_write_sector
 .C:456e  90 0E       BCC $457E
 ;Print disk_error_msg
 .C:4570  A9 81       LDA #$81
@@ -16301,7 +16301,7 @@ try_write:
 ;map_out_io
 .C:457e  A0 24       LDY #$24
 .C:4580  84 01       STY processor_port_register
-.C:4582  20 AE 45    JSR compute_next_valid_sector
+.C:4582  20 AE 45    JSR disk_advance_sector_physical
 .C:4585  EE 32 46    INC src_ptr_hi
 .C:4588  CE 3D 46    DEC sector_memory_copy_counter_hi
 .C:458b  D0 D4       BNE try_write
@@ -16318,7 +16318,7 @@ try_write:
 ;===========================================
 sector_memory_read_offset = $4639
 
-read_next_disk_buffer_byte:
+disk_stream_next_byte:
 ;Save .Y
 .C:458e  8C AD 45    STY y_copy		
 ;Honor the offset into the buffer
@@ -16334,8 +16334,8 @@ read_next_disk_buffer_byte:
 ;If it's zero, we just crossed a page (which match perfectly with sectors)
 ; so we need to continue in the next consecutive sector
 ;Load the next valid sector into memory
-.C:459d  20 AE 45    JSR compute_next_valid_sector
-.C:45a0  20 EB 45    JSR read_sector_into_0300
+.C:459d  20 AE 45    JSR disk_advance_sector_physical
+.C:45a0  20 EB 45    JSR disk_read_sector_into_buffer
 ;Reset read offset
 .C:45a3  A9 00       LDA #$00		
 .C:45a5  8D 39 46    STA sector_memory_read_offset
@@ -16360,13 +16360,13 @@ y_copy:
 ;===========================================
 current_track = $4636
 current_sector = $4635
-compute_next_valid_sector:
+disk_advance_sector_physical:
 ;Increase sector by 1
 .C:45ae  EE 35 46    INC current_sector
 ;Check that it doesn't exceed the sectors per track limit for this track
 .C:45b1  AD 35 46    LDA current_sector
 .C:45b4  AC 36 46    LDY current_track
-.C:45b7  D9 C7 45    CMP sectors_per_track,Y
+.C:45b7  D9 C7 45    CMP max_sector_index_by_track,Y
 ;If it's lower than or equal, it's in range, exit
 .C:45ba  90 0A       BCC compute_next_valid_sector_exit
 .C:45bc  F0 08       BEQ compute_next_valid_sector_exit
@@ -16377,7 +16377,7 @@ compute_next_valid_sector:
 compute_next_valid_sector_exit:
 .C:45c6  60          RTS
 ;===========================================
-sectors_per_track:
+max_sector_index_by_track:
 .C:45c7  
 00 
 14 14 14 14 14 14 14 14 14 14 
@@ -16406,7 +16406,7 @@ last_track_loaded = $4638
 SECTOR_BUFFER_LO = #$00
 SECTOR_BUFFER_HI = #$03
 
-read_sector_into_0300:
+disk_read_sector_into_buffer:
 ;Save .X and .Y
 .C:45eb  8E 30 46	 STX x_copy
 .C:45ee  8C 2F 46    STY y_copy
@@ -16422,7 +16422,7 @@ attempt_read_sector:
 ;Read the sector after preparing all attributes and enabling I/O
 .C:45ff  AE 36 46    LDX track_to_read
 .C:4602  AC 35 46    LDY sector_to_read
-.C:4605  20 6E 46    JSR read_sector
+.C:4605  20 6E 46    JSR disk_read_sector
 ;map_out_io
 .C:4608  A0 24       LDY #$24
 .C:460a  84 01       STY processor_port_register
@@ -16460,7 +16460,7 @@ src_ptr_hi = $4632
 inlined_src_ptr_lo = $465E
 inlined_src_ptr_hi = $465F
 
-write_sector:
+disk_write_sector:
 .C:4641  8E 53 47    STX command_track
 .C:4644  8C 54 47    STY command_sector
 ;Overwrite inlined src_ptr
@@ -16481,7 +16481,7 @@ send_next_byte:
 .C:4666  18          CLC
 .C:4667  60          RTS
 ;===========================================
-reset_drive:
+disk_reset:
 .C:4668  A9 20       LDA #$20					;#20 = reset drive
 .C:466a  20 C2 46    JSR send_command_to_drive
 .C:466d  60          RTS
@@ -16520,7 +16520,7 @@ write_ptr_hi = $4632
 inlined_write_ptr_lo = $46AB		;This pointer is inlined in the routine's code
 inlined_write_ptr_hi = $46AC
 
-read_sector:
+disk_read_sector:
 ;Set track and sector
 .C:466e  8E 53 47    STX command_track
 .C:4671  8C 54 47    STY command_sector
@@ -19455,7 +19455,7 @@ load_resource:
 ;Read the first data sector from disk
 .C:5544  AE 78 56    LDX read_offset
 .C:5547  AC 79 56    LDY sector_chain_index
-.C:554a  20 F7 44    JSR read_sector_chain_index_from_offset
+.C:554a  20 F7 44    JSR disk_seek_read_at
 ;Copy the resource header to local memory
 .C:554d  A2 3B       LDX #<local_header
 .C:554f  A0 55       LDY #>local_header
@@ -19463,7 +19463,7 @@ load_resource:
 .C:5553  8D 3C 46    STA sector_memory_copy_counter_lo
 .C:5556  A9 00       LDA #$00
 .C:5558  8D 3D 46    STA sector_memory_copy_counter_hi
-.C:555b  20 1F 45    JSR copy_bytes_from_sector_memory
+.C:555b  20 1F 45    JSR disk_stream_copy_bytes
 ;Validate that the "zero byte" is zero
 ;If not, start over
 .C:555e  AD 3D 55    LDA local_header + ZERO_BYTE_OFFSET
@@ -19488,14 +19488,14 @@ room_raw_data_load:
 ;Load the whole resource data from disk into memory
 .C:557c  AE 78 56    LDX read_offset
 .C:557f  AC 79 56    LDY sector_chain_index
-.C:5582  20 F7 44    JSR read_sector_chain_index_from_offset
+.C:5582  20 F7 44    JSR disk_seek_read_at
 .C:5585  AE 3F 55    LDX <rsrc_data
 .C:5588  AC 40 55    LDY >rsrc_data
 .C:558b  AD 3B 55    LDA <rsrc_size
 .C:558e  8D 3C 46    STA sector_memory_copy_counter_lo
 .C:5591  AD 3C 55    LDA >rsrc_size
 .C:5594  8D 3D 46    STA sector_memory_copy_counter_hi
-.C:5597  20 1F 45    JSR copy_bytes_from_sector_memory
+.C:5597  20 1F 45    JSR disk_stream_copy_bytes
 ;-------------------------------------------
 ; Setup data checksum
 ;Copy resource pointer to checksum ptr
@@ -19620,10 +19620,10 @@ disk_id_check:
 ;Read track 1 sector 0, starting from byte offset #00
 .C:562f  A2 00       LDX #$00
 .C:5631  A0 01       LDY #$01
-.C:5633  20 D3 44    JSR setup_sector_chain
+.C:5633  20 D3 44    JSR disk_init_chain
 .C:5636  A2 00       LDX #$00
 .C:5638  A0 00       LDY #$00
-.C:563a  20 F7 44    JSR read_sector_chain_index_from_offset
+.C:563a  20 F7 44    JSR disk_seek_read_at
 ;Copy 1 byte to disk_id_in_sector
 ;This is the first byte of track 1 sector 0, which is always the Disk ID
 .C:563d  A2 7A       LDX #<disk_id_in_sector
@@ -19632,7 +19632,7 @@ disk_id_check:
 .C:5643  8D 3C 46    STA sector_memory_copy_counter_lo
 .C:5646  A9 00       LDA #$00
 .C:5648  8D 3D 46    STA sector_memory_copy_counter_hi
-.C:564b  20 1F 45    JSR copy_bytes_from_sector_memory
+.C:564b  20 1F 45    JSR disk_stream_copy_bytes
 ;Compare Disk ID with desired_disk_id
 .C:564e  AD 9C FE    LDA desired_disk_id
 .C:5651  CD 7A 56    CMP disk_id_in_sector
@@ -20952,51 +20952,51 @@ save_state_to_disk:
 ;Write the disk ID as the first byte on track 1, sector 0
 .C:5c42  A2 00       LDX #$00
 .C:5c44  A0 01       LDY #$01
-.C:5c46  20 D3 44    JSR setup_sector_chain
+.C:5c46  20 D3 44    JSR disk_init_chain
 .C:5c49  A2 15       LDX #<disk_id
 .C:5c4b  A0 00       LDY #>disk_id
 .C:5c4d  A9 01       LDA #$01
 .C:5c4f  8D 3C 46    STA sector_memory_copy_counter_lo
 .C:5c52  A9 00       LDA #$00
 .C:5c54  8D 3D 46    STA sector_memory_copy_counter_hi
-.C:5c57  20 47 45    JSR write_sector_from_memory
+.C:5c57  20 47 45    JSR disk_write_sectors_from_buffer
 ;Write #$152 bytes from $FEA1-FFF3 to track 5, sector 0
 ;This includes the game engine state, game variables and free blocks
 .C:5c5a  A2 00       LDX #$00
 .C:5c5c  A0 05       LDY #$05
-.C:5c5e  20 D3 44    JSR setup_sector_chain
+.C:5c5e  20 D3 44    JSR disk_init_chain
 .C:5c61  A2 A1       LDX #$A1
 .C:5c63  A0 FE       LDY #$FE
 .C:5c65  A9 52       LDA #$52
 .C:5c67  8D 3C 46    STA sector_memory_copy_counter_lo
 .C:5c6a  A9 01       LDA #$01
 .C:5c6c  8D 3D 46    STA sector_memory_copy_counter_hi
-.C:5c6f  20 47 45    JSR write_sector_from_memory
+.C:5c6f  20 47 45    JSR disk_write_sectors_from_buffer
 ;Write 7 bytes from $C9-D0 to track 6, sector 0
 .C:5c72  A2 00       LDX #$00
 .C:5c74  A0 06       LDY #$06
-.C:5c76  20 D3 44    JSR setup_sector_chain
+.C:5c76  20 D3 44    JSR disk_init_chain
 .C:5c79  A2 C9       LDX #$C9
 .C:5c7b  A0 00       LDY #$00
 .C:5c7d  A9 07       LDA #$07
 .C:5c7f  8D 3C 46    STA sector_memory_copy_counter_lo
 .C:5c82  A9 00       LDA #$00
 .C:5c84  8D 3D 46    STA sector_memory_copy_counter_hi
-.C:5c87  20 47 45    JSR write_sector_from_memory
+.C:5c87  20 47 45    JSR disk_write_sectors_from_buffer
 ;Write #$57CF bytes from $7031-C800 to track 7, sector 0
 ;This includes the whole "heap" with current resources and free blocks,
 ; pointers to existing resources in memory, and the hardcoded game layout info
 ; (track/sectors, read offsets, etc.)
 .C:5c8a  A2 00       LDX #$00
 .C:5c8c  A0 07       LDY #$07
-.C:5c8e  20 D3 44    JSR setup_sector_chain
+.C:5c8e  20 D3 44    JSR disk_init_chain
 .C:5c91  A2 31       LDX #$31
 .C:5c93  A0 70       LDY #$70
 .C:5c95  A9 CF       LDA #$CF
 .C:5c97  8D 3C 46    STA sector_memory_copy_counter_lo
 .C:5c9a  A9 57       LDA #$57
 .C:5c9c  8D 3D 46    STA sector_memory_copy_counter_hi
-.C:5c9f  20 47 45    JSR write_sector_from_memory
+.C:5c9f  20 47 45    JSR disk_write_sectors_from_buffer
 ;Return with #00 in .A
 .C:5ca2  A9 00       LDA #$00
 .C:5ca4  60          RTS
@@ -21018,39 +21018,39 @@ load_state_from_sectors:
 ;This includes the game engine state, game variables and free blocks
 .C:5cb1  A2 00       LDX #$00
 .C:5cb3  A0 05       LDY #$05
-.C:5cb5  20 EE 44    JSR read_first_sector
+.C:5cb5  20 EE 44    JSR disk_init_chain_and_read
 .C:5cb8  A2 A1       LDX #$A1
 .C:5cba  A0 FE       LDY #$FE
 .C:5cbc  A9 52       LDA #$52
 .C:5cbe  8D 3C 46    STA sector_memory_copy_counter_lo
 .C:5cc1  A9 01       LDA #$01
 .C:5cc3  8D 3D 46    STA sector_memory_copy_counter_hi
-.C:5cc6  20 1F 45    JSR copy_bytes_from_sector_memory
+.C:5cc6  20 1F 45    JSR disk_stream_copy_bytes
 ;Copy 7 bytes from track 6, sector 0 to C9-D0
 .C:5cc9  A2 00       LDX #$00
 .C:5ccb  A0 06       LDY #$06
-.C:5ccd  20 EE 44    JSR read_first_sector
+.C:5ccd  20 EE 44    JSR disk_init_chain_and_read
 .C:5cd0  A2 C9       LDX #$C9
 .C:5cd2  A0 00       LDY #$00
 .C:5cd4  A9 07       LDA #$07
 .C:5cd6  8D 3C 46    STA sector_memory_copy_counter_lo
 .C:5cd9  A9 00       LDA #$00
 .C:5cdb  8D 3D 46    STA sector_memory_copy_counter_hi
-.C:5cde  20 1F 45    JSR copy_bytes_from_sector_memory
+.C:5cde  20 1F 45    JSR disk_stream_copy_bytes
 ;Copy a total of 57CF bytes from track 7, sector 0 to $7031-C800
 ;This includes the whole "heap" with current resources and free blocks,
 ; pointers to existing resources in memory, and the hardcoded game layout info
 ; (track/sectors, read offsets, etc.)
 .C:5ce1  A2 00       LDX #$00
 .C:5ce3  A0 07       LDY #$07
-.C:5ce5  20 EE 44    JSR read_first_sector
+.C:5ce5  20 EE 44    JSR disk_init_chain_and_read
 .C:5ce8  A2 31       LDX #$31
 .C:5cea  A0 70       LDY #$70
 .C:5cec  A9 CF       LDA #$CF
 .C:5cee  8D 3C 46    STA sector_memory_copy_counter_lo
 .C:5cf1  A9 57       LDA #$57
 .C:5cf3  8D 3D 46    STA sector_memory_copy_counter_hi
-.C:5cf6  20 1F 45    JSR copy_bytes_from_sector_memory
+.C:5cf6  20 1F 45    JSR disk_stream_copy_bytes
 ;Return #03 on .A
 .C:5cf9  A9 03       LDA #$03
 .C:5cfb  60          RTS
@@ -21072,8 +21072,8 @@ load_and_validate_disk_id:
 ;Track 1, sector 0
 .C:5cfc  A2 00       LDX #$00
 .C:5cfe  A0 01       LDY #$01
-.C:5d00  20 EE 44    JSR read_first_sector
-.C:5d03  20 8E 45    JSR read_next_disk_buffer_byte
+.C:5d00  20 EE 44    JSR disk_init_chain_and_read
+.C:5d03  20 8E 45    JSR disk_stream_next_byte
 .C:5d06  85 15       STA disk_id
 ;Check if Disk ID is valid (#31 or #32)
 .C:5d08  A5 15       LDA disk_id
