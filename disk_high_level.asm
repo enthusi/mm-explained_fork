@@ -1,3 +1,82 @@
+;===============================================================================
+; Disk I/O high-level helpers (C64 ⇄ 1541-style drive over IEC): sector read/write,
+; streaming, and physical geometry stepping with robust retry + diagnostics.
+;
+; Summary:
+;   High-level wrapper layer around low-level IEC byte I/O. 
+;	Provides routines to:
+;     • seed and advance a physical “sector chain” (track/sector cursor)
+;     • read a chosen sector into a fixed buffer ($0300)
+;     • stream bytes across sector boundaries with automatic refills
+;     • copy streamed data into RAM
+;     • write one or more sectors from a linear memory buffer
+;
+;   The on-wire read protocol uses 0x01-prefixed escape/control sequences for EOD,
+;   sync requests, and error signaling. Writes stream an exact 256-byte payload.
+;
+; Hardware / Memory Map:
+;   • processor_port_register ($0001): maps I/O in/out around IEC calls.
+;   • vic_border_color_register ($D020): set green on fatal protocol error (debug).
+;   • SECTOR_BUFFER ($0300..$03FF): fixed 256-byte read buffer (page-aligned).
+;   • Must execute from RAM: routines rely on self-modifying code (patch abs operands).
+;
+; Protocol (drive → host, during reads):
+;   01 01  = literal 0x01 (escaped, store and continue)
+;   01 81  = end-of-data (success → C=0)
+;   01 11  = error (failure → C=1)
+;   01 21  = sync request (resynchronize, then continue)
+;   other  = fatal: border=green, infinite hang (debug visibility)
+;
+; Calling Conventions (registers / globals):
+;   • Track/Sector inputs: X=track, Y=sector for single-sector ops.
+;   • Pointers: dest_ptr/src_ptr are (lo/hi) globals; routines patch abs operands:
+;       - store_operand_abs / load_operand_abs / dest_store_operand labels.
+;   • Streaming state: current_track/current_sector, buf_offset advance across sectors.
+;   • Geometry: max_sector_index_by_track holds 0-based max sector index per track.
+;   • Mapping $01: set to IO_MAPPED only for the duration of low-level IEC calls.
+;
+; Error Handling & Diagnostics:
+;   • Reads/writes with wrappers retry indefinitely on failure, showing DISK_ERROR_MSG
+;     via print_message_wait_for_button until the operation succeeds.
+;   • disk_read_sector_into_buffer records last_track_loaded/last_sector_loaded on success.
+;   • Fatal/unknown read control code → green border + hang (debug).
+;
+; Self-Modifying Code (SMC) Sites:
+;   • disk_read_sector: patches STA $FFFF,X (store_operand_abs) to dest_ptr.
+;   • disk_write_sector: patches LDA $FFFF,X (load_operand_abs) to src_ptr.
+;   • disk_stream_copy_bytes: patches STA $FFFF (dest_store_operand) to destination,
+;     then increments the inlined operand to walk memory.
+;
+; Entry Points:
+;   disk_init_chain                 Seed start_track/start_sector and clear chain state.
+;   disk_init_chain_and_read        Init chain, load (X=offset,Y=step), fall through to seek+read.
+;   disk_seek_read_at               Step Y sectors from start_*, set buf_offset=X, read into $0300.
+;   disk_read_sector_into_buffer    Read (current_*) with retry; update last_*_loaded on success.
+;   disk_stream_next_byte           Return next byte from stream; auto-refill on $FF→$00 wrap.
+;   disk_stream_copy_bytes          Copy N streamed bytes to RAM using inlined STA operand.
+;   disk_write_sector               Send WRITE_SECTOR_CMD and stream 256 bytes from src_ptr.
+;   disk_write_sectors_from_buffer  Write ceil(N/256) sectors from a linear buffer with retries.
+;   disk_advance_sector_physical    ++sector; wrap to 0 and ++track when beyond per-track max.
+;   disk_reset                      Send RESET_DRIVE_CMD to the drive (no params).
+;   max_sector_index_by_track       Table of per-track **max sector index** (0-based).
+;
+; Arguments / Returns (conventions used across routines):
+;   • Unless stated otherwise, A/X/Y are clobbered by low-level I/O; flags are not a contract.
+;   • Carry is used for read/write status in leaf protocol routines (C=0 success, C=1 error).
+;   • Globals updated: current_track/current_sector, buf_offset, last_*_loaded, src_ptr/dest_ptr.
+;
+; Edge Cases & Preconditions:
+;   • disk_stream_copy_bytes requires non-zero 16-bit count; zero would underflow/loop forever.
+;   • disk_write_sectors_from_buffer rounds byte count up to whole sectors:
+;       sectors_to_write = hi + (lo != 0).
+;   • disk_advance_sector_physical does not clamp at end-of-disk; caller policy applies.
+;
+; External Dependencies (entry addresses expected to be linked/provided):
+;   print_message_wait_for_button, send_command_to_drive, sync_with_drive,
+;   recv_byte_from_serial, send_byte_over_serial, disk_read_sector (internal leaf),
+;   disk_write_sector (internal leaf) — see individual routine headers below.
+;===============================================================================
+
 ;===========================================
 ; Variables & Constants
 ;===========================================
