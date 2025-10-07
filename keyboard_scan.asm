@@ -188,6 +188,7 @@ KBD_LSHIFT_COL_MASK			= %1000_0000
 KBD_RSHIFT_COL_MASK			= %0001_0000
 KBD_LSHIFT_ROW_MASK			= %0000_0010
 KBD_RSHIFT_ROW_MASK			= %0100_0000
+KBD_KEYMAP_SHIFT_BASE		= $40
 JOY2_MASK 					= %0001_1111
 ALL_OUTPUTS					= $FF
 ALL_INPUTS					= $00
@@ -482,11 +483,11 @@ kbd_count_bits:
        CMP #KBD_KEY_LSHIFT
        BNE not_left_shift
        ; Left Shift → base = $40, column mask = %1000_0000, row mask = %0000_0010
-       LDA #$40
+       LDA #KBD_KEYMAP_SHIFT_BASE
        STA kbd_keymap_base
-       LDA #$80
+       LDA #KBD_LSHIFT_COL_MASK
        STA kbd_col_mask
-       LDA #$02
+       LDA #KBD_LSHIFT_ROW_MASK
        STA kbd_row_mask
        BNE kbd_exit
 
@@ -494,11 +495,11 @@ not_left_shift:
        CMP #KBD_KEY_RSHIFT
        BNE not_right_shift
        ; Right Shift → base = $40, column mask = %0001_0000, row mask = %0100_0000
-       LDA #$40
+       LDA #KBD_KEYMAP_SHIFT_BASE
        STA kbd_keymap_base
-       LDA #$10
+       LDA #KBD_RSHIFT_COL_MASK
        STA kbd_col_mask
-       LDA #$40
+       LDA #KBD_RSHIFT_ROW_MASK
        STA kbd_row_mask
        BNE kbd_exit
 
