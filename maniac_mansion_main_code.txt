@@ -19367,10 +19367,10 @@ alloc_data:
 .C:54e4  8E 01 55    STX temp_x
 .C:54e7  8C 02 55    STY temp_y
 ;Try to get a free block
-.C:54ea  20 1B 58    JSR get_free_block
+.C:54ea  20 1B 58    JSR mem_alloc_bestfit
 .C:54ed  D0 11       BNE block_found
 ;No success, compact free memory and release resources as needed
-.C:54ef  20 D5 58    JSR compact_and_release
+.C:54ef  20 D5 58    JSR mem_compact_then_release
 .C:54f2  D0 0C       BNE block_found
 ;Release one costume and try again
 .C:54f4  20 7B 56    JSR release_one_costume
@@ -19418,9 +19418,9 @@ release_resource:
 .C:552a  C8          INY
 .C:552b  91 61       STA (free_block),Y
 ;Sort all free blocks by their address
-.C:552d  20 4C 57    JSR sort_free_blocks
+.C:552d  20 4C 57    JSR mem_sort_free_ao
 ;Coalesce all adjacent free blocks
-.C:5530  20 C8 56    JSR coalesce_free_blocks
+.C:5530  20 C8 56    JSR mem_coalesce_right
 ;Mark that a resource has been released
 .C:5533  A9 01       LDA #$01
 .C:5535  8D 4A FE    STA rsrc_has_been_released
@@ -19737,7 +19737,7 @@ block_size = $56c5
 free_block = $4f
 adjacent_block = $59
 
-coalesce_free_blocks:
+mem_coalesce_right:
 ;Start with the first block
 .C:56c8  AD 63 FF    LDA <first_free_block
 .C:56cb  85 4F       STA <free_block
@@ -19852,7 +19852,7 @@ prev_block = $5746
 next_block = $5748
 selected_next = $574a
 
-sort_free_blocks:
+mem_sort_free_ao:
 ;Start by pointing to the free block table
 ;The pointer to the first free block is on offsets 2-3, just like the pointer to the next block on regular free blocks.
 ;So, when getting the "next block" from the table, we'll get the first one
@@ -20036,7 +20036,7 @@ raw_data_size = $fd9c
 size_needed = $5819
 free_block = $4f
 
-get_free_block:
+mem_alloc_bestfit:
 .C:581b  8E 9C FD    STX <raw_data_size
 .C:581e  8C 9D FD    STY >raw_data_size
 ;Compute the size needed by doing raw_data_size + memory block header size (4 bytes)
@@ -20053,7 +20053,7 @@ get_free_block:
 .C:5837  AD 64 FF    LDA >first_free_block
 .C:583a  85 50       STA >free_block
 ;If free block is non-zero, there's at least 1 free block, find the best one
-.C:583c  D0 01       BNE find_best_free_block
+.C:583c  D0 01       BNE mem_bestfit_select
 ;Pointer is zero, so there are no free blocks
 ;Return with Z flag set
 .C:583e  60          RTS
@@ -20073,7 +20073,7 @@ free_block = $4f
 prev_block = $5817
 unused = $51
 
-find_best_free_block:
+mem_bestfit_select:
 ;Init best free size as #FFFF
 .C:583f  A9 FF       LDA #$FF
 .C:5841  8D 15 58    STA <best_free_size
@@ -20178,7 +20178,7 @@ free_block_found:
 ;===========================================
 size = $58d3
 
-compact_and_release:
+mem_compact_then_release:
 .C:58d5  AD 9C FD    LDA <raw_data_size
 .C:58d8  8D D3 58    STA <size
 .C:58db  AD 9D FD    LDA >raw_data_size
@@ -20192,12 +20192,12 @@ compact_and_release:
 ;Find a free block for this size
 .C:58ee  AE D3 58    LDX <size
 .C:58f1  AC D4 58    LDY >size
-.C:58f4  20 1B 58    JSR get_free_block
+.C:58f4  20 1B 58    JSR mem_alloc_bestfit
 ;Did we find anything?
 .C:58f7  D0 05       BNE free_block_found
 ;No free block found - release resources and try again
 .C:58f9  20 E3 5A    JSR release_rsrcs_by_priority
-.C:58fc  D0 D7       BNE compact_and_release
+.C:58fc  D0 D7       BNE mem_compact_then_release
 ;We found a free block, return
 free_block_found:
 .C:58fe  60          RTS
@@ -20369,7 +20369,7 @@ next_block_present:
 .C:59d9  8C A7 59    STY >next_block
 ;Invoke move_to_back, passing the current block, its next one in the list and its adjacent one
 .C:59dc  20 E5 59    JSR move_to_back
-.C:59df  20 C8 56    JSR coalesce_free_blocks
+.C:59df  20 C8 56    JSR mem_coalesce_right
 .C:59e2  4C AA 59    JMP move_free_blocks_to_back
 ;===========================================
 ; Move the first free block "to the back" of memory space
