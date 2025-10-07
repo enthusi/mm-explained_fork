@@ -1905,29 +1905,29 @@ start_game:
 .C:045b  20 D3 44    JSR disk_init_chain
 .C:045e  A2 02       LDX #$02
 .C:0460  A0 00       LDY #$00
-.C:0462  20 F7 44    JSR disk_seek_read_at
+.C:0462  20 F7 44    JSR disk_seek_read
 ;Load all object's attributes
 ;The object attributes section starts at $7301
 .C:0465  A2 01       LDX #$01
 .C:0467  A0 73       LDY #$73
 .C:0469  A9 00       LDA #$00
-.C:046b  8D 3C 46    STA sector_memory_copy_counter_lo
+.C:046b  8D 3C 46    STA disk_copy_count_lo
 .C:046e  A9 01       LDA #$01
-.C:0470  8D 3D 46    STA sector_memory_copy_counter_hi
-.C:0473  20 1F 45    JSR disk_stream_copy_bytes
+.C:0470  8D 3D 46    STA disk_copy_count_hi
+.C:0473  20 1F 45    JSR disk_stream_copy
 ;Setup disk read from track 1 sector 1, starting from byte offset #02
 .C:0476  A2 02       LDX #$02
 .C:0478  A0 01       LDY #$01
-.C:047a  20 F7 44    JSR disk_seek_read_at
+.C:047a  20 F7 44    JSR disk_seek_read
 ;Load game resources' disk storage data to memory
 ;The storage data section starts at $7401
 .C:047d  A2 01       LDX #$01
 .C:047f  A0 74       LDY #$74
 .C:0481  A9 A2       LDA #$A2
-.C:0483  8D 3C 46    STA sector_memory_copy_counter_lo
+.C:0483  8D 3C 46    STA disk_copy_count_lo
 .C:0486  A9 03       LDA #$03
-.C:0488  8D 3D 46    STA sector_memory_copy_counter_hi
-.C:048b  20 1F 45    JSR disk_stream_copy_bytes
+.C:0488  8D 3D 46    STA disk_copy_count_hi
+.C:048b  20 1F 45    JSR disk_stream_copy
 ;Set frame_buffer to #01 ('lights on' memory layout)
 .C:048e  A9 01       LDA #$01
 .C:0490  85 23       STA frame_buffer
@@ -16188,7 +16188,7 @@ disk_init_chain_and_read:
 .C:44f1  AE 3A 46    LDX read_offset
 .C:44f4  AC 3B 46    LDY sector_chain_index
 ;===========================================
-; disk_seek_read_at
+; disk_seek_read
 ;
 ;	Input args:	.X	read_offset	- byte offset to start reading from (within a sector's data)
 ;				.Y	sector_chain_index	(the index of the desired sector in a chain)
@@ -16203,7 +16203,7 @@ current_track = $4636
 read_offset = $463A
 sector_chain_index = $463B
 
-disk_seek_read_at:
+disk_seek_read:
 .C:44f7  8E 3A 46    STX read_offset
 .C:44fa  8C 3B 46    STY sector_chain_index
 .C:44fd  AD 33 46    LDA start_sector
@@ -16217,7 +16217,7 @@ disk_seek_read_at:
 ;Keep advancing until we reach the desired index
 .C:450e  AA          TAX
 next_sector_in_chain:
-.C:450f  20 AE 45    JSR disk_advance_sector_physical
+.C:450f  20 AE 45    JSR disk_next_sector_phys
 .C:4512  CA          DEX
 .C:4513  D0 FA       BNE next_sector
 ;Set the read offset
@@ -16232,17 +16232,17 @@ sector_chain_index_reached:
 ;
 ; Input args:	.X	destination address lo
 ;				.Y	destination address hi
-;				sector_memory_copy_counter_lo/hi	total number of bytes to copy
+;				disk_copy_count_lo/hi	total number of bytes to copy
 ;				sector_memory_read_offset - byte offset to start reading from
 ;						(this will be used by disk_stream_next_byte)
 ;===========================================
 ;Inline destination pointer from .X/.Y
 write_ptr_lo = $4529
 write_ptr_hi = $452A
-sector_memory_copy_counter_lo = $463C
-sector_memory_copy_counter_hi = $463D
+disk_copy_count_lo = $463C
+disk_copy_count_hi = $463D
 
-disk_stream_copy_bytes:
+disk_stream_copy:
 .C:451f  8E 29 45    STX write_ptr_lo	
 .C:4522  8C 2A 45    STY write_ptr_hi
 read_loop:
@@ -16253,14 +16253,14 @@ read_loop:
 .C:452e  D0 03       BNE decrement_counters
 .C:4530  EE 2A 45    INC write_ptr_hi
 decrement_counters:
-.C:4533  AD 3C 46    LDA sector_memory_copy_counter_lo
+.C:4533  AD 3C 46    LDA disk_copy_count_lo
 .C:4536  D0 03       BNE decrement_counter_lo
-.C:4538  CE 3D 46    DEC sector_memory_copy_counter_hi
+.C:4538  CE 3D 46    DEC disk_copy_count_hi
 decrement_counter_lo:
-.C:453b  CE 3C 46    DEC sector_memory_copy_counter_lo
+.C:453b  CE 3C 46    DEC disk_copy_count_lo
 ;Do we still have bytes to read?
-.C:453e  AD 3C 46    LDA sector_memory_copy_counter_lo
-.C:4541  0D 3D 46    ORA sector_memory_copy_counter_hi
+.C:453e  AD 3C 46    LDA disk_copy_count_lo
+.C:4541  0D 3D 46    ORA disk_copy_count_hi
 .C:4544  D0 DF       BNE read_loop
 .C:4546  60          RTS
 ;===========================================
@@ -16273,16 +16273,16 @@ decrement_counter_lo:
 src_ptr_lo = $4631
 src_ptr_hi = $4632
 
-disk_write_sectors_from_buffer:
+disk_write_linear:
 .C:4547  8E 31 46    STX src_ptr_lo
 .C:454a  8C 32 46    STY src_ptr_hi
 .C:454d  AD 33 46    LDA sector_desired
 .C:4550  8D 35 46    STA sector_to_read
 .C:4553  AD 34 46    LDA track_desired
 .C:4556  8D 36 46    STA track_to_read
-.C:4559  AD 3C 46    LDA sector_memory_copy_counter_lo
+.C:4559  AD 3C 46    LDA disk_copy_count_lo
 .C:455c  F0 03       BEQ try_write
-.C:455e  EE 3D 46    INC sector_memory_copy_counter_hi
+.C:455e  EE 3D 46    INC disk_copy_count_hi
 try_write:
 ;map_in_io
 .C:4561  A0 25       LDY #$25
@@ -16301,9 +16301,9 @@ try_write:
 ;map_out_io
 .C:457e  A0 24       LDY #$24
 .C:4580  84 01       STY processor_port_register
-.C:4582  20 AE 45    JSR disk_advance_sector_physical
+.C:4582  20 AE 45    JSR disk_next_sector_phys
 .C:4585  EE 32 46    INC src_ptr_hi
-.C:4588  CE 3D 46    DEC sector_memory_copy_counter_hi
+.C:4588  CE 3D 46    DEC disk_copy_count_hi
 .C:458b  D0 D4       BNE try_write
 .C:458d  60          RTS
 ;===========================================
@@ -16334,7 +16334,7 @@ disk_stream_next_byte:
 ;If it's zero, we just crossed a page (which match perfectly with sectors)
 ; so we need to continue in the next consecutive sector
 ;Load the next valid sector into memory
-.C:459d  20 AE 45    JSR disk_advance_sector_physical
+.C:459d  20 AE 45    JSR disk_next_sector_phys
 .C:45a0  20 EB 45    JSR disk_read_sector_into_buffer
 ;Reset read offset
 .C:45a3  A9 00       LDA #$00		
@@ -16360,7 +16360,7 @@ y_copy:
 ;===========================================
 current_track = $4636
 current_sector = $4635
-disk_advance_sector_physical:
+disk_next_sector_phys:
 ;Increase sector by 1
 .C:45ae  EE 35 46    INC current_sector
 ;Check that it doesn't exceed the sectors per track limit for this track
@@ -19455,15 +19455,15 @@ load_resource:
 ;Read the first data sector from disk
 .C:5544  AE 78 56    LDX read_offset
 .C:5547  AC 79 56    LDY sector_chain_index
-.C:554a  20 F7 44    JSR disk_seek_read_at
+.C:554a  20 F7 44    JSR disk_seek_read
 ;Copy the resource header to local memory
 .C:554d  A2 3B       LDX #<local_header
 .C:554f  A0 55       LDY #>local_header
 .C:5551  A9 04       LDA RSRC_HEADER_SIZE
-.C:5553  8D 3C 46    STA sector_memory_copy_counter_lo
+.C:5553  8D 3C 46    STA disk_copy_count_lo
 .C:5556  A9 00       LDA #$00
-.C:5558  8D 3D 46    STA sector_memory_copy_counter_hi
-.C:555b  20 1F 45    JSR disk_stream_copy_bytes
+.C:5558  8D 3D 46    STA disk_copy_count_hi
+.C:555b  20 1F 45    JSR disk_stream_copy
 ;Validate that the "zero byte" is zero
 ;If not, start over
 .C:555e  AD 3D 55    LDA local_header + ZERO_BYTE_OFFSET
@@ -19488,14 +19488,14 @@ room_raw_data_load:
 ;Load the whole resource data from disk into memory
 .C:557c  AE 78 56    LDX read_offset
 .C:557f  AC 79 56    LDY sector_chain_index
-.C:5582  20 F7 44    JSR disk_seek_read_at
+.C:5582  20 F7 44    JSR disk_seek_read
 .C:5585  AE 3F 55    LDX <rsrc_data
 .C:5588  AC 40 55    LDY >rsrc_data
 .C:558b  AD 3B 55    LDA <rsrc_size
-.C:558e  8D 3C 46    STA sector_memory_copy_counter_lo
+.C:558e  8D 3C 46    STA disk_copy_count_lo
 .C:5591  AD 3C 55    LDA >rsrc_size
-.C:5594  8D 3D 46    STA sector_memory_copy_counter_hi
-.C:5597  20 1F 45    JSR disk_stream_copy_bytes
+.C:5594  8D 3D 46    STA disk_copy_count_hi
+.C:5597  20 1F 45    JSR disk_stream_copy
 ;-------------------------------------------
 ; Setup data checksum
 ;Copy resource pointer to checksum ptr
@@ -19623,16 +19623,16 @@ disk_id_check:
 .C:5633  20 D3 44    JSR disk_init_chain
 .C:5636  A2 00       LDX #$00
 .C:5638  A0 00       LDY #$00
-.C:563a  20 F7 44    JSR disk_seek_read_at
+.C:563a  20 F7 44    JSR disk_seek_read
 ;Copy 1 byte to disk_id_in_sector
 ;This is the first byte of track 1 sector 0, which is always the Disk ID
 .C:563d  A2 7A       LDX #<disk_id_in_sector
 .C:563f  A0 56       LDY #>disk_id_in_sector
 .C:5641  A9 01       LDA #$01
-.C:5643  8D 3C 46    STA sector_memory_copy_counter_lo
+.C:5643  8D 3C 46    STA disk_copy_count_lo
 .C:5646  A9 00       LDA #$00
-.C:5648  8D 3D 46    STA sector_memory_copy_counter_hi
-.C:564b  20 1F 45    JSR disk_stream_copy_bytes
+.C:5648  8D 3D 46    STA disk_copy_count_hi
+.C:564b  20 1F 45    JSR disk_stream_copy
 ;Compare Disk ID with desired_disk_id
 .C:564e  AD 9C FE    LDA desired_disk_id
 .C:5651  CD 7A 56    CMP disk_id_in_sector
@@ -20956,10 +20956,10 @@ save_state_to_disk:
 .C:5c49  A2 15       LDX #<disk_id
 .C:5c4b  A0 00       LDY #>disk_id
 .C:5c4d  A9 01       LDA #$01
-.C:5c4f  8D 3C 46    STA sector_memory_copy_counter_lo
+.C:5c4f  8D 3C 46    STA disk_copy_count_lo
 .C:5c52  A9 00       LDA #$00
-.C:5c54  8D 3D 46    STA sector_memory_copy_counter_hi
-.C:5c57  20 47 45    JSR disk_write_sectors_from_buffer
+.C:5c54  8D 3D 46    STA disk_copy_count_hi
+.C:5c57  20 47 45    JSR disk_write_linear
 ;Write #$152 bytes from $FEA1-FFF3 to track 5, sector 0
 ;This includes the game engine state, game variables and free blocks
 .C:5c5a  A2 00       LDX #$00
@@ -20968,10 +20968,10 @@ save_state_to_disk:
 .C:5c61  A2 A1       LDX #$A1
 .C:5c63  A0 FE       LDY #$FE
 .C:5c65  A9 52       LDA #$52
-.C:5c67  8D 3C 46    STA sector_memory_copy_counter_lo
+.C:5c67  8D 3C 46    STA disk_copy_count_lo
 .C:5c6a  A9 01       LDA #$01
-.C:5c6c  8D 3D 46    STA sector_memory_copy_counter_hi
-.C:5c6f  20 47 45    JSR disk_write_sectors_from_buffer
+.C:5c6c  8D 3D 46    STA disk_copy_count_hi
+.C:5c6f  20 47 45    JSR disk_write_linear
 ;Write 7 bytes from $C9-D0 to track 6, sector 0
 .C:5c72  A2 00       LDX #$00
 .C:5c74  A0 06       LDY #$06
@@ -20979,10 +20979,10 @@ save_state_to_disk:
 .C:5c79  A2 C9       LDX #$C9
 .C:5c7b  A0 00       LDY #$00
 .C:5c7d  A9 07       LDA #$07
-.C:5c7f  8D 3C 46    STA sector_memory_copy_counter_lo
+.C:5c7f  8D 3C 46    STA disk_copy_count_lo
 .C:5c82  A9 00       LDA #$00
-.C:5c84  8D 3D 46    STA sector_memory_copy_counter_hi
-.C:5c87  20 47 45    JSR disk_write_sectors_from_buffer
+.C:5c84  8D 3D 46    STA disk_copy_count_hi
+.C:5c87  20 47 45    JSR disk_write_linear
 ;Write #$57CF bytes from $7031-C800 to track 7, sector 0
 ;This includes the whole "heap" with current resources and free blocks,
 ; pointers to existing resources in memory, and the hardcoded game layout info
@@ -20993,10 +20993,10 @@ save_state_to_disk:
 .C:5c91  A2 31       LDX #$31
 .C:5c93  A0 70       LDY #$70
 .C:5c95  A9 CF       LDA #$CF
-.C:5c97  8D 3C 46    STA sector_memory_copy_counter_lo
+.C:5c97  8D 3C 46    STA disk_copy_count_lo
 .C:5c9a  A9 57       LDA #$57
-.C:5c9c  8D 3D 46    STA sector_memory_copy_counter_hi
-.C:5c9f  20 47 45    JSR disk_write_sectors_from_buffer
+.C:5c9c  8D 3D 46    STA disk_copy_count_hi
+.C:5c9f  20 47 45    JSR disk_write_linear
 ;Return with #00 in .A
 .C:5ca2  A9 00       LDA #$00
 .C:5ca4  60          RTS
@@ -21022,10 +21022,10 @@ load_state_from_sectors:
 .C:5cb8  A2 A1       LDX #$A1
 .C:5cba  A0 FE       LDY #$FE
 .C:5cbc  A9 52       LDA #$52
-.C:5cbe  8D 3C 46    STA sector_memory_copy_counter_lo
+.C:5cbe  8D 3C 46    STA disk_copy_count_lo
 .C:5cc1  A9 01       LDA #$01
-.C:5cc3  8D 3D 46    STA sector_memory_copy_counter_hi
-.C:5cc6  20 1F 45    JSR disk_stream_copy_bytes
+.C:5cc3  8D 3D 46    STA disk_copy_count_hi
+.C:5cc6  20 1F 45    JSR disk_stream_copy
 ;Copy 7 bytes from track 6, sector 0 to C9-D0
 .C:5cc9  A2 00       LDX #$00
 .C:5ccb  A0 06       LDY #$06
@@ -21033,10 +21033,10 @@ load_state_from_sectors:
 .C:5cd0  A2 C9       LDX #$C9
 .C:5cd2  A0 00       LDY #$00
 .C:5cd4  A9 07       LDA #$07
-.C:5cd6  8D 3C 46    STA sector_memory_copy_counter_lo
+.C:5cd6  8D 3C 46    STA disk_copy_count_lo
 .C:5cd9  A9 00       LDA #$00
-.C:5cdb  8D 3D 46    STA sector_memory_copy_counter_hi
-.C:5cde  20 1F 45    JSR disk_stream_copy_bytes
+.C:5cdb  8D 3D 46    STA disk_copy_count_hi
+.C:5cde  20 1F 45    JSR disk_stream_copy
 ;Copy a total of 57CF bytes from track 7, sector 0 to $7031-C800
 ;This includes the whole "heap" with current resources and free blocks,
 ; pointers to existing resources in memory, and the hardcoded game layout info
@@ -21047,10 +21047,10 @@ load_state_from_sectors:
 .C:5ce8  A2 31       LDX #$31
 .C:5cea  A0 70       LDY #$70
 .C:5cec  A9 CF       LDA #$CF
-.C:5cee  8D 3C 46    STA sector_memory_copy_counter_lo
+.C:5cee  8D 3C 46    STA disk_copy_count_lo
 .C:5cf1  A9 57       LDA #$57
-.C:5cf3  8D 3D 46    STA sector_memory_copy_counter_hi
-.C:5cf6  20 1F 45    JSR disk_stream_copy_bytes
+.C:5cf3  8D 3D 46    STA disk_copy_count_hi
+.C:5cf6  20 1F 45    JSR disk_stream_copy
 ;Return #03 on .A
 .C:5cf9  A9 03       LDA #$03
 .C:5cfb  60          RTS
