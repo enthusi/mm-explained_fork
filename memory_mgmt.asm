@@ -2,61 +2,91 @@
 ; Memory Manager — Free-List + Best-Fit + Local Compaction
 ;
 ; Overview:
-;   - A singly-linked FREE list manages variable-size blocks. 
-;	- Allocation uses a best-fit scan, optionally splitting the chosen FREE node. 
-;	- A localized compaction step ("move_to_back") bubbles USED blocks left over the leading
-;   FREE region to grow contiguous free space. 
-;	- Periodic coalescing merges adjacent FREE neighbors. 
-;	An AO (address-order) pass can reorder the FREE list to improve coalescing and locality.
+;   - A singly-linked free list manages variable-size blocks. 
+;	- Allocation uses a best-fit scan, optionally splitting the chosen free node. 
+;	- A localized compaction step ("mem_bubble_used_left") bubbles USED blocks left over the leading
+;   free region to grow contiguous free space. 
+;	- Periodic coalescing merges adjacent free neighbors. 
+;	An AO (address-order) pass can reorder the free list to improve coalescing and locality.
 ;
 ; Block header layout (all addresses little-endian):
 ;   FREE node:
-;     +0..+1  size   (lo = tail bytes on last page, hi = full pages)
-;     +2..+3  next   (pointer to next FREE node; $0000 = null)
+;     +0..+1  block size   		(lo = tail bytes on last page, hi = full pages)
+;     +2..+3  next free block   (pointer to next free node; $0000 = null)
 ;   USED block:
-;     +0..+1  size   (header + payload)
+;     +0..+1  block size   (header + payload)
 ;     +2      resource_type   
 ;     +3      resource_index  
 ;
 ; Global invariants:
-;   - Null pointer is detected via HI byte == $00 (no headers exist in page $00).
-;   - get_next_block returns X=next.lo, Y=next.hi and sets Z from Y.
-;     STX/STY do not change flags; branches often rely on Z from get_next_block.
+;   - Null pointer is detected via HI byte == $00 (no free blocks exist in page $00).
+;   - mem_read_next_ptr returns X=next.lo, Y=next.hi and sets Z from Y.
+;     STX/STY do not change flags; branches often rely on Z from mem_read_next_ptr.
 ;   - Size fields are (header+payload) for USED and “bytes-on-last-page/pages” encoding.
 ;
-; API (high level):
-;   get_free_block (X/Y = payload size):
-;     - Computes size_needed = payload + 4 (FREE header size), seeds the scan,
+; Public routines:
+;   mem_alloc_bestfit (X/Y = payload size):
+;     - Computes mem_req_total = payload + 4 (free header size), seeds the scan,
 ;       and dispatches to best-fit. Returns X/Y = allocated header on success (Z=0).
 ;       On failure (free list empty or no fit), returns Z=1 (X/Y unspecified).
+;		Used externally by alloc_data.
 ;
-;   find_best_free_block:
-;     - Best-fit scan over FREE nodes (ties prefer later). On success sets
-;       free_block to winner and calls allocate_block.
-;
-;   allocate_block:
-;     - Split-or-consume the chosen FREE node. Split if remainder ≥ 4 bytes;
-;       otherwise splice out the node. Maintains last_free_block.
-;
-;   move_to_back:
-;     - While USED blocks immediately follow the leading FREE node, copy each
-;       USED (header+payload) into the FREE region (destination<header), fix
-;       external references, and advance pointers. Rebuild FREE header at end.
-;
-;   coalesce_free_blocks:
-;     - Merge right-adjacent FREE nodes in-place: if next == left+left.size,
+;   mem_coalesce_right:
+;     - Merge right-adjacent free nodes in-place: if next == left+left.size,
 ;       link-out right and grow left by right.size. Cascades at same left node.
+;		Used externally by the resource releaser.
 ;
-;   sort_free_blocks (AO pass):
+;   mem_sort_free_ao (AO pass):
 ;     - For each anchor, finds the lowest-address node < anchor_next and swaps
 ;       it into anchor_next by pointer rewiring. In-place, O(n^2), non-stable.
-;       Refresh first_free_block from the stub on exit; update last_free_block.
+;       Refresh mem_free_head from the stub on exit; update mem_free_tail.
+;		Used externally by the resource releaser.
+;
+;   mem_compact_then_release
+;     - Recovery path when mem_alloc_bestfit fails. Runs address-order sort
+;       (mem_sort_free_ao), coalesces right-adjacent free nodes (mem_coalesce_right),
+;       and compacts by bubbling USED blocks left into the leading FREE region
+;       (mem_bubble_used_left). If still no fit, calls external
+;       release_rsrcs_by_priority and refreshes pointers via update_rsrc_pointers,
+;       then retries best-fit. Loops until allocation succeeds or nothing remains
+;       to release. Returns X/Y = allocated header, Z=0 on success; Z=1 on failure.
+;		Used externally by alloc_data.
+;
+; Private routines:
+;	mem_copy_pages
+;     - Copies a block as whole pages plus a tail: first moves total_pages
+;       full 256-byte pages from mem_src→mem_dst, then copies mem_copy_tail
+;       remaining bytes. Preserves intra-page order; clobbers A/X/Y.
+;
+;	mem_compact_leading_free
+;     - Assumes the list starts with a FREE block. While a USED block directly
+;       follows it, copies that USED (header+payload) down into the FREE region,
+;       applies pointer fix-ups, advances mem_dst, and rebuilds the FREE header.
+;       Stops at the first non-adjacent or FREE block. Updates mem_free_head/tail.
+;
+;	mem_read_next_ptr
+;     - Utility: reads header +2..+3 (little-endian “next” pointer) from the
+;       block whose header pointer is in mem_hdr_ptr. Returns X/Y = next (hi/lo)
+;       and sets Z=1 if the next pointer is NULL.
+;
+;   mem_bestfit_select:
+;     - Best-fit scan over free nodes (ties prefer later). On success sets
+;       mem_free_cur to winner and calls mem_alloc_from_free.
+;
+;   mem_alloc_from_free:
+;     - Split-or-consume the chosen free node. Split if remainder ≥ 4 bytes;
+;       otherwise splice out the node. Maintains mem_free_tail.
+;
+;   mem_bubble_used_left:
+;     - While USED blocks immediately follow the leading free node, copy each
+;       USED (header+payload) into the FREE region (mem_dst<header), fix
+;       external references, and advance pointers. Rebuild free header at end.
 ;
 ; Conventions:
 ;   - Registers: A/X/Y clobbered by most routines; branch docs specify Z/C meaning.
-;   - Copy helper (mem_copy_memory):
-;       total_pages = full pages, page_bytes_to_copy = tail bytes on last page,
-;       read_ptr/write_ptr = header addresses; direction safe for overlap.
+;   - Copy helper (mem_copy_pages):
+;       mem_copy_page_cnt = full pages, mem_copy_tail = tail bytes on last page,
+;       mem_read_ptr/mem_write_ptr = header addresses; direction safe for overlap.
 ;
 ;===========================================
 
@@ -67,74 +97,73 @@
 ;Invariant: no block headers reside in page $00; null pointers are detected via hi-byte==0
 
 ;----------------------------------------
-; coalesce_free_blocks vars
+; mem_coalesce_right vars
 ;----------------------------------------
-left_size             = $56c5    	; 16-bit size of current FREE block on the left side; shared temp reused elsewhere
-left_block            = $4f      	; zp pointer to current FREE block header (lo @ $4F, hi @ $50)
-right_block           = $59      	; pointer to block at (left_block + left_size): immediate right neighbor
+left_size           = $56c5    	; 16-bit size of current free block on the left side; shared temp reused elsewhere
+mem_left            = $4f      	; zp pointer to current free block header (lo @ $4F, hi @ $50)
+mem_right           = $59      	; pointer to block at (mem_left + left_size): immediate right neighbor
 
 
 ;----------------------------------------
-; sort_free_blocks vars
+; mem_sort_free_ao vars
 ;----------------------------------------
-curr_block          = $4f      ; node under comparison during scan (alias of free_block storage)
+curr_block          = $4f      ; node under comparison during scan (alias of mem_free_cur storage)
 anchor_block        = $51      ; pass anchor / predecessor for this sweep (often the head stub initially)
 anchor_next         = $53      ; first candidate after anchor_block for this pass
 min_offender        = $55      ; lowest-address node found with addr < anchor_next; $FFFF sentinel = none
-min_prev            = $57      ; predecessor of min_offender (for relinking); shares ZP with `source`
+min_prev            = $57      ; predecessor of min_offender (for relinking); shares ZP with `mem_src`
 curr_prev           = $5746    ; ABS temp: rolling predecessor while scanning
 curr_next           = $5748    ; ABS temp: cached anchor_next->next
 min_next            = $574a    ; ABS temp: cached min_offender->next
 
 
 ;----------------------------------------
-; get_free_block / find_best_free_block
+; mem_alloc_bestfit / mem_bestfit_select
 ;----------------------------------------
-free_block               = $4f      ; zp pointer to current FREE block header (lo @ $4F, hi @ $50)
-payload_size             = $fd9c    ; requested payload size in bytes (header NOT included)
-best_free_block          = $5813    ; pointer to best-fit FREE block found
-best_free_size           = $5815    ; 16-bit size of best-fit block (lo=tail, hi=pages); alias of chosen_block_size
-prev_block               = $5817    ; rolling predecessor of the current candidate during the scan
-size_needed              = $5819    ; total bytes to carve = payload_size + 4 (header + payload)
-candidate_size           = $56c5    ; size of the candidate under inspection (reuses shared temp @ $56C5)
+mem_free_cur        = $4f      ; zp pointer to current free block header (lo @ $4F, hi @ $50)
+mem_req_payload     = $fd9c    ; requested payload size in bytes (header NOT included)
+mem_best_blk        = $5813    ; pointer to best-fit free block found
+mem_best_size       = $5815    ; 16-bit size of best-fit block (lo=tail, hi=pages)
+mem_prev            = $5817    ; rolling predecessor of the current candidate during the scan
+mem_req_total       = $5819    ; total bytes to carve = mem_req_payload + 4 (header + payload)
+candidate_size      = $56c5    ; size of the candidate under inspection (reuses shared temp @ $56C5)
 
 
 ;----------------------------------------
-; compact_and_release
+; mem_compact_then_release
 ;----------------------------------------
-saved_request_size       = $58d3    ; preserved copy of payload_size across compaction/retry attempts
+mem_req_saved       = $58d3    ; preserved copy of mem_req_payload across compaction/retry attempts
 
 
 ;----------------------------------------
-; get_next_block
+; mem_read_next_ptr
 ;----------------------------------------
-block_ptr                = $4f      ; input: pointer to a block header; routine returns next in X=lo, Y=hi
+mem_hdr_ptr         = $4f      ; input: pointer to a block header; routine returns next in X=lo, Y=hi
 
 
 ;----------------------------------------
-; allocate_block
+; mem_alloc_from_free
 ;----------------------------------------
-chosen_block_size        = $5815    ; size of the selected FREE block (alias of best_free_size)
-remaining_free_space     = $56c5    ; remainder after carve: chosen_block_size − size_needed (shared temp)
-temp                     = $56c7    ; 8-bit scratch used during pointer transfers
-new_free_block           = $55      ; trailing FREE block created on split; in consume path holds predecessor for tail update
-predecessor              = $51      ; predecessor pointer; may be the head stub
+mem_split_rem     	= $56c5    ; remainder after carve: mem_best_size − mem_req_total (shared temp)
+temp                = $56c7    ; 8-bit scratch used during pointer transfers
+mem_split_tail      = $55      ; trailing free block created on split; in consume path holds predecessor for tail update
+predecessor         = $51      ; predecessor pointer; may be the head stub
 
 
 ;----------------------------------------
-; move_to_back
+; mem_bubble_used_left
 ;----------------------------------------
-source                   = $57      ; pointer to USED block being moved (initially right of the leading FREE block); shares ZP with min_prev
-destination              = $4f      ; pointer to destination (start of the leading FREE span)
-free_block_size          = $59a2    ; size (bytes) of the current leading FREE block
-block_size               = $59a4    ; size (bytes) of the USED block being relocated (header + payload)
-next_block               = $59a6    ; pointer to the next FREE block after the leading one
-resource_type            = $59a8    ; resource type tag for pointer fix-ups
-resource_index           = $59a9    ; resource index/id for pointer fix-ups
+mem_src             = $57      ; pointer to USED block being moved (initially right of the leading FREE block); shares ZP with min_prev
+mem_dst             = $4f      ; pointer to mem_dst (start of the leading FREE span)
+mem_free_sz         = $59a2    ; size (bytes) of the current leading FREE block
+mem_used_sz         = $59a4    ; size (bytes) of the USED block being relocated (header + payload)
+mem_next_free       = $59a6    ; pointer to the next FREE block after the leading one
+resource_type       = $59a8    ; resource type tag for pointer fix-ups
+resource_index      = $59a9    ; resource index/id for pointer fix-ups
 
 
 ;----------------------------------------
-; routines / flags / tables
+; External routines / flags / tables
 ;----------------------------------------
 update_rsrc_pointers     = $5a89    ; subroutine: retarget external pointers for a relocated resource (uses type/index)
 release_rsrcs_by_priority = $5ae3   ; subroutine: release resources by priority tiers, then retry allocation
@@ -145,104 +174,118 @@ sound_memory_attrs       = $7951    ; table: per-sound usage attributes, indexed
 ;----------------------------------------
 ; Head and Tail of free block list
 ;----------------------------------------
-free_list_head_stub      = $ff61    ; synthetic head: its header[+2..+3] holds first_free_block
-first_free_block         = $ff63    ; FREE-list head pointer (lo @ $FF63, hi @ $FF64)
-last_free_block          = $ff65    ; FREE-list tail pointer (lo @ $FF65, hi @ $FF66)
+mem_free_stub      	= $ff61    ; synthetic head: its header[+2..+3] holds mem_free_head
+mem_free_head       = $ff63    ; free-list head pointer (lo @ $FF63, hi @ $FF64)
+mem_free_tail       = $ff65    ; free-list tail pointer (lo @ $FF65, hi @ $FF66)
 
 
 ;----------------------------------------
-; mem_copy_memory
+; mem_copy_pages
 ;----------------------------------------
-page_bytes_to_copy       = $5B      ; final-page byte count (1..255); set to 0 on non-final pages to copy a full 256 via Y-wrap
-total_pages              = $5C      ; number of full 256-byte pages to copy; decremented once per completed page
-read_ptr                 = $5D      ; source pointer (zp: lo @ $5D, hi @ $5E); hi increments after each full page
-write_ptr                = $5F      ; destination pointer (zp: lo @ $5F, hi @ $60); hi increments after each full page
+mem_copy_tail       = $5B      ; final-page byte count (1..255); set to 0 on non-final pages to copy a full 256 via Y-wrap
+mem_copy_page_cnt   = $5C      ; number of full 256-byte pages to copy; decremented once per completed page
+mem_read_ptr        = $5D      ; mem_src pointer (zp: lo @ $5D, hi @ $5E); hi increments after each full page
+mem_write_ptr       = $5F      ; mem_dst pointer (zp: lo @ $5F, hi @ $60); hi increments after each full page
 
 
-SOUND_RESOURCE = $06
+SOUND_RESOURCE  = $06
+;------------------------------------------------------------
+; Block header layout (4-byte header + payload)
+;------------------------------------------------------------
+MEM_HDR_SIZE_LO = $00   ; Low byte of block size (total, including header)
+MEM_HDR_SIZE_HI = $01   ; High byte of block size
+MEM_HDR_NEXT_LO = $02   ; Low byte of pointer to next block
+MEM_HDR_NEXT_HI = $03   ; High byte of pointer to next block
+MEM_HDR_LEN     = $04   ; Total header length (size + next = 4 bytes)
+;------------------------------------------------------------
+; Each allocated or free block begins with this header.
+; Size fields store the block’s total length in bytes.
+; “Next” fields link to the next block in memory order.
+;------------------------------------------------------------
 
-* = $56C8
 
 ;===========================================
 ; Coalesce Adjacent Free Blocks (right-adjacency merge)
 ;
 ; Summary:
-;   Walks the FREE list, merging pairs of FREE nodes that are laid out
+;   Walks the free list, merging pairs of free nodes that are laid out
 ;   back-to-back in memory (right node starts at left + left.size). Merges can
 ;   cascade at the same left node until its next is non-adjacent. Maintains
-;   last_free_block if the right node was the tail.
+;   mem_free_tail if the right node was the tail.
 ;
 ; Arguments:
-;   first_free_block    	   	Head pointer of the FREE list. Seeds the walk.
-;   last_free_block  	    	Tail pointer of the FREE list. May be updated
+;   mem_free_head    	   	Head pointer of the free list. Seeds the walk.
+;   mem_free_tail  	    	Tail pointer of the free list. May be updated
 ;                               when the rightmost participant of a merge was the tail.
 ;
 ; Effects / Returns:
 ;   In-place merges of adjacent nodes (sizes and next links updated).
-;   last_free_block updated if the old tail got merged into its left neighbor.
+;   mem_free_tail updated if the old tail got merged into its left neighbor.
 ;
-;   Clobbers                      A, X, Y; condition flags. Calls get_next_block.
+;   Clobbers                      A, X, Y; condition flags. Calls mem_read_next_ptr.
 ;
 ; Preconditions / Invariants:
 ;   - Null = $0000 detected via HI byte == $00 (no headers reside in page $00).
-;   - get_next_block returns X=next.lo, Y=next.hi and sets Z from Y; STX/STY do not change flags.
+;   - mem_read_next_ptr returns X=next.lo, Y=next.hi and sets Z from Y; STX/STY do not change flags.
 ;
 ; Description:
 ;
 ;   For each node:
-;     1) Read its 16-bit size into block_size.
+;     1) Read its 16-bit size into mem_used_sz.
 ;
-;     2) Compute right_block = left_block + block_size (the address that would
+;     2) Compute mem_right = mem_left + mem_used_sz (the address that would
 ;        be immediately to the right if a neighbor is touching).
 ;
-;     3) Read next_block (current->next). If next_block == right_block, the two
+;     3) Read mem_next_free (current->next). If mem_next_free == mem_right, the two
 ;        blocks are **contiguous**:
 ;           • Link-out the right block: first_block.next ← second_block.next.
 ;           • Grow the left block: size(left) ← size(left) + size(right).
-;           • If the right block was last_free_block, move the tail to the coalesced left.
+;           • If the right block was mem_free_tail, move the tail to the coalesced left.
 ;
-;     4) If not contiguous, advance to next_block and continue.
+;     4) If not contiguous, advance to mem_next_free and continue.
 ;
 ;   This pass eliminates internal gaps between free regions, creating larger
 ;   contiguous spans that improve the likelihood of satisfying big allocations.
 ;
 ;===========================================
-coalesce_free_blocks:
-		; Load the head of the FREE list into ‘left_block’.
-		LDA first_free_block
-		STA left_block
-		LDA first_free_block + 1
-		STA left_block + 1
+* = $56C8
 
-		; Empty list? If first_free_block == $0000, nothing to merge → return.
-		BEQ exit_1
+mem_coalesce_right:
+		; Load the head of the free list into ‘mem_left’.
+		LDA mem_free_head
+		STA mem_left
+		LDA mem_free_head + 1
+		STA mem_left + 1
+
+		; Empty list? If mem_free_head == $0000, nothing to merge → return.
+		BEQ mem_exit_1
 
 compute_adjacent:
 		;----------------------------------------
-		; Read the current FREE block’s size (on the left side):
+		; Read the current free block’s size (on the left side):
 		;----------------------------------------
-		LDY #$00
-		LDA (left_block),Y
+		LDY #MEM_HDR_SIZE_LO
+		LDA (mem_left),Y
 		STA left_size
 		INY
-		LDA (left_block),Y
+		LDA (mem_left),Y
 		STA left_size + 1
 
 		;----------------------------------------
 		; Compute the address of the block that would be immediately to the right:
 		;
-		;   right_block = left_block + left_size
+		;   mem_right = mem_left + left_size
 		;----------------------------------------
 		CLC
 		LDA left_size
-		ADC left_block
-		STA right_block
+		ADC mem_left
+		STA mem_right
 		LDA left_size + 1
-		ADC left_block + 1
-		STA right_block + 1
+		ADC mem_left + 1
+		STA mem_right + 1
 
 		; Fetch the pointer to the NEXT free block (into X/Y).
-		JSR get_next_block
+		JSR mem_read_next_ptr
 
 		; If there is no next block (X:Y == $0000), we’re at the tail → done.
 		BNE adjacency_check
@@ -252,14 +295,14 @@ adjacency_check:
 		;----------------------------------------
 		; Test right-adjacency:
 		;
-		;   Are we exactly at left_block + block_size ? (i.e., right_block)
-		;   Compare next_block (X/Y) against right_block (lo/hi).
+		;   Are we exactly at mem_left + mem_used_sz ? (i.e., mem_right)
+		;   Compare mem_next_free (X/Y) against mem_right (lo/hi).
 		;----------------------------------------
-		CPX right_block
-		BNE adjacency_check_2
-		CPY right_block + 1
-adjacency_check_2:
-		; Branch if NOT adjacent (X:Y ≠ right_block).
+		CPX mem_right
+		BNE adjacency_check_hi
+		CPY mem_right + 1
+adjacency_check_hi:
+		; Branch if NOT adjacent (X:Y ≠ mem_right).
 		BNE next_block_is_not_adjacent
 
 		;----------------------------------------
@@ -268,70 +311,70 @@ adjacency_check_2:
 	   
 		; Unnecessary code, as X/Y already have the desired values
 		; Keeping here for consistency with original
-		STX right_block
-		STY right_block + 1
+		STX mem_right
+		STY mem_right + 1
 
 		;----------------------------------------
-		; Splice out the second block from the FREE list:
+		; Splice out the second block from the free list:
 		;   first_block.next ← second_block.next
 		;
-		; Copy header +2..+3 (next pointer) from right_block → left_block.
+		; Copy header +2..+3 (next pointer) from mem_right → mem_left.
 		;----------------------------------------
-		LDY #$02
-		LDA (right_block),Y
-		STA (left_block),Y
+		LDY #MEM_HDR_NEXT_LO
+		LDA (mem_right),Y
+		STA (mem_left),Y
 		INY
-		LDA (right_block),Y
-		STA (left_block),Y
+		LDA (mem_right),Y
+		STA (mem_left),Y
 
 		;----------------------------------------
-		; Add the two block sizes to form the new, coalesced size in left_block.
+		; Add the two block sizes to form the new, coalesced size in mem_left.
 		;
-		; Perform 16-bit addition: left_block.size = left_size + right_block.size
+		; Perform 16-bit addition: mem_left.size = left_size + mem_right.size
 		;----------------------------------------
-		LDY #$00
+		LDY #MEM_HDR_SIZE_LO
 		CLC
 		LDA left_size
-		ADC (right_block),Y          ; add size.lo
-		STA (left_block),Y              ; write new size.lo
+		ADC (mem_right),Y          ; add size.lo
+		STA (mem_left),Y              ; write new size.lo
 		INY
 		LDA left_size + 1
-		ADC (right_block),Y          ; add size.hi (+ carry from low-byte add)
-		STA (left_block),Y              ; write new size.hi
+		ADC (mem_right),Y          ; add size.hi (+ carry from low-byte add)
+		STA (mem_left),Y              ; write new size.hi
 
 		;----------------------------------------
-		; If we just removed the TAIL node (right_block == last_free_block),
+		; If we just removed the TAIL node (mem_right == mem_free_tail),
 		; then the newly coalesced first block becomes the new tail.
 		;----------------------------------------
-		LDA right_block
-		CMP last_free_block
+		LDA mem_right
+		CMP mem_free_tail
 		BNE continue
-		LDA right_block + 1
-		CMP last_free_block + 1
+		LDA mem_right + 1
+		CMP mem_free_tail + 1
 		BNE continue
 	   
-		LDA left_block
-		STA last_free_block
-		LDA left_block + 1
-		STA last_free_block + 1
+		LDA mem_left
+		STA mem_free_tail
+		LDA mem_left + 1
+		STA mem_free_tail + 1
 
 continue:
-		; Continue scanning: fall through to null-check using hi byte of left_block.
-		LDA left_block + 1
+		; Continue scanning: fall through to null-check using hi byte of mem_left.
+		LDA mem_left + 1
 		JMP is_block_null
 
 next_block_is_not_adjacent:
-		; Not adjacent → advance to the next FREE block and keep checking.
-		JSR get_next_block			;Redundant call - kept here to match the original
-		STX left_block
-		STY left_block + 1
+		; Not adjacent → advance to the next free block and keep checking.
+		JSR mem_read_next_ptr			;Redundant call - kept here to match the original
+		STX mem_left
+		STY mem_left + 1
 
 ;----------------------------------------
-; Loop guard: if left_block != $0000, process next candidate; else exit.
+; Loop guard: if mem_left != $0000, process next candidate; else exit.
 ;----------------------------------------
 is_block_null:
 		BNE compute_adjacent
-exit_1:
+mem_exit_1:
 		RTS
 ;===========================================
 ; Sort Free Blocks by Address (AO pass with localized swaps)
@@ -343,21 +386,21 @@ exit_1:
 ;   by pointer rewiring. Repeat until the end. O(n^2), in-place, non-stable.
 ;
 ; Arguments / Inputs:
-;   free_list_head_stub   Synthetic head; +2..+3 hold first_free_block.
-;   first_free_block      Current head pointer (variable).
-;   last_free_block       Tail pointer (variable).
+;   mem_free_stub   Synthetic head; +2..+3 hold mem_free_head.
+;   mem_free_head      Current head pointer (variable).
+;   mem_free_tail       Tail pointer (variable).
 ;
 ; Effects / Outputs:
-;   List becomes address-ordered. last_free_block updated to final node.
-;   first_free_block refreshed from the stub on exit.
+;   List becomes address-ordered. mem_free_tail updated to final node.
+;   mem_free_head refreshed from the stub on exit.
 ;
 ;   Clobbers                       
-;       A, X, Y; condition flags. Uses get_next_block. Internal temps updated.
+;       A, X, Y; condition flags. Uses mem_read_next_ptr. Internal temps updated.
 ;
 ; Invariants:
 ;   - Null pointer detected via HI byte == $00 (no headers in page $00).
-;   - get_next_block: X=next.lo, Y=next.hi, Z from Y; STX/STY do not change flags.
-;   - curr_block is the input pointer alias for get_next_block.
+;   - mem_read_next_ptr: X=next.lo, Y=next.hi, Z from Y; STX/STY do not change flags.
+;   - curr_block is the input pointer alias for mem_read_next_ptr.
 ;   - Tie-breaks don’t matter (addresses unique); algorithm is non-stable.
 ;
 ; Description:
@@ -370,7 +413,7 @@ exit_1:
 ;     2) Initialize min_offender ← $FFFF (sentinel meaning “none found”).
 ;
 ;     3) Walk the list window starting at anchor_next = anchor_block->next:
-;          • For each curr_block, read next_block = curr_block->next.
+;          • For each curr_block, read mem_next_free = curr_block->next.
 ;          • Check Address Order (AO) against anchor_next:
 ;                (curr_block - anchor_next)  → C=0 means out of order.
 ;          • Track the lowest-address offender (strictly less than any prior).
@@ -391,24 +434,24 @@ exit_1:
 ;   the lowest offending address up to its correct spot after anchor_block. After
 ;   all anchors advance, the free-list is sorted by address, which increases the
 ;   likelihood that adjacent free blocks become coalescible and can be merged
-;   efficiently by coalesce_free_blocks.
+;   efficiently by mem_coalesce_right.
 ;
 ;	Note: the sorting is actually non-stable, but it doesn't matter as sorting keys (addresses)
 ; 	are always unique.
 ;===========================================
 * = $574C
-sort_free_blocks:
+mem_sort_free_ao:
 		;----------------------------------------
 		; Initialize sorting by setting ‘anchor_block’ to point at the
 		; free block stub. This structure mimics a normal block header,
-		; holding the first_free_block pointer at offsets +2..+3.
+		; holding the mem_free_head pointer at offsets +2..+3.
 		;
 		; The routine will use anchor_block as the list head during traversal,
 		; allowing consistent pointer logic for block headers and the stub.
 		;----------------------------------------
-		LDA #<free_list_head_stub
+		LDA #<mem_free_stub
 		STA anchor_block
-		LDA #>free_list_head_stub
+		LDA #>mem_free_stub
 		STA anchor_block + 1
 
 setup_comparison:
@@ -439,7 +482,7 @@ setup_comparison:
 		;   curr_block ← anchor_next            (mirrored in X/Y for speed)
 		; If anchor_next == $0000, the list is empty/singleton → nothing to sort.
 		;----------------------------------------
-		LDY #$02
+		LDY #MEM_HDR_NEXT_LO
 		LDA (anchor_block),Y
 		STA anchor_next
 		TAX
@@ -463,7 +506,7 @@ compare_order:
 		STY curr_block + 1
 
 		; Read the singly-linked ‘next’ pointer from curr_block header.
-		JSR get_next_block
+		JSR mem_read_next_ptr
 		STX curr_next
 		STY curr_next + 1
 
@@ -557,7 +600,7 @@ next_comparison:
 		;   min_offender.next = anchor_next.next
 		;   anchor_next.next      = min_next
 		;----------------------------------------
-		LDY #$02
+		LDY #MEM_HDR_NEXT_LO
 
 		; anchor_block->next = min_offender
 		LDA min_offender
@@ -597,7 +640,7 @@ next_start_block:
 		LDA anchor_block + 1
 		STA curr_block + 1
 	   
-		JSR get_next_block               ; X/Y = anchor_block->next
+		JSR mem_read_next_ptr               ; X/Y = anchor_block->next
 		BEQ no_more_blocks               ; null → list exhausted
 	   
 		STX anchor_block                 ; step anchor forward
@@ -610,17 +653,17 @@ no_more_blocks:
 		; (At this point anchor_block holds the last node in the list.)
 		;----------------------------------------
 		LDA anchor_block
-		STA last_free_block
+		STA mem_free_tail
 		LDA anchor_block + 1
-		STA last_free_block + 1
+		STA mem_free_tail + 1
 		RTS
 ;===========================================
-; Get Free Block (Allocator Entry Point)
+; Get Free Block
 ;
 ; Summary:
 ;   Entry point for the allocator.  
 ;   Given a requested payload size (in X/Y), this routine searches the free
-;   list for a suitable memory block, calling the **best-fit** selector to
+;   list for a suitable memory block, calling the best-fit selector to
 ;   locate and allocate it.
 ;
 ; Arguments:
@@ -629,21 +672,20 @@ no_more_blocks:
 ;						the routine adds 4 bytes for the internal block header.
 ;
 ; Vars/State:
-;   payload_size		Stores requested payload size from X/Y.  
-;   size_needed			Computed as payload_size + 4 (header included).  
-;   first_free_block	Head pointer of the free list.  
-;   free_block          Updated to point to the current candidate free block.
+;   mem_req_payload		Stores requested payload size from X/Y.  
+;   mem_req_total		Computed as mem_req_payload + 4 (header included).  
+;   mem_free_head		Head pointer of the free list.  
+;   mem_free_cur        Updated to point to the current candidate free block.
 ;
 ; Returns:
 ;   X / Y               Pointer to allocated block header if successful.  
-;   Z Flag                         
-;       				Z=0 on success (block allocated),  
-;       				Z=1 if no free block exists (free list empty).
+;   Z Flag              Z=0 on success (block allocated),  
+;       				Z=1 if no free block exists (free list empty).           
 ;
 ; Preconditions / Notes:
-;   - Null FREE pointer is detected via HI byte == $00 (no headers in page $00).
-;   - BNE uses Z from the last LDA of first_free_block+1; STA does not affect flags.
-;   - Best-fit routine consumes size_needed and payload_size and performs the split/consume.
+;   - Null free pointer is detected via HI byte == $00 (no headers in page $00).
+;   - BNE uses Z from the last LDA of mem_free_head+1; STA does not affect flags.
+;   - Best-fit routine consumes mem_req_total and mem_req_payload and performs the split/consume.
 ;
 ; Description:
 ;   The allocator begins by recording the caller’s requested size and
@@ -654,231 +696,230 @@ no_more_blocks:
 ;
 ;   If no free blocks exist (list is empty), it returns immediately with Z=1.  
 ;
-;   Otherwise, it chains into the find_best_free_block routine, which
+;   Otherwise, it chains into the mem_bestfit_select routine, which
 ;   performs a full best-fit scan to locate the optimal block and split
 ;   or consume it as needed.
 ;===========================================
 * = $581B	
-get_free_block:
-		; Capture payload size for allocator (alias of raw_data_size used by allocate_block).
-		STX payload_size
-		STY payload_size + 1
+mem_alloc_bestfit:
+		; Capture payload size for allocator (alias of raw_data_size used by mem_alloc_from_free).
+		STX mem_req_payload
+		STY mem_req_payload + 1
 
 		; Compute total bytes required including the 4-byte block header:
-		; Total requested bytes (HEADER + payload): size_needed = raw_data_size + 4
+		; Total requested bytes (HEADER + payload): mem_req_total = raw_data_size + MEM_HDR_LEN
 		CLC
-		LDA payload_size
-		ADC #$04
-		STA size_needed
-		LDA payload_size + 1
+		LDA mem_req_payload
+		ADC #MEM_HDR_LEN
+		STA mem_req_total
+		LDA mem_req_payload + 1
 		ADC #$00
-		STA size_needed + 1
+		STA mem_req_total + 1
 
-		; Initialize the scan at the head of the FREE list.
-		; Check head.hi (null if $00). LDA sets Z, STA does not; BNE uses Z from LDA.
-		LDA first_free_block
-		STA free_block
-		LDA first_free_block + 1
-		STA free_block + 1
+		; Initialize the scan at the head of the free list.
+		LDA mem_free_head
+		STA mem_free_cur
+		; LDA sets Z, BNE uses Z from LDA.
+		LDA mem_free_head + 1
+		STA mem_free_cur + 1
 
-		; If the FREE list is empty (free_block == $0000), return with Z=1.
+		; If the free list is empty (mem_free_cur == $0000), return with Z=1.
 		; Otherwise, tail-call into the best-fit selector.
-		BNE find_best_free_block
+		BNE mem_bestfit_select
 		RTS
 ;===========================================
-; Find Best Free Block (Best-Fit Allocator)
+; Select Best Free Block (Best-Fit)
 ;
 ; Summary:
-;   Walk the FREE list and select the smallest block whose size ≥ size_needed.
-;   On success, set free_block to the winner and invoke allocate_block to carve it.
+;   Walk the free list and select the smallest block whose size ≥ mem_req_total.
+;   On success, set mem_free_cur to the winner and invoke mem_alloc_from_free to carve it.
 ;
 ; Arguments:
-;   size_needed           Requested allocation size in bytes (16-bit)
+;   mem_req_total           Requested allocation size in bytes (16-bit)
 ;
 ; Vars/State:
-;   free_block     			Current FREE node under scan. 
-;							On entry, points to the first REAL FREE node (not the stub).
-;   free_list_head_stub     Synthetic predecessor for the list head (used to seed prev tracking).
-;   best_free_block     	Address of the best candidate found so far (NULL when none).
-;   best_free_size     		Size of the best candidate. 
-;							Also consumed later by allocate_block as chosen_block_size.
-;   prev_block     			Rolling predecessor of free_block during the scan.
+;   mem_free_cur     		Current free node under scan. 
+;							On entry, points to the first REAL free node (not the stub).
+;   mem_free_stub     		Synthetic predecessor for the list head (used to seed prev tracking).
+;   mem_best_blk     		Address of the best candidate found so far (NULL when none).
+;   mem_best_size     		Size of the best candidate. 
+;   mem_prev     			Rolling predecessor of mem_free_cur during the scan.
 ;
 ; Returns:
 ;
-;   Success: X = lo(best_free_block), Y = hi(best_free_block), Z = 0.
-;   Failure: Z = 1 (no fit found). X/Y are unspecified unless caller requires zeroing.
+;   Success: Z = 0, X = lo(mem_best_blk), Y = hi(mem_best_blk).
+;   Failure: Z = 1 (no fit found). X/Y are unspecified.
 ;
 ; Clobbers:
-;   A, X, Y; condition flags. Calls allocate_block on success.
+;   A, X, Y; condition flags. Calls mem_alloc_from_free on success.
 ;
 ; Preconditions / Invariants:
-;   - Null FREE pointer is detected via HI byte == $00 (no headers reside in page $00).
-;   - get_next_block leaves X=next.lo, Y=next.hi and Z derived from Y; BNE uses that Z.
+;   - Null free pointer is detected via HI byte == $00 (no headers reside in page $00).
+;   - mem_read_next_ptr leaves X=next.lo, Y=next.hi and Z derived from Y; BNE uses that Z.
 ;   - Tie-break: equal-size candidates prefer the later one encountered (non-stable).
 ;
 ; Description:
-;   Initialize best_free_size = $FFFF and best_free_block = $0000; set prev_block = head stub.
+;   Initialize mem_best_size = $FFFF and mem_best_blk = $0000; set mem_prev = head stub.
 ;   For each node:
-;     1) Read candidate size. If candidate < size_needed → skip.
-;     2) If candidate ≤ best_free_size → record candidate as the new best (size, block, predecessor).
-;     3) Advance: prev_block ← free_block; free_block ← free_block->next (via get_next_block).
+;     1) Read candidate size. If candidate < mem_req_total → skip.
+;     2) If candidate ≤ mem_best_size → record candidate as the new best (size, block, predecessor).
+;     3) Advance: mem_prev ← mem_free_cur; mem_free_cur ← mem_free_cur->next (via mem_read_next_ptr).
 ;   After the scan:
-;     - If best_free_block == $0000 → return with Z = 1 (no fit).
-;     - Else: free_block ← best_free_block; JSR allocate_block; return X/Y = best_free_block.
+;     - If mem_best_blk == $0000 → return with Z = 1 (no fit).
+;     - Else: mem_free_cur ← mem_best_blk; JSR mem_alloc_from_free; return X/Y = mem_best_blk.
 ;===========================================
-find_best_free_block:
+mem_bestfit_select:
 		;----------------------------------------
 		; Initialize “current best” to: size = $FFFF (max) and block = $0000 (none).
 		; Any real fitting candidate will be smaller than $FFFF and replace this.
 		;----------------------------------------
 		LDA #$FF
-		STA best_free_size
-		STA best_free_size + 1
+		STA mem_best_size
+		STA mem_best_size + 1
 		LDA #$00
-		STA best_free_block
+		STA mem_best_blk
 		LDA #$00
-		STA best_free_block + 1
+		STA mem_best_blk + 1
 
 		;----------------------------------------
-		; Seed prev_block with the free-list stub head (acts as the predecessor
-		; of the first real free block). As we walk the list, prev_block will
-		; track the node before ‘free_block’ for bookkeeping/surgery later.
+		; Seed mem_prev with the free-list stub head (acts as the predecessor
+		; of the first real free block). As we walk the list, mem_prev will
+		; track the node before ‘mem_free_cur’ for bookkeeping/surgery later.
 		;----------------------------------------
-		LDA #<free_list_head_stub
-		STA prev_block
-		LDA #>free_list_head_stub
-		STA prev_block + 1
+		LDA #<mem_free_stub
+		STA mem_prev
+		LDA #>mem_free_stub
+		STA mem_prev + 1
 
 check_candidate:
 		;----------------------------------------
-		; Read the candidate FREE block’s size from its header:
+		; Read the candidate’s size from its header:
 		;   header +0 = size.lo (tail bytes), header +1 = size.hi (pages)
 		;----------------------------------------
-		LDY #$00
-		LDA (free_block),Y
+		LDY #MEM_HDR_SIZE_LO
+		LDA (mem_free_cur),Y
 		STA candidate_size
 		INY
-		LDA (free_block),Y
+		LDA (mem_free_cur),Y
 		STA candidate_size + 1
 
 		;----------------------------------------
-		; Fit test: does candidate >= size_needed ?
+		; Fit test: does candidate >= mem_req_total ?
 		;
-		; Compute (candidate - size_needed). 
-		; If a borrow occurs (BCC), then candidate < size_needed → it cannot fit → skip to next block.
+		; Compute (candidate - mem_req_total). 
+		; If a borrow occurs (BCC), then candidate < mem_req_total → it cannot fit → skip to next block.
 		;----------------------------------------
 		SEC
 		LDA candidate_size
-		SBC size_needed
+		SBC mem_req_total
 		LDA candidate_size + 1
-		SBC size_needed + 1
+		SBC mem_req_total + 1
 		BCC move_to_next_block            ; too small → examine next candidate
 
 		;----------------------------------------
 		; DATA FITS — check whether this candidate improves the current best-fit.
 		;
-		; Compare (best_free_size - candidate_size):
+		; Compare (mem_best_size - candidate_size):
 		;
 		;   If borrow (BCC) → candidate is LARGER than current best → not better.
 		;   If no borrow    → candidate is <= current best         → accept later.
 		;----------------------------------------
 		SEC
-		LDA best_free_size
+		LDA mem_best_size
 		SBC candidate_size
-		LDA best_free_size + 1
+		LDA mem_best_size + 1
 		SBC candidate_size + 1
 		BCC move_to_next_block            ; candidate > best → skip, keep current best
 
 		;----------------------------------------
 		; NEW BEST-FIT FOUND
 		;
-		; This call to "get_next_block" is not really needed, as X/Y will get overwritten
-		; again by the following "get_next_block" call later on - it doesn't harm either
+		; This call to "mem_read_next_ptr" is not really needed, as X/Y will get overwritten
+		; again by the following "mem_read_next_ptr" call later on - it doesn't harm either
 		; Keeping it here as it's present in the original code
 		;----------------------------------------
-		JSR get_next_block		
+		JSR mem_read_next_ptr		
 
 		; Record the new minimum (best) size.
 		LDA candidate_size
-		STA best_free_size
+		STA mem_best_size
 		LDA candidate_size + 1
-		STA best_free_size + 1
+		STA mem_best_size + 1
 
 		; Record the address of the new best-fit block.
-		LDA free_block
-		STA best_free_block
-		LDA free_block + 1
-		STA best_free_block + 1
+		LDA mem_free_cur
+		STA mem_best_blk
+		LDA mem_free_cur + 1
+		STA mem_best_blk + 1
 
 		; Record the address of the predecessor
-		LDA prev_block
+		LDA mem_prev
 		STA predecessor
-		LDA prev_block + 1
+		LDA mem_prev + 1
 		STA predecessor + 1
 
 move_to_next_block:
 		;----------------------------------------
-		; Remember the current candidate as 'prev_block' (predecessor tracking).
+		; Remember the current candidate as 'mem_prev' (predecessor tracking).
 		; Useful for later list surgery, though not directly used in this pass.
 		;----------------------------------------
-		LDA free_block
-		STA prev_block
-		LDA free_block + 1
-		STA prev_block + 1
+		LDA mem_free_cur
+		STA mem_prev
+		LDA mem_free_cur + 1
+		STA mem_prev + 1
 
-		; Advance the scan to the next FREE block in the list.
-		JSR get_next_block
-		STX free_block
-		STY free_block + 1
+		; Advance the scan to the next free block in the list.
+		JSR mem_read_next_ptr
+		STX mem_free_cur
+		STY mem_free_cur + 1
 
-		; Continue scanning while free_block != $0000.
+		; Continue scanning while mem_free_cur != $0000.
 		BNE check_candidate
 
 		;----------------------------------------
 		; END OF SCAN — commit best-fit (if any) and allocate
-		; Load the winner back into free_block so allocate_block operates on it.
+		; Load the winner back into mem_free_cur so mem_alloc_from_free operates on it.
 		;----------------------------------------
-		LDA best_free_block
-		STA free_block
-		LDA best_free_block + 1
-		STA free_block + 1
+		LDA mem_best_blk
+		STA mem_free_cur
+		LDA mem_best_blk + 1
+		STA mem_free_cur + 1
 
-		; If best_free_block == $0000 → no fitting block was found → return with Z=1.
+		; If mem_best_blk == $0000 → no fitting block was found → return with Z=1.
 		BNE free_block_found
 		RTS
 
 free_block_found:
-		; Consume/split the chosen FREE block to satisfy the request.
-		JSR allocate_block
+		; Consume/split the chosen free block to satisfy the request.
+		JSR mem_alloc_from_free
 
 		; Return the allocated block pointer to caller:
-		;   X = lo(best_free_block), Y = hi(best_free_block), Z=0 (success).
-		LDX best_free_block
-		LDY best_free_block + 1
+		;   X = lo(mem_best_blk), Y = hi(mem_best_blk), Z=0 (success).
+		LDX mem_best_blk
+		LDY mem_best_blk + 1
 		RTS
 ;===========================================
 ; Compact and Retry Allocation with Resource Release
 ;
 ; Summary:
 ;   Attempts to allocate a memory block of the requested size by first compacting
-;   the FREE-list (pushing and merging free blocks toward the top of memory). If
+;   the free-list (pushing and merging free blocks toward the top of memory). If
 ;   that still fails, the routine progressively releases lower-priority resources
 ;   and retries the allocation until a block is obtained or no more resources can
 ;   be freed.
 ;
 ; Arguments:
-;   payload_size           	16-bit requested payload size in bytes.
+;   mem_req_payload           	16-bit requested payload size in bytes.
 ;                                  Temporarily overwritten with $FFFF to mark
 ;                                  “allocation in progress” state.
-;   saved_request_size                   		Local copy of requested size used across retries.
+;   mem_req_saved                   		Local copy of requested size used across retries.
 ;
 ; Uses:
-;   move_free_blocks_to_back       Defragments the free list by pushing free blocks
+;   mem_compact_leading_free       Defragments the free list by pushing free blocks
 ;                                  toward higher memory and coalescing contiguous
 ;                                  ones.
-;   get_free_block                 Attempts to find a free block large enough for
-;                                  ‘saved_request_size’. Returns with Z=0 (BNE) on success.
+;   mem_alloc_bestfit                 Attempts to find a free block large enough for
+;                                  ‘mem_req_saved’. Returns with Z=0 (BNE) on success.
 ;   release_rsrcs_by_priority      Frees memory by releasing lower-priority resources;
 ;                                  called if allocation failed, then retry loop repeats.
 ;
@@ -889,45 +930,45 @@ free_block_found:
 ; Description:
 ;   This routine is part of the allocator’s fallback mechanism when fragmentation
 ;   or resource exhaustion prevents allocation. It snapshots the caller’s requested
-;   size into ‘saved_request_size’ and “poisons” payload_size ($FFFF) to signal an in-progress
-;   allocation attempt. It then invokes move_free_blocks_to_back to compact memory
-;   so that smaller fragments merge into larger contiguous spaces. If get_free_block
+;   size into ‘mem_req_saved’ and “poisons” mem_req_payload ($FFFF) to signal an in-progress
+;   allocation attempt. It then invokes mem_compact_leading_free to compact memory
+;   so that smaller fragments merge into larger contiguous spaces. If mem_alloc_bestfit
 ;   fails to find a suitable block, the routine calls release_rsrcs_by_priority to
 ;   free noncritical assets (e.g., cached sound or graphics data) and loops back to
 ;   retry allocation. Once a valid free block is obtained, control exits normally.
 ;===========================================
 * = $58D5
 
-compact_and_release:
+mem_compact_then_release:
 		;----------------------------------------
 		; Preserve caller’s requested payload size and force the allocator path:
-		;   saved_request_size ← payload_size
-		;   payload_size ← $FFFF  (sentinel to indicate “recompute/use saved size”)
-		; Rationale: some downstream paths consult payload_size; poisoning it avoids
+		;   mem_req_saved ← mem_req_payload
+		;   mem_req_payload ← $FFFF  (sentinel to indicate “recompute/use saved size”)
+		; Rationale: some downstream paths consult mem_req_payload; poisoning it avoids
 		; accidental reuse while we compact and possibly free resources.
 		;----------------------------------------
-		LDA payload_size
-		STA saved_request_size
-		LDA payload_size + 1
-		STA saved_request_size + 1
+		LDA mem_req_payload
+		STA mem_req_saved
+		LDA mem_req_payload + 1
+		STA mem_req_saved + 1
 		LDA #$FF
-		STA payload_size
+		STA mem_req_payload
 		LDA #$FF
-		STA payload_size + 1
+		STA mem_req_payload + 1
 
 		;----------------------------------------
-		; Phase 1: try to make a large contiguous FREE region by pushing leading
+		; Phase 1: try to make a large contiguous free region by pushing leading
 		; free space toward higher addresses and merging neighbors.
 		;----------------------------------------
-		JSR move_free_blocks_to_back
+		JSR mem_compact_leading_free
 
 		;----------------------------------------
-		; Phase 2: attempt allocation with the preserved requested saved_request_size.
-		; On success, get_free_block returns with Z=0 → branch to exit.
+		; Phase 2: attempt allocation with the preserved requested mem_req_saved.
+		; On success, mem_alloc_bestfit returns with Z=0 → branch to exit.
 		;----------------------------------------
-		LDX saved_request_size
-		LDY saved_request_size + 1
-		JSR get_free_block
+		LDX mem_req_saved
+		LDY mem_req_saved + 1
+		JSR mem_alloc_bestfit
 		BNE free_block_found_2
 
 		;----------------------------------------
@@ -935,7 +976,7 @@ compact_and_release:
 		; release_rsrcs_by_priority returns Z=0 when something was released; loop if so.
 		;----------------------------------------
 		JSR release_rsrcs_by_priority
-		BNE compact_and_release
+		BNE mem_compact_then_release
 
 free_block_found_2:
 		RTS
@@ -946,11 +987,11 @@ free_block_found_2:
 ;   Reads the 16-bit “next” pointer from a block header and returns it in X/Y.
 ;
 ; Arguments:
-;   block_ptr                 Pointer to current block header
+;   mem_hdr_ptr				Pointer to current block header
 ;
 ; Returns:
-;   X/Y                       Next block pointer (lo in X, hi in Y). 
-;								If the stored pointer is $0000, X/Y will be $00/$00.
+;   X/Y                     Next block pointer (lo in X, hi in Y). 
+;							If the stored pointer is $0000, X/Y will be $00/$00.
 ;
 ; Notes:
 ;   Block header layout (little-endian):
@@ -958,163 +999,162 @@ free_block_found_2:
 ;     +2..+3 : next pointer (16-bit)
 ;===========================================
 * = $58FF
-get_next_block:
+mem_read_next_ptr:
 		; Y = 2 → address the “next” field (low byte) in the block header
-		LDY #$02
+		LDY #MEM_HDR_NEXT_LO
 		; Load low byte of next pointer → X
-		LDA (block_ptr),Y
+		LDA (mem_hdr_ptr),Y
 		TAX
 		; Load high byte of next pointer → Y
 		INY
-		LDA (block_ptr),Y
+		LDA (mem_hdr_ptr),Y
 		TAY
 		RTS
 ;===========================================
-; Allocate from a chosen FREE block (split or consume)
+; Allocate from a chosen free block (split or consume)
 ;
 ; Summary:
-;   Carves the requested block (HEADER + payload) from the selected FREE node.
-;   If the true remainder is ≥ 4 bytes (enough for a FREE header), splits and
-;   creates a trailing FREE node; otherwise, consumes the whole FREE node.
-;   Updates predecessor.next and keeps last_free_block correct.
+;   Carves the requested block (HEADER + payload) from the selected free node.
+;   If the true remainder is ≥ 4 bytes (enough for a free header), splits and
+;   creates a trailing free node; otherwise, consumes the whole free node.
+;   Updates predecessor.next and keeps mem_free_tail correct.
 ;
 ; Arguments:
-;   free_block              Pointer to the chosen FREE block header.
-;   chosen_block_size       16-bit size of the chosen FREE block
-;							Note: this is an alias of best_free_size.
-;   payload_size           16-bit requested payload size (header NOT included).
+;   mem_free_cur			Pointer to the chosen free block header.
+;   mem_best_size       16-bit size of the chosen free block
+;							Note: this is an alias of mem_best_size.
+;   mem_req_payload         16-bit requested payload size (header NOT included).
 ;   predecessor		        Predecessor pointer (may be the head stub); we write its +2/+3.
 ;
 ; Returns / Updates:
-;   predecessor.next        → new trailing FREE (split) or original next (consume).
-;   new_free_block          → trailing FREE (split) or predecessor (consume) for uniform tail update.
-;   remaining_free_space    → (chosen_block_size − size_needed), split path only.
-;   last_free_block         → updated if the chosen block had been the tail.
+;   predecessor.next        → new trailing free (split) or original next (consume).
+;   mem_split_tail          → trailing free (split) or predecessor (consume) for uniform tail update.
+;   mem_split_rem    		→ (mem_best_size − mem_req_total), split path only.
+;   mem_free_tail         	→ updated if the chosen block had been the tail.
+;
 ;   Clobbers                A, X, Y; flags.
 ;
 ; Notes:
-;   size_needed = payload_size + 4 (payload + HEADER).
-;   Using a split threshold of ≥ 4 permits header-only FREE nodes
+;   mem_req_total = mem_req_payload + 4 (payload + HEADER).
+;   Using a split threshold of ≥ 4 permits header-only free nodes
 ;
 ; Description:
-;   Computes remaining_free_space = chosen_block_size - payload_size
+;   Computes mem_split_rem = mem_best_size - mem_req_payload
 ;
-;   If remaining_free_space ≥ 4, the routine SPLITS:
-;     • new_free_block = free_block + payload_size
-;     • predecessor.next ← new_free_block
-;     • new_free_block.next  ← free_block.next
-;     • new_free_block.size  ← remaining_free_space
+;   If mem_split_rem ≥ 4, the routine SPLITS:
+;     • mem_split_tail = mem_free_cur + mem_req_payload
+;     • predecessor.next ← mem_split_tail
+;     • mem_split_tail.next  ← mem_free_cur.next
+;     • mem_split_tail.size  ← mem_split_rem
 ;
-;   Otherwise it CONSUMES the entire FREE block:
-;     • predecessor.next ← free_block.next
-;     • payload_size ← free_block_size  (caller receives whole block)
-;     • new_free_block ← predecessor (simplifies tail update)
+;   Otherwise it CONSUMES the entire free block:
+;     • predecessor.next ← mem_free_cur.next
+;     • mem_req_payload ← mem_free_sz  (caller receives whole block)
+;     • mem_split_tail ← predecessor (simplifies tail update)
 ;
-;   Finally, if the chosen block was the list tail, last_free_block is updated to the
-;   trailing FREE block (or stub) so the tail pointer remains correct.
+;   Finally, if the chosen block was the list tail, mem_free_tail is updated to the
+;   trailing free block (or stub) so the tail pointer remains correct.
 ;===========================================
-
 * = $5909
-allocate_block:
+mem_alloc_from_free:
 		;----------------------------------------
-		; Compute how much of the chosen FREE block will remain after carving out
+		; Compute how much of the chosen free block will remain after carving out
 		; the requested payload:
 		;
-		;   remaining_free_space = chosen_block_size - payload_size
-		;
+		;   mem_split_rem = mem_best_size - mem_req_payload
 		;----------------------------------------
 		SEC
-		LDA chosen_block_size
-		SBC payload_size
-		STA remaining_free_space
-		LDA chosen_block_size + 1
-		SBC payload_size + 1
-		STA remaining_free_space + 1
+		LDA mem_best_size
+		SBC mem_req_payload
+		STA mem_split_rem
+		LDA mem_best_size + 1
+		SBC mem_req_payload + 1
+		STA mem_split_rem + 1
 
 		;----------------------------------------
 		; Is there enough space left to create a NEW free block header?
 		;
 		; We need at least 4 bytes (size lo/hi + next lo/hi). 
-		; Perform a 16-bit compare: (remaining_free_space - 4). 
+		; Perform a 16-bit compare: (mem_split_rem - 4). 
 		; If borrow occurs (BCC), there is NOT enough space to split → consume the whole block.
-		; Note: C=1 & result==0 means remainder==4 ⇒ header-only FREE node
+		; Note: C=1 & result==0 means remainder==4 ⇒ header-only free node
 		;----------------------------------------
 		SEC
-		LDA remaining_free_space
-		SBC #$04                      ; subtract header size (low)
-		LDA remaining_free_space + 1
+		LDA mem_split_rem
+		SBC #MEM_HDR_LEN                      ; subtract header size (low)
+		LDA mem_split_rem + 1
 		SBC #$00                      ; subtract header size (high)
-		BCC consume_whole_block     ; C=0 → remaining_free_space < 4
+		BCC consume_whole_block     ; C=0 → mem_split_rem < 4
 
 		;--------------------------------
 		; Split case
 		;
-		; Carve payload from the front of the chosen FREE block and create a NEW trailing 
-		; FREE block with the leftover space.
+		; Carve payload from the front of the chosen free block and create a NEW trailing 
+		; free block with the leftover space.
 		;
-		;   new_free_block = free_block + payload_size
+		;   mem_split_tail = mem_free_cur + mem_req_payload
 		;----------------------------------------
 		CLC
-		LDA free_block
-		ADC payload_size
-		STA new_free_block
-		LDA free_block + 1
-		ADC payload_size + 1
-		STA new_free_block + 1
+		LDA mem_free_cur
+		ADC mem_req_payload
+		STA mem_split_tail
+		LDA mem_free_cur + 1
+		ADC mem_req_payload + 1
+		STA mem_split_tail + 1
 
 		;----------------------------------------
-		; Link the FREE list to the new trailing block
+		; Link the free list to the new trailing block
 		;
-		; Update the predecessor's next to point at new_free_block.
+		; Update the predecessor's next to point at mem_split_tail.
 		;----------------------------------------
-		LDY #$02
-		LDA new_free_block
+		LDY #MEM_HDR_NEXT_LO
+		LDA mem_split_tail
 		STA (predecessor),Y     ; write next.lo
 		INY
-		LDA new_free_block + 1
+		LDA mem_split_tail + 1
 		STA (predecessor),Y     ; write next.hi
 
 
 		;----------------------------------------
-		; Chain the new trailing FREE block into the list
+		; Chain the new trailing free block into the list
 		;
-		; Read free_block->next into X/Y, then store into new_free_block header (+2..+3).
+		; Read mem_free_cur->next into X/Y, then store into mem_split_tail header (+2..+3).
 		;
-		;   new_free_block.next = free_block.next
+		;   mem_split_tail.next = mem_free_cur.next
 		;----------------------------------------
-		JSR get_next_block
+		JSR mem_read_next_ptr
 		STY temp                         ; stash hi byte temporarily
-		LDY #$02
+		LDY #MEM_HDR_NEXT_LO
 		TXA
-		STA (new_free_block),Y           ; header[2] = next.lo
+		STA (mem_split_tail),Y           ; header[2] = next.lo
 		INY
 		LDA temp
-		STA (new_free_block),Y           ; header[3] = next.hi
+		STA (mem_split_tail),Y           ; header[3] = next.hi
 
 		;----------------------------------------
-		; Initialize the size of the new trailing FREE block
+		; Initialize the size of the new trailing free block
 		;
-		;   new_free_block.size = remaining_free_space  (header +0..+1)
+		;   mem_split_tail.size = mem_split_rem  (header +0..+1)
 		;----------------------------------------
-		LDY #$00
-		LDA remaining_free_space
-		STA (new_free_block),Y           ; header[0] = size.lo
+		LDY #MEM_HDR_SIZE_LO
+		LDA mem_split_rem
+		STA (mem_split_tail),Y           ; header[0] = size.lo
 		INY
-		LDA remaining_free_space + 1
-		STA (new_free_block),Y           ; header[1] = size.hi
+		LDA mem_split_rem + 1
+		STA (mem_split_tail),Y           ; header[1] = size.hi
 		JMP tail_adjust_check  ; update tail pointer if needed
 
 consume_whole_block:
 		;----------------------------------------
-		; Not enough room to hold a new FREE header (remaining_free_space < 4):
-		; consume the ENTIRE chosen FREE block for this allocation.
+		; Not enough room to hold a new free header (mem_split_rem < 4):
+		; consume the ENTIRE chosen free block for this allocation.
 		;
-		; Splice the chosen block out of the FREE list:
-		;   predecessor.next = free_block.next
+		; Splice the chosen block out of the free list:
+		;   predecessor.next = mem_free_cur.next
 		;----------------------------------------
-		JSR get_next_block
+		JSR mem_read_next_ptr
 		STY temp
-		LDY #$02
+		LDY #MEM_HDR_NEXT_LO
 		TXA
 		STA (predecessor),Y      ; write next.lo
 		INY
@@ -1124,54 +1164,54 @@ consume_whole_block:
 		;----------------------------------------
 		; Caller will use the whole block: set requested size to block size.
 		;
-		; (payload_size now equals chosen_block_size)
+		; (mem_req_payload now equals mem_best_size)
 		;----------------------------------------
-		LDA chosen_block_size
-		STA payload_size
-		LDA chosen_block_size + 1
-		STA payload_size + 1
+		LDA mem_best_size
+		STA mem_req_payload
+		LDA mem_best_size + 1
+		STA mem_req_payload + 1
 
 		;----------------------------------------
-		; No trailing FREE block is created in this case.
+		; No trailing free block is created in this case.
 		;
-		; Set new_free_block to the list “table” placeholder so downstream
+		; Set mem_split_tail to the list “table” placeholder so downstream
 		; tail-adjustment logic can treat both paths uniformly.
 		;----------------------------------------
 		LDA predecessor
-		STA new_free_block
+		STA mem_split_tail
 		LDA predecessor + 1
-		STA new_free_block + 1
+		STA mem_split_tail + 1
 
 tail_adjust_check:
 		;----------------------------------------
 		; Was the CHOSEN free block also the TAIL of the free list?
 		;
-		; If last_free_block == free_block, the block we just split/consumed was the tail.
+		; If mem_free_tail == mem_free_cur, the block we just split/consumed was the tail.
 		;----------------------------------------
-		LDA last_free_block
-		CMP free_block
-		BNE tail_adjust_check_2
-		LDA last_free_block + 1
-		CMP free_block + 1
-tail_adjust_check_2:
+		LDA mem_free_tail
+		CMP mem_free_cur
+		BNE tail_adjust_check_else
+		LDA mem_free_tail + 1
+		CMP mem_free_cur + 1
+tail_adjust_check_else:
 		;If it wasn't, nothing to adjust, exit
-		BNE exit
+		BNE mem_exit
 
 		;----------------------------------------
-		; Yes: update the tail to the new trailing FREE block produced by this op.
+		; Yes: update the tail to the new trailing free block produced by this op.
 		;
-		; In the split path, new_free_block = (free_block + payload_size).
-		; In the “no split” path, new_free_block was set to the table placeholder
+		; In the split path, mem_split_tail = (mem_free_cur + mem_req_payload).
+		; In the “no split” path, mem_split_tail was set to the table placeholder
 		; so downstream logic treats both cases uniformly.
 		;----------------------------------------
-		LDA new_free_block
-		STA last_free_block                  
-		LDA new_free_block + 1
-		STA last_free_block + 1
-exit:
+		LDA mem_split_tail
+		STA mem_free_tail                  
+		LDA mem_split_tail + 1
+		STA mem_free_tail + 1
+mem_exit:
 		RTS
 ;===========================================
-; Move all leading free space toward higher addresses
+; Compact all leading free space toward higher addresses
 ;
 ; Summary:
 ;   Iteratively “bubbles” used blocks to the right over the first free block,
@@ -1180,34 +1220,34 @@ exit:
 ;   remain or the free list is exhausted.
 ;
 ; Preconditions / Invariants:
-;   - 'free_block' points to the header of the current leading FREE block.
-;   - ZP aliasing: 'free_block' and 'destination' share storage (destination=free head).
+;   - 'mem_free_cur' points to the header of the current leading free block.
+;   - ZP aliasing: 'mem_free_cur' and 'mem_dst' share storage (mem_dst=free head).
 ;   - Null pointers are detected via hi byte == 0 (no headers live in page $00).
 ;
 ; Arguments / Inputs:
-;   first_free_block          Head pointer of the FREE list (lo/hi).
-;   FREE header @ free_block  +0..+1 = size (lo=tail bytes, hi=pages)
+;   mem_free_head          Head pointer of the free list (lo/hi).
+;   free header @ mem_free_cur  +0..+1 = size (lo=tail bytes, hi=pages)
 ;                             +2..+3 = next pointer
-; Returns:
-;   first_free_block          May be updated by 'move_to_back' to new FREE head.
-;   Transient state           source (free_block + size), next_block (free->next),
-;                             free_block_size. Aliases with vars used by callees.
+; Updates:
+;   mem_free_head          May be updated by 'mem_bubble_used_left' to new free head.
+;   Transient state           mem_src (mem_free_cur + size), mem_next_free (free->next),
+;                             mem_free_sz. Aliases with vars used by callees.
 ; Calls:
-;   move_to_back              Slides USED run into the FREE region; updates head.
-;   coalesce_free_blocks      Merges adjacent FREE blocks.
+;   mem_bubble_used_left              Slides USED run into the FREE region; updates head.
+;   mem_coalesce_right      Merges adjacent FREE blocks.
 ;
 ; Description:
 ;
-;   Loads the head of the free list into ‘free_block’, reads its size into
-;   ‘free_block_size’, and computes ‘adjacent_block = free_block + free_block_size’.
+;   Loads the head of the free list into ‘mem_free_cur’, reads its size into
+;   ‘mem_free_sz’, and computes ‘adjacent_block = mem_free_cur + mem_free_sz’.
 ;
-;   It then fetches free_block->next:
+;   It then fetches mem_free_cur->next:
 ;     • If no next free block exists, the routine returns (nothing to push).
 ;     • Otherwise, it:
-;         1) Calls move_to_back to relocate any used blocks that sit immediately
+;         1) Calls mem_bubble_used_left to relocate any used blocks that sit immediately
 ;            to the right of the leading free block, thereby sliding the free
 ;            region upward in memory (toward higher addresses).
-;         2) Calls coalesce_free_blocks to merge contiguous free neighbors that
+;         2) Calls mem_coalesce_right to merge contiguous free neighbors that
 ;            may have become adjacent after the relocation.
 ;         3) Loops back to re-evaluate the (possibly updated) head until no more
 ;            movement is needed.
@@ -1217,113 +1257,110 @@ exit:
 ;===========================================
 * = $59AA
 
-move_free_blocks_to_back:
+mem_compact_leading_free:
 		;----------------------------------------
-		; Load the head of the free list into the working pointer ‘free_block’.
-		; This is the leading FREE region we try to push “to the back” (higher addrs).
+		; Load the head of the free list into the working pointer ‘mem_free_cur’.
+		; This is the leading free region we try to push “to the back” (higher addrs).
 		;----------------------------------------
-		LDA first_free_block
-		STA free_block
-		LDA first_free_block + 1
-		STA free_block + 1
+		LDA mem_free_head
+		STA mem_free_cur
+		LDA mem_free_head + 1
+		STA mem_free_cur + 1
 
 		;----------------------------------------
-		; Read the FREE block’s size from its header:
+		; Read the free block’s size from its header:
 		;   header +0 = size lo (tail bytes on last page)
 		;   header +1 = size hi (full 256-byte pages)
 		;----------------------------------------
-		LDY #$00
-		LDA (free_block),Y
-		STA free_block_size
+		LDY #MEM_HDR_SIZE_LO
+		LDA (mem_free_cur),Y
+		STA mem_free_sz
 		INY
-		LDA (free_block),Y
-		STA free_block_size + 1
+		LDA (mem_free_cur),Y
+		STA mem_free_sz + 1
 
 
 		;----------------------------------------
 		; Compute the address of the block immediately to the right:
-		;   source = free_block + free_block_size
+		;   mem_src = mem_free_cur + mem_free_sz
 		; (size is stored as tail-bytes in lo and page count in hi)
 		;----------------------------------------
 		CLC
-		LDA free_block
-		ADC free_block_size
-		STA source
-		LDA free_block + 1
-		ADC free_block_size + 1
-		STA source + 1
+		LDA mem_free_cur
+		ADC mem_free_sz
+		STA mem_src
+		LDA mem_free_cur + 1
+		ADC mem_free_sz + 1
+		STA mem_src + 1
 
 		;----------------------------------------
 		; Read the singly-linked list pointer:
 		;
-		; get_next_block → X=next.lo, Y=next.hi, Z set from Y (TAY inside).
+		; mem_read_next_ptr → X=next.lo, Y=next.hi, Z set from Y (TAY inside).
 		; BNE means Y≠0 → non-null next (relies on “no headers in page $00” invariant).
 		;----------------------------------------
-		JSR get_next_block
+		JSR mem_read_next_ptr
 		BNE next_block_present
 		RTS
 
 
 next_block_present:
-		STX next_block
-		STY next_block + 1
+		STX mem_next_free
+		STY mem_next_free + 1
 
 		; Relocate any USED blocks that sit immediately to the right of the
-		; leading FREE block so that the FREE region moves “back” (to higher
-		; addresses). This may repeat internally until the next FREE block
-		; is adjacent to ‘destination’.
+		; leading free block so that the free region moves “back” (to higher
+		; addresses). This may repeat internally until the next free block
+		; is adjacent to ‘mem_dst’.
 	   
-		; 'free_block' (alias of 'destination') already points at the FREE head.
-		; 'source' = free_block + size points at the first USED block to the right.
-		; 'next_block' is the next FREE block after the USED run.
+		; 'mem_free_cur' (alias of 'mem_dst') already points at the FREE head.
+		; 'mem_src' = mem_free_cur + size points at the first USED block to the right.
+		; 'mem_next_free' is the next FREE block after the USED run.
 		;
-		; move_to_back will:
-		;   - Copy each USED block (header+payload) from source → destination,
-		;   - Advance pointers until source >= next_block,
-		;   - Rebuild the FREE header at the new destination and update first_free_block.	   
-		JSR move_to_back
+		; mem_bubble_used_left will:
+		;   - Copy each USED block (header+payload) from mem_src → mem_dst,
+		;   - Advance pointers until mem_src >= mem_next_free,
+		;   - Rebuild the free header at the new mem_dst and update mem_free_head.	   
+		JSR mem_bubble_used_left
 
-		; The relocated FREE head may now be adjacent to the next FREE block; merge them.
-		JSR coalesce_free_blocks
+		; The relocated free head may now be adjacent to the next free block; merge them.
+		JSR mem_coalesce_right
 
-		; Re-evaluate the (possibly changed) head; repeat until there is no next FREE block.		   
-		JMP move_free_blocks_to_back
+		; Re-evaluate the (possibly changed) head; repeat until there is no next free block.		   
+		JMP mem_compact_leading_free
 ;===========================================
-; Move the first free block “to the back” (bubble used blocks left)
+; Move the first free block to the right (bubble used blocks left)
 ;
 ; Summary:
 ;   Copies each USED block immediately to the right of the leading FREE block
-;   into the FREE region at 'destination' (which is the leading FREE block),
+;   into the FREE region at 'mem_dst' (which is the leading FREE block),
 ;   thereby shifting USED blocks toward lower addresses and pushing FREE space
 ;   toward higher addresses.
 ;
-;   Repeats while source < next_block. When source reaches next_block,
-;   rebuilds the FREE header at the new 'destination' and updates the list head.
+;   Repeats while mem_src < mem_next_free. When mem_src reaches mem_next_free,
+;   rebuilds the free header at the new 'mem_dst' and updates the list head.
 ;
 ;   After each move, external pointers are updated; a sound reload is requested
 ;   only if the moved block is an in-use sound.
 ;
 ; Preconditions:
-;   destination = address of the leading FREE block (start of the hole)
-;   source      = destination + free_block_size (first USED block to the right)
-;   next_block  = pointer to the next FREE block after the current run of USED blocks
+;   mem_dst = address of the leading FREE block (start of the hole)
+;   mem_src      = mem_dst + mem_free_sz (first USED block to the right)
+;   mem_next_free  = pointer to the next FREE block after the current run of USED blocks
 ;
 ; Arguments (pointers/vars):
-;   source            USED block being moved (points to its HEADER)
-;   destination       FREE region to receive the move (points to where HEADER will be written)
-;   next_block        NEXT FREE block after the current run of USED blocks
-;   free_block_size   Original size (bytes) of the leading FREE block
-;   block_size        size of the used block being moved.
-;   resource_type / resource_index
-;                                 Metadata from the used block; passed to
-;                                 update_rsrc_pointers to fix external references.
+;   mem_src            USED block being moved (points to its HEADER)
+;   mem_dst       FREE region to receive the move (points to where HEADER will be written)
+;   mem_next_free        NEXT FREE block after the current run of USED blocks
 ;
-;   sound_memory_attrs            Table consulted when resource_type indicates “sound” to
-;                                 decide whether to set reload_snd_rsrc_ptrs.
+; State:
+;   mem_free_sz   Original size (bytes) of the leading FREE block
+;   mem_used_sz        size of the used block being moved.
+;
 ; Updates:
-;   source                        Advanced past the moved used block(s).
-;   destination                   Advanced to the end of the moved region.
-;   first_free_block              Updated to the rebuilt free block at the new destination.
+;   mem_src                        Advanced past the moved used block(s).
+;   mem_dst                   Advanced to the end of the moved region.
+;   mem_free_head              Updated to the rebuilt free block at the new mem_dst.
 ;   reload_snd_rsrc_ptrs          Cleared to #$00 before exit.
 ;
 ; Details:
@@ -1334,25 +1371,25 @@ next_block_present:
 ;
 ;     1) Read its size and metadata.
 ;     2) Optionally set reload_snd_rsrc_ptrs if a sound block is in-use.
-;     3) Call mem_copy_memory to copy the entire block from ‘source’ → ‘destination’.
+;     3) Call mem_copy_pages to copy the entire block from ‘mem_src’ → ‘mem_dst’.
 ;     4) Call update_rsrc_pointers(metadata) so external references follow the move.
-;     5) Advance both pointers (source, destination) by the moved size and loop while more used blocks remain
-;        before ‘next_block’.
+;     5) Advance both pointers (mem_src, mem_dst) by the moved size and loop while more used blocks remain
+;        before ‘mem_next_free’.
 ;
-;   Once the next free block is adjacent, the routine updates first_free_block and writes
-;   the free block header (size + next pointer) at ‘destination’, completing the compaction step.
+;   Once the next free block is adjacent, the routine updates mem_free_head and writes
+;   the free block header (size + next pointer) at ‘mem_dst’, completing the compaction step.
 ;
 ; Notes:
-;   - Copy direction is forward and safe for overlap because destination < source.
+;   - Copy direction is forward and safe for overlap because mem_dst < mem_src.
 ;   - Sound resources: if in use, set 'reload_snd_rsrc_ptrs' during the move; it is consumed
 ;     by 'update_rsrc_pointers' and then cleared before the next iteration.
 ;===========================================
 * = $59E5
 
-; Conventions: source=USED block (header addr), destination=FREE hole (header addr); next_block=next FREE block
-move_to_back:
+; Conventions: mem_src=USED block (header addr), mem_dst=FREE hole (header addr); mem_next_free=next FREE block
+mem_bubble_used_left:
 		;----------------------------------------
-		; Read size of the USED block from its header at 'source':
+		; Read size of the USED block from its header at 'mem_src':
 		;
 		;   +0 = bytes-on-last-page (0..255)
 		;   +1 = full 256-byte pages
@@ -1360,12 +1397,12 @@ move_to_back:
 		; size is stored little-endian across these two fields.
 		; (size is the full block: header + payload)
 		;----------------------------------------
-		LDY #$00
-		LDA (source),Y
-		STA block_size             ; low byte: tail bytes
+		LDY #MEM_HDR_SIZE_LO
+		LDA (mem_src),Y
+		STA mem_used_sz             ; low byte: tail bytes
 		INY
-		LDA (source),Y
-		STA block_size + 1         ; high byte: page count
+		LDA (mem_src),Y
+		STA mem_used_sz + 1         ; high byte: page count
 		INY                        ; Y now points at metadata
 
 		;----------------------------------------
@@ -1378,11 +1415,11 @@ move_to_back:
 		; We temporarily push 'resource_type' so we can load index into Y,
 		; then restore A to hold the type for the comparison that follows.
 		;----------------------------------------
-		LDA (source),Y
+		LDA (mem_src),Y
 		STA resource_type
 		PHA                        ; save A=resource_type
 		INY
-		LDA (source),Y
+		LDA (mem_src),Y
 		STA resource_index
 		TAY                        ; Y = resource_index (for table lookups)
 		PLA                        ; A = resource_type (restored)
@@ -1405,36 +1442,36 @@ move_to_back:
 
 copy_block_data:
 		;----------------------------------------
-		; Prepare argument block for mem_copy_memory:
+		; Prepare argument block for mem_copy_pages:
 		;
-		;   page_bytes_to_copy = tail bytes on the last page      	(low  byte of block_size)
-		;   total_pages = full 256-byte pages to copy      			(high byte of block_size)
-		;   read_ptr = source pointer (lo/hi)       					(address of the USED block HEADER)
-		;   write_ptr = destination pointer (lo/hi)  				(address of FREE space to fill)
+		;   mem_copy_tail = tail bytes on the last page      	(low  byte of mem_used_sz)
+		;   mem_copy_page_cnt = full 256-byte pages to copy      			(high byte of mem_used_sz)
+		;   mem_read_ptr = mem_src pointer (lo/hi)       					(address of the USED block HEADER)
+		;   mem_write_ptr = mem_dst pointer (lo/hi)  				(address of FREE space to fill)
 		;
-		; Copy length equals block_size (header + payload).
+		; Copy length equals mem_used_sz (header + payload).
 		;
-		; After setup, mem_copy_memory will copy (total_pages * 256 + page_bytes_to_copy) bytes
-		; from [read_ptr] to [write_ptr], handling page spans appropriately.
+		; After setup, mem_copy_pages will copy (mem_copy_page_cnt * 256 + mem_copy_tail) bytes
+		; from [mem_read_ptr] to [mem_write_ptr], handling page spans appropriately.
 		;----------------------------------------
-		LDA block_size
-		STA page_bytes_to_copy
-		LDA block_size + 1
-		STA total_pages
+		LDA mem_used_sz
+		STA mem_copy_tail
+		LDA mem_used_sz + 1
+		STA mem_copy_page_cnt
 
-		LDA source
-		STA read_ptr
-		LDA source + 1
-		STA read_ptr + 1
+		LDA mem_src
+		STA mem_read_ptr
+		LDA mem_src + 1
+		STA mem_read_ptr + 1
 
-		LDA destination
-		STA write_ptr
-		LDA destination + 1
-		STA write_ptr + 1
+		LDA mem_dst
+		STA mem_write_ptr
+		LDA mem_dst + 1
+		STA mem_write_ptr + 1
 
-		; Perform the relocation copy (source → destination).
+		; Perform the relocation copy (mem_src → mem_dst).
 		; Copies (pages*256 + tail_bytes) as prepared above.
-		JSR mem_copy_memory
+		JSR mem_copy_pages
 
 		; Fix external references to the moved block.
 		; API contract: X = resource_index, Y = resource_type.
@@ -1449,30 +1486,30 @@ copy_block_data:
 		;----------------------------------------
 		; Advance both pointers by the size of the moved USED block:
 		;
-		;   destination ← destination + block_size
-		;   source      ← source      + block_size
+		;   mem_dst ← mem_dst + mem_used_sz
+		;   mem_src      ← mem_src      + mem_used_sz
 		;
-		; Invariant preserved: destination < source.
-		; destination now points to the start of the remaining FREE space (immediately after the moved USED block) 
-		; source points to the block that originally followed the moved USED block.
+		; Invariant preserved: mem_dst < mem_src.
+		; mem_dst now points to the start of the remaining FREE space (immediately after the moved USED block) 
+		; mem_src points to the block that originally followed the moved USED block.
 		;----------------------------------------
-		; destination += block_size
+		; mem_dst += mem_used_sz
 		CLC                               
-		LDA destination
-		ADC block_size                   
-		STA destination
-		LDA destination + 1
-		ADC block_size + 1                
-		STA destination + 1
+		LDA mem_dst
+		ADC mem_used_sz                   
+		STA mem_dst
+		LDA mem_dst + 1
+		ADC mem_used_sz + 1                
+		STA mem_dst + 1
 
-		; source += block_size
+		; mem_src += mem_used_sz
 		CLC
-		LDA source
-		ADC block_size                   
-		STA source
-		LDA source + 1
-		ADC block_size +1                
-		STA source + 1
+		LDA mem_src
+		ADC mem_used_sz                   
+		STA mem_src
+		LDA mem_src + 1
+		ADC mem_used_sz +1                
+		STA mem_src + 1
 
 
 		;----------------------------------------
@@ -1483,115 +1520,115 @@ copy_block_data:
 		; If it resides higher, then there's at least one used block in the middle and we can move it to the front.
 		; If it resides immediately after, we now have two consecutive free blocks, which can be coalesced.
 		;
-		; Check if there are still USED blocks between our current 'source'
-		; and the next FREE block ('next_block'). 
+		; Check if there are still USED blocks between our current 'mem_src'
+		; and the next FREE block ('mem_next_free'). 
 		;
 		; We perform a 16-bit compare:
 		;
-		;   Compute (source - next_block) with SEC/SBC across low, then high.
-		;   If result < 0 → borrow → C=0 → next_block > source → keep moving.
-		;   If result ≥ 0 → C=1 → we've reached/passed next_block → stop moving.
+		;   Compute (mem_src - mem_next_free) with SEC/SBC across low, then high.
+		;   If result < 0 → borrow → C=0 → mem_next_free > mem_src → keep moving.
+		;   If result ≥ 0 → C=1 → we've reached/passed mem_next_free → stop moving.
 		;----------------------------------------
 		SEC
-		LDA source
-		SBC next_block            ; low-byte: source - next_block
-		LDA source + 1
-		SBC next_block + 1            ; high-byte with borrow propagation
-		; C clear → next_block > source → more used blocks remain to relocate, loop
-		BCC move_to_back
+		LDA mem_src
+		SBC mem_next_free            ; low-byte: mem_src - mem_next_free
+		LDA mem_src + 1
+		SBC mem_next_free + 1            ; high-byte with borrow propagation
+		; C clear → mem_next_free > mem_src → more used blocks remain to relocate, loop
+		BCC mem_bubble_used_left
 
 		;----------------------------------------
 		; Adjacent FREE block now follows the relocated region:
 		;
-		;   Update the free-list HEAD to point at 'destination',
-		;   then rebuild the FREE block header at 'destination':
-		;     +0..+1 = size  (free_block_size)
-		;     +2..+3 = next  (next_block)
+		;   Update the free-list HEAD to point at 'mem_dst',
+		;   then rebuild the FREE block header at 'mem_dst':
+		;     +0..+1 = size  (mem_free_sz)
+		;     +2..+3 = next  (mem_next_free)
 		;----------------------------------------
-		; FREE header written at new destination; list head points here.
-		LDA destination
-		STA first_free_block
-		LDA destination + 1
-		STA first_free_block + 1
+		; FREE header written at new mem_dst; list head points here.
+		LDA mem_dst
+		STA mem_free_head
+		LDA mem_dst + 1
+		STA mem_free_head + 1
 
-		LDY #$00
-		LDA free_block_size
-		STA (destination),Y              ; header[0] = size lo
+		LDY #MEM_HDR_SIZE_LO
+		LDA mem_free_sz
+		STA (mem_dst),Y              ; header[0] = size lo
 		INY
-		LDA free_block_size + 1
-		STA (destination),Y              ; header[1] = size hi
+		LDA mem_free_sz + 1
+		STA (mem_dst),Y              ; header[1] = size hi
 		INY
-		LDA next_block
-		STA (destination),Y              ; header[2] = next lo
+		LDA mem_next_free
+		STA (mem_dst),Y              ; header[2] = next lo
 		INY
-		LDA next_block + 1
-		STA (destination),Y              ; header[3] = next hi
+		LDA mem_next_free + 1
+		STA (mem_dst),Y              ; header[3] = next hi
 		RTS
 ;===========================================
-; Copy memory: (total_pages * 256 + page_bytes_to_copy) bytes
+; Copy memory: (mem_copy_page_cnt * 256 + mem_copy_tail) bytes
 ;
 ; Arguments:
-;   page_bytes_to_copy   ($5b)     Bytes to copy on the final (last) page (0..255)
-;   total_pages          ($5c)     Number of full 256-byte pages to copy
-;   read_ptr             ($5d/$5e) Source pointer (lo/hi)
-;   write_ptr            ($5f/$60) Destination pointer (lo/hi)
+;   mem_copy_tail        Bytes to copy on the final (last) page (0..255)
+;   mem_copy_page_cnt               Number of full 256-byte pages to copy
+;   mem_read_ptr             Source pointer (lo/hi)
+;   mem_write_ptr            Destination pointer (lo/hi)
 ;
 ; Returns:
-;   Copies (total_pages * 256 + page_bytes_to_copy) bytes from read_ptr to write_ptr.
-;   On exit, read_ptr/write_ptr have been advanced by the total copied size.
+;   Copies (mem_copy_page_cnt * 256 + mem_copy_tail) bytes from mem_read_ptr to mem_write_ptr.
+;   On exit, mem_read_ptr/mem_write_ptr have been advanced by the total copied size.
 ;
 ; Notes:
-;   - If total_pages == 0 and page_bytes_to_copy == 0 → nothing to do.
+;   - If mem_copy_page_cnt == 0 and mem_copy_tail == 0 → nothing to do.
 ;   - The routine copies page-by-page; for non-final pages it copies 256 bytes
-;     by temporarily setting page_bytes_to_copy = $00 (meaning 256 via CPY logic).
+;     by temporarily setting mem_copy_tail = $00 (meaning 256 via CPY logic).
 ;===========================================
 * = $5C13
-mem_copy_memory:
+mem_copy_pages:
 		; Save final-page byte count on the stack
-		LDA page_bytes_to_copy
+		LDA mem_copy_tail
 		PHA
-		LDX total_pages
+		LDX mem_copy_page_cnt
 
 next_page:
 		BEQ last_page                   ; X==0 → process the final partial page
 
 		; Not the last page: copy a full 256-byte page
 		LDA #$00
-		STA page_bytes_to_copy
+		STA mem_copy_tail
 		JMP copy_page
 
 ; It's the last page: restore the true final-byte count
 last_page:
 		PLA
-		STA page_bytes_to_copy
+		STA mem_copy_tail
 		BNE copy_page                   ; 0 means nothing left to copy → RTS
 		RTS
 
 copy_page:
 		LDY #$00
-; Copy from read_ptr to write_ptr until Y reaches page_bytes_to_copy
+; Copy from mem_read_ptr to mem_write_ptr until Y reaches mem_copy_tail
 copy_loop:
-		LDA (read_ptr),Y
-		STA (write_ptr),Y
+		LDA (mem_read_ptr),Y
+		STA (mem_write_ptr),Y
 		INY
-		CPY page_bytes_to_copy
+		CPY mem_copy_tail
 		BNE copy_loop
 
-		; Finished this page: advance source/dest to next page, decrement page count
-		INC read_ptr + 1
-		INC write_ptr + 1
+		; Finished this page: advance mem_src/dest to next page, decrement page count
+		INC mem_read_ptr + 1
+		INC mem_write_ptr + 1
 		DEX
 		BPL next_page
 		RTS
 
 ;===========================================
-; sort_free_blocks pseudo_code
+; mem_sort_free_ao pseudo_code
 ;===========================================
 ; // Reorders the FREE list by ascending address using an anchor-and-swap sweep.
 ;
-; function sort_free_blocks():
-;     ; anchor_block ← head stub (free_list_head_stub)
-;     anchor_block ← free_list_head_stub
+; function mem_sort_free_ao():
+;     ; anchor_block ← head stub (mem_free_stub)
+;     anchor_block ← mem_free_stub
 ;
 ;     loop_pass:
 ;         ; Reset per-pass state
@@ -1652,200 +1689,200 @@ copy_loop:
 ;
 ;     no_more_blocks:
 ;         ; Record final tail as the current anchor_block
-;         last_free_block ← anchor_block
+;         mem_free_tail ← anchor_block
 ;         return
 ; end function
 ;
 
 ;===========================================
-; find_best_free_block pseudo_code
+; mem_bestfit_select pseudo_code
 ;===========================================
-; Select the smallest FREE block with size ≥ size_needed, then allocate from it.
+; Select the smallest FREE block with size ≥ mem_req_total, then allocate from it.
 ; Returns: pointer to the allocated block header, or NULL if no fit.
 ;
 ; Inputs (globals / parameters)
-; size_needed            ; u16 total requested size = payload
-; free_block             ; u16 pointer to first REAL FREE node (not the stub)
-; free_list_head_stub    ; u16 synthetic predecessor of the head
+; mem_req_total            ; u16 total requested size = payload
+; mem_free_cur             ; u16 pointer to first REAL FREE node (not the stub)
+; mem_free_stub    ; u16 synthetic predecessor of the head
 ;
 ;  Outputs / side effects
-;  - On success: free_block is set to the winning node before allocation.
+;  - On success: mem_free_cur is set to the winning node before allocation.
 ;  - predecessor is set to the winning node’s predecessor for list surgery.
-;  - best_free_size is set to the winning size (consumed by allocate_block).
-;  - Calls allocate_block(); returns pointer to the allocated header.
+;  - mem_best_size is set to the winning size (consumed by mem_alloc_from_free).
+;  - Calls mem_alloc_from_free(); returns pointer to the allocated header.
 ;  - On failure: returns NULL (no allocation performed).
 ;
-; function find_best_free_block(size_needed: u16) -> u16 | NULL
+; function mem_bestfit_select(mem_req_total: u16) -> u16 | NULL
 ;     ; Initialize “best so far” to sentinel values
-;     best_free_size  ← 0xFFFF
-;     best_free_block ← NULL
-;     predecessor     ← free_list_head_stub  ; placeholder; will be replaced on first best
-;     scan_prev       ← free_list_head_stub  ; rolling predecessor during the walk
+;     mem_best_size  ← 0xFFFF
+;     mem_best_blk ← NULL
+;     predecessor     ← mem_free_stub  ; placeholder; will be replaced on first best
+;     scan_prev       ← mem_free_stub  ; rolling predecessor during the walk
 ;
-;     ; Walk the FREE list starting at free_block
-;     while free_block != NULL do
-;         cand_size ← free_block->size
+;     ; Walk the FREE list starting at mem_free_cur
+;     while mem_free_cur != NULL do
+;         cand_size ← mem_free_cur->size
 ;
 ;         ; Fit test: skip if candidate is too small
-;         if cand_size < size_needed then
+;         if cand_size < mem_req_total then
 ;             goto advance
 ;         end if
 ;
 ;         ; Best-fit compare: accept if candidate ≤ current best
-;         if cand_size ≤ best_free_size then
-;             best_free_size  ← cand_size
-;             best_free_block ← free_block
+;         if cand_size ≤ mem_best_size then
+;             mem_best_size  ← cand_size
+;             mem_best_blk ← mem_free_cur
 ;             predecessor     ← scan_prev           ; remember predecessor of the BEST
 ;         end if
 ;
 ;         ; Step to next node
 ;         advance:
-;             scan_prev  ← free_block
-;             free_block ← free_block->next  ; NULL if hi/lo are both zero
+;             scan_prev  ← mem_free_cur
+;             mem_free_cur ← mem_free_cur->next  ; NULL if hi/lo are both zero
 ;     end while
 ;
 ;     ; Commit or fail
-;     if best_free_block == NULL then
+;     if mem_best_blk == NULL then
 ;         return NULL
 ;     end if
 ;
 ;     ; Prepare for allocation: operate on the winning node
-;     free_block ← best_free_block
+;     mem_free_cur ← mem_best_blk
 ;     ; predecessor already set for this winner
-;     ; best_free_size carries the chosen block size
+;     ; mem_best_size carries the chosen block size
 ;
 ;     ; Perform the split/consume; allocator updates links and tail
-;     allocate_block()   ; uses (free_block, best_free_size, size_needed/raw_data_size, predecessor)
+;     mem_alloc_from_free()   ; uses (mem_free_cur, mem_best_size, mem_req_total/raw_data_size, predecessor)
 ;
 ;     ; Return pointer to the allocated block header (the original winning address)
-;     return best_free_block
+;     return mem_best_blk
 ; end function
 ;
 
 ;===========================================
-; allocate_block pseudo_code
+; mem_alloc_from_free pseudo_code
 ;===========================================
 ;  Inputs
-;    free_block         : u16  (addr of chosen FREE header)
-;    chosen_block_size  : u16  (size of FREE block = header+payload)
-;    payload_size      : u16  (requested payload; will be overwritten on consume)
+;    mem_free_cur         : u16  (addr of chosen FREE header)
+;    mem_best_size  : u16  (size of FREE block = header+payload)
+;    mem_req_payload      : u16  (requested payload; will be overwritten on consume)
 ;    predecessor        : u16  (addr of predecessor header or head-stub; write its +2/+3)
 ; 
 ;  Globals
-;    last_free_block    : u16
+;    mem_free_tail    : u16
 ; 
-; procedure allocate_block()
-;     remaining := chosen_block_size - payload_size       // 16-bit unsigned subtract
+; procedure mem_alloc_from_free()
+;     remaining := mem_best_size - mem_req_payload       // 16-bit unsigned subtract
 ; 
 ;     if remaining < 4 then
 ;         // ---- CONSUME (no split)
-;         predecessor->next := free_block->next                 
+;         predecessor->next := mem_free_cur->next                 
 ; 
 ;         // Overwrites the payload request with block size (header+payload)
-;         payload_size := chosen_block_size
+;         mem_req_payload := mem_best_size
 ; 
 ;         // For uniform tail update use the predecessor as the placeholder
-;         new_free_block := predecessor
+;         mem_split_tail := predecessor
 ;     else
 ;         // ---- SPLIT (payload-only carve)
-;         new_free_block := free_block + payload_size     // NOTE: payload offset (no +4)
+;         mem_split_tail := mem_free_cur + mem_req_payload     // NOTE: payload offset (no +4)
 
-;         predecessor->next = new_free_block
-;         new_free_block->next = free_block->next
+;         predecessor->next = mem_split_tail
+;         mem_split_tail->next = mem_free_cur->next
 
-;         new_free_block->size = remaining
+;         mem_split_tail->size = remaining
 ;     end if
 ; 
 ;     // ---- Tail maintenance
-;     if last_free_block == free_block then
-;         last_free_block := new_free_block
+;     if mem_free_tail == mem_free_cur then
+;         mem_free_tail := mem_split_tail
 ;     end if
 ; end procedure
 
 ;===========================================
-; move_to_back pseudo_code
+; mem_bubble_used_left pseudo_code
 ;===========================================
 ;
 ;  Relocate the USED blocks immediately to the right of the leading FREE block
-;  into the FREE region at `destination`, sliding the hole right. When `source`
-;  reaches `next_block`, rebuild the FREE header at `destination` and update the head.
+;  into the FREE region at `mem_dst`, sliding the hole right. When `mem_src`
+;  reaches `mem_next_free`, rebuild the FREE header at `mem_dst` and update the head.
 ;
 ;  Preconditions:
-;    destination = address of the leading FREE block (start of the hole)
-;    source      = destination + free_block_size
-;    next_block  = address of the next FREE block after the run of USED blocks
+;    mem_dst = address of the leading FREE block (start of the hole)
+;    mem_src      = mem_dst + mem_free_sz
+;    mem_next_free  = address of the next FREE block after the run of USED blocks
 ;
 ;  Invariant (maintained by the loop):
-;    destination < source ≤ next_block
-;    (source - destination) == free_block_size
+;    mem_dst < mem_src ≤ mem_next_free
+;    (mem_src - mem_dst) == mem_free_sz
 ;
-; procedure move_to_back(destination: u16, source: u16, next_block: u16, free_block_size: u16)
-;     while source < next_block do
-;         // ---- Read USED block header at `source`
-;         size_lo      ← [source + 0]                 // tail bytes on last page
-;         size_hi      ← [source + 1]                 // count of full 256-byte pages
-;         block_size   ← (size_hi << 8) + size_lo    // total bytes: header + payload
+; procedure mem_bubble_used_left(mem_dst: u16, mem_src: u16, mem_next_free: u16, mem_free_sz: u16)
+;     while mem_src < mem_next_free do
+;         // ---- Read USED block header at `mem_src`
+;         size_lo      ← [mem_src + 0]                 // tail bytes on last page
+;         size_hi      ← [mem_src + 1]                 // count of full 256-byte pages
+;         mem_used_sz   ← (size_hi << 8) + size_lo    // total bytes: header + payload
 ;
 ;         // ---- Copy the entire USED block forward into the FREE region
-;         mem_copy_memory(
-;             page_bytes_to_copy = size_lo,
-;             total_pages        = size_hi_pg,
-;             read_ptr           = source,       // points at USED block HEADER
-;             write_ptr          = destination   // start of FREE region
+;         mem_copy_pages(
+;             mem_copy_tail = size_lo,
+;             mem_copy_page_cnt        = size_hi_pg,
+;             mem_read_ptr           = mem_src,       // points at USED block HEADER
+;             mem_write_ptr          = mem_dst   // start of FREE region
 ;         )
 ;
 ;         // ---- Advance both pointers by the moved size
-;         destination ← destination + block_size
-;         source      ← source      + block_size
-;         // Invariant still holds; (source - destination) == free_block_size
+;         mem_dst ← mem_dst + mem_used_sz
+;         mem_src      ← mem_src      + mem_used_sz
+;         // Invariant still holds; (mem_src - mem_dst) == mem_free_sz
 ;     end while
 ;
-;     // ---- Finalize: rebuild FREE header at new destination, update list head
-;     first_free_block ← destination
-;     [destination + 0] ← low(free_block_size)   // size lo
-;     [destination + 1] ← high(free_block_size)  // size hi
-;     [destination + 2] ← low(next_block)        // next lo
-;     [destination + 3] ← high(next_block)       // next hi
+;     // ---- Finalize: rebuild FREE header at new mem_dst, update list head
+;     mem_free_head ← mem_dst
+;     [mem_dst + 0] ← low(mem_free_sz)   // size lo
+;     [mem_dst + 1] ← high(mem_free_sz)  // size hi
+;     [mem_dst + 2] ← low(mem_next_free)        // next lo
+;     [mem_dst + 3] ← high(mem_next_free)       // next hi
 ; end procedure
 ;
 ;
 
 
 ;===========================================
-; move_free_blocks_to_back pseudo_code
+; mem_compact_leading_free pseudo_code
 ;===========================================
 ; Slide the leading FREE block (“the hole”) to higher addresses by moving the
 ; USED run on its right into the hole, then merge adjacent FREE blocks.
 ; Repeats until there is no FREE block to the right of the head.
 ;
-; procedure move_free_blocks_to_back()
+; procedure mem_compact_leading_free()
 ;     loop:
 ;         // 1) Seed from the FREE-list head
-;         free_block ← first_free_block
-;         if free_block == NULL then
+;         mem_free_cur ← mem_free_head
+;         if mem_free_cur == NULL then
 ;             return
 ;         end if
 ;
 ;         // 2) Read head FREE size and compute the first USED on its right
-;         free_block_size ← read_block_size_bytes(free_block)   // header + payload bytes
-;         source          ← free_block + free_block_size        // first USED block header
+;         mem_free_sz ← read_block_size_bytes(mem_free_cur)   // header + payload bytes
+;         mem_src          ← mem_free_cur + mem_free_sz        // first USED block header
 ;
 ;         // 3) Fetch the next FREE block after this run
-;         next_free ← read_free_next(free_block)                ; NULL if none
+;         next_free ← read_free_next(mem_free_cur)                ; NULL if none
 ;         if next_free == NULL then
 ;             return                                           ; nothing to push rightward
 ;         end if
 ;
-;         // 4) Bubble USED blocks into the hole until source reaches next_free
-;         move_to_back(
-;             destination      = free_block,        // start of the hole
-;             source           = source,            // first USED block header
-;             next_block       = next_free,         // following FREE block
-;             free_block_size  = free_block_size    // size of the hole (bytes)
+;         // 4) Bubble USED blocks into the hole until mem_src reaches next_free
+;         mem_bubble_used_left(
+;             mem_dst      = mem_free_cur,        // start of the hole
+;             mem_src           = mem_src,            // first USED block header
+;             mem_next_free       = next_free,         // following FREE block
+;             mem_free_sz  = mem_free_sz    // size of the hole (bytes)
 ;         )
 ;
 ;         // 5) After the hole slides right, adjacent FREEs may now touch — merge them
-;         coalesce_free_blocks()
+;         mem_coalesce_right()
 ;
 ;         // 6) Re-evaluate the (possibly changed) head and repeat
 ;         goto loop
@@ -1854,28 +1891,28 @@ copy_loop:
 ;
 
 ;===========================================
-; allocate_block (graphical explanation)
+; mem_alloc_from_free (graphical explanation)
 ;===========================================
 ; 
 ; Addresses grow → right
 ;
 ; Names:
 ;   pred             = predecessor node (may be the head stub); we write pred.+2..+3
-;   free_block       = chosen FREE block to satisfy the request
-;   old_next         = free_block.next (the next FREE block in the list)
-;   chosen_block_size= size(free_block)   ; 16-bit
+;   mem_free_cur       = chosen FREE block to satisfy the request
+;   old_next         = mem_free_cur.next (the next FREE block in the list)
+;   mem_best_size= size(mem_free_cur)   ; 16-bit
 ;
 ; ----------------------------------------------------------------------
 ; initial state (before allocation)
 ;
 ; Free blocks linked list:
 ;
-;    pred  ──►  free_block  ──►  old_next  ──►  ...
+;    pred  ──►  mem_free_cur  ──►  old_next  ──►  ...
 ;
 ; Memory:
-;    [ FREE: chosen_block_size @ free_block ]  [ ... ]
+;    [ FREE: mem_best_size @ mem_free_cur ]  [ ... ]
 ;
-; Goal: carve space for the request from free_block, then fix links and tail.
+; Goal: carve space for the request from mem_free_cur, then fix links and tail.
 ;
 ; ----------------------------------------------------------------------
 ; A) Split path
@@ -1883,13 +1920,13 @@ copy_loop:
 ; Free blocks linked list:
 ;
 ; Before 
-;   pred ──► free_block ──► old_next
-;            [ FREE: chosen_block_size ]
+;   pred ──► mem_free_cur ──► old_next
+;            [ FREE: mem_best_size ]
 ;
 ; After split (payload carve)
-;   pred ──► new_free_block ──► old_next
-;            [ ALLOCATED ] [ FREE: remaining_free_space ]
-;                ^ at free_block       ^ at free_block+payload_size
+;   pred ──► mem_split_tail ──► old_next
+;            [ ALLOCATED ] [ FREE: mem_split_rem ]
+;                ^ at mem_free_cur       ^ at mem_free_cur+mem_req_payload
 ;
 ;   (Note: trailing FREE header sits after payload bytes, not after header+payload.)
 ;
@@ -1899,24 +1936,24 @@ copy_loop:
 ; Free blocks linked list:
 ;
 ; Before
-;   pred ──► free_block ──► old_next
-;            [ FREE: chosen_block_size ]
+;   pred ──► mem_free_cur ──► old_next
+;            [ FREE: mem_best_size ]
 ;
 ; After consume
 ;   pred ──► old_next
-;   [ ALLOCATED takes entire free_block region ]
+;   [ ALLOCATED takes entire mem_free_cur region ]
 ;
 ; ----------------------------------------------------------------------
 
 ;===========================================
-; move_to_back (graphical explanation)
+; mem_bubble_used_left (graphical explanation)
 ;===========================================
 ; Legend
 ;
 ; [FREE:F]     free block of constant size F  (header+payload bytes)
 ; [U# :S#]     used block # with size S#      (header+payload bytes)
-; dest         = destination (start of FREE region / “hole”)
-; src          = source      (start of first USED block header to the right)
+; dest         = mem_dst (start of FREE region / “hole”)
+; src          = mem_src      (start of first USED block header to the right)
 ; next_free    = next FREE block after the run of USED blocks
 ;
 ; Invariant: dest < src ≤ next_free, and (src - dest) == F at loop entry.
