@@ -3,86 +3,98 @@
 ;
 ; Summary:
 ;   Implements a compact decompression format that combines Run-Length Encoding
-;   (RLE) with a 4-entry symbol dictionary. 
+;   with a 4-entry symbol dictionary. 
 ;
 ;	The decoder exposes a streaming API: you first load the dictionary from the input, 
 ;	then repeatedly call a routine that returns the next decompressed byte. 
 ;	Two helper routines can “skip” decompressed bytes without storing them (useful to fast-forward).
 ;
-; Arguments / State (zero-page & memory):
-;   compressed_data_ptr ($27/$28)        16-bit pointer to the compressed input stream.
-;   symbol_dictionary ($0100..$0103)     4 symbols (bytes) copied from the stream and
-;                                        referenced by index during dictionary runs.
-;   decompress_mode ($29)                Current mode flag (#$00 = DIRECT, #$FF = RUN).
-;                                        Only bit 7 is tested to select the emission path.
-;   mode_counter ($2A)                   Remaining outputs in the current operation;
-;                                        stores L meaning “emit L+1” total bytes.
-;   symbol_to_repeat ($2B)               Latched byte to output while in RUN mode
-;                                        (both ad-hoc and dictionary runs).
-;   y_temp ($2D)                         Scratch to preserve Y inside the main routine.
-;   data_count ($2E/$2F)                 Requested count for “skip” helpers
-;                                        (8/16-bit, depending on the routine).
+; Arguments / State:
+;   decomp_src_ptr         	16-bit pointer to the compressed input stream.
+;   decomp_skip_rem         Requested count for “skip” helpers
+;                           (8/16-bit, depending on the routine).
+;
+; State:
+;   decomp_dict4      		4 symbols (bytes) copied from the stream and
+;                           referenced by index during dictionary runs.
+;
+;   decomp_emit_mode        Current mode flag (#$00 = DIRECT, #$FF = RUN).
+;                           Only bit 7 is tested to select the emission path.
+;
+;   decomp_emit_rem         Remaining outputs in the current operation;
+;                           stores L meaning “emit L+1” total bytes.
+;
+;   decomp_run_symbol       Latched byte to output while in RUN mode
+;                           (both ad-hoc and dictionary runs).
+;
+;   decomp_y_save           Scratch to preserve Y inside the main routine.
+;
 ;
 ; Public entry points:
-;   setup_symbol_dictionary              Loads 4 bytes from compressed_data_ptr into
-;                                        symbol_dictionary, advances compressed_data_ptr
-;                                        by 4, and clears the current mode/counter.
-;   get_next_decompressed_byte           Returns 1 decompressed byte per call in A;
-;                                        maintains state across calls.
-;   read_next_compressed_data            Fetches one byte from (compressed_data_ptr),
-;                                        advances the pointer.
-;   skip_compressed_data_16bit           Discards decompressed bytes until data_count
-;                                        ($2E/$2F) reaches zero.
-;   skip_compressed_data_8bit            Discards decompressed bytes using an 8-bit
-;                                        count loaded from $2E.
+;
+;   decomp_dict4_init       Loads 4 bytes from decomp_src_ptr into
+;                           decomp_dict4, advances decomp_src_ptr
+;                           by 4, and clears the current mode/counter.
+;
+;   decomp_stream_next      Returns 1 decompressed byte per call in A;
+;                           maintains state across calls.
+;
+;   decomp_skip_16          Discards decompressed bytes until decomp_skip_rem
+;                           reaches zero.
+;
+;   decomp_skip_8           Discards decompressed bytes using an 8-bit
+;                           count loaded from decomp_skip_rem.
+;
+; Private routines:
+;   decomp_read_src_byte    Fetches one byte from (decomp_src_ptr),
+;                           advances the pointer.
 ;
 ; Returns:
-;   get_next_decompressed_byte           A = next decompressed byte (Y preserved).
-;   Other routines                       None (state/pointers updated as side effects).
+;   decomp_stream_next      A = next decompressed byte (Y preserved).
+;   Other routines          None (state/pointers updated as side effects).
 ;
-; What is RLE (Run-Length Encoding)?
+;----------------------------------------------------------------------------------
+; Technical refresher
+;----------------------------------------------------------------------------------
+; RLE (Run-Length Encoding)
 ;
 ;   RLE is a simple compression technique for repeating values: instead of storing
 ;   “AAAAAA” as six separate ‘A’ bytes, we store a pair (run-length, symbol) and
 ;   expand it at decode time. 
 ;
-;	This format uses RLE in two flavors:
-;       AD-HOC RUN — repeats a literal byte read from the stream.
-;       DICTIONARY RUN — repeats a byte looked up in a small dictionary.
-;
-; What is the dictionary and why use it?
+; Dictionary
 ;
 ;   Many data sets have a few very common symbols (e.g., space, zero, newline).
 ;   A dictionary lets us assign a short index (here 2 bits → 4 entries) to those
 ;   frequent symbols. By referencing them via an index instead of storing the
-;   full byte each time, we save space. The compressor first writes the 4 symbol
-;   values; the decoder loads them with setup_symbol_dictionary and can then use
+;   full byte each time, we save space. 
+;
+;	The decoder loads them with decomp_dict4_init and can then use
 ;   their indices in control bytes to trigger dictionary runs.
 ;
-; The dictionary's purpose is to hold the symbols having the highest frequencies.
-; This allows using just 2 bits (for the 4 elements) to reference each symbol,
-; while leaving the remaining bits of the byte to express a run length.
-; This obviously saves space.
+; RLE variants
 ;
-; We can partition the set of symbols into two groups:
-;	-symbols in the dictionary
-;	-symbols not in the dictionary
+;	This compression format uses RLE in two flavors:
+;       AD-HOC RUN — repeats a literal byte read from the stream.
+;       DICTIONARY RUN — repeats a byte looked up in a small dictionary.
 ;
-; Thus, runs can reference a dictionary symbol or an ad-hoc (non-dictionary) symbol.
+; Direct mode
+; 	RLE (runs) only pays off when the next outputs repeat the same symbol.
+; 	If symbols don’t repeat, a run header would cost extra bytes with no gain.
 ;
-; When using RLE doesn't make sense (because symbols are not being repeated), we need to
-; store the symbols directly as in their original form. Otherwise, we would be 
-; actually increasing the space needed.
+; 	Direct mode emits one symbol as-is, with no run header:
+;   	• for ad-hoc (non-dictionary) symbols,
+;   	• for dictionary symbols that occur once (no repetition),
+;   	• to avoid negative compression (run metadata > savings).
 ;
-; "Direct" mode is thus also needed to properly handle these cases.
-; 
 ; There are then 3 main operations defined:
 ;
 ;	-repeat an ad-hoc value				expressed as a run-length and the ad-hoc repeated symbol
 ;	-repeat a dictionary value			expressed as a run-length and the dictionary symbol index
 ;	-direct mode						expressed as a counter, followed by one or more symbols
 ;
-; Format overview:
+; Format overview
+;
 ;   -Each new “operation” begins with a control byte. 
 ;	-We denote its lower bits as an encoded length L. 
 ;	-Important: L means the decoder will emit L+1 bytes.
@@ -92,43 +104,44 @@
 ;   1) DIRECT mode (bits 7..6 = 00, i.e., control < $40)
 ;      L = control (0..63) → output the next (L+1) bytes literally.
 ;      Layout: [control] [b0] [b1] ... [bL]
+;	   Output: [b0] [b1] ... [bL]
 ;
 ;   2) AD-HOC RUN (bits 7..6 = 01, i.e., $40..$7F)
 ;      L = control & $3F (0..63), next byte is the literal to repeat.
-;      Output (L+1) copies of that literal.
 ;      Layout: [control] [literal]
+;      Output: (L+1) copies of that literal.
 ;
 ;   3) DICTIONARY RUN (bit 7 = 1, i.e., ≥ $80)
 ;      index = (control >> 5) & 3 selects one of 4 dictionary symbols.
 ;      L = control & $1F (0..31) → output (L+1) copies of that symbol.
 ;      Layout: [control]   (no extra byte)
+;	   Output: (L+1) copies of dict4[index]
 ;
 ; Streaming state machine:
 ;
-;   mode_counter holds L (“count-1”): 
+;   decomp_emit_rem holds L (“count-1”): 
 ;		when starting an operation we emit the first byte immediately; 
 ;		on subsequent calls we decrement first, then emit.
 ;
-;   decompress_mode is #$00 for DIRECT and #$FF for RUN; 
+;   decomp_emit_mode is #$00 for DIRECT and #$FF for RUN; 
 ;		only bit 7 matters, enabling a quick branch (BIT + BMI) to the proper emission path.
 ;
-;   symbol_to_repeat is captured at operation start for both AD-HOC and DICT runs.
+;   decomp_run_symbol is captured at operation start for both AD-HOC and DICT runs.
 ;
 ; Typical usage:
 ;
-;   1) Point compressed_data_ptr at the compressed buffer.
-;   2) JSR setup_symbol_dictionary   ; reads 4 symbols into $0100..$0103
-;   3) Loop calling get_next_decompressed_byte until you’ve produced the desired
+;   1) Point decomp_src_ptr at the compressed buffer.
+;   2) Setup the dictionary by calling decomp_dict4_init   
+;   3) Loop calling decomp_stream_next until you’ve produced the desired
 ;      number of decompressed bytes; store or process A each time.
 ;   4) Use the skip helpers to fast-forward without materializing bytes.
 ;
 ; Limits & notes:
 ;
-;   DIRECT / AD-HOC: L ≤ 63 → emit ≤ 64 bytes; DICT: L ≤ 31 → emit ≤ 32 bytes.
-;   symbol_dictionary resides in page 1 ($0100..$0103), which is the 6502 stack
+;   decomp_dict4 resides in page 1 ($0100..$0103), which is the 6502 stack
 ;   page; we're safe as long as the stack never grows down to these addresses.
 ;
-;   All routines update the shared decoder state and compressed_data_ptr so that
+;   All routines update the shared decoder state and decomp_src_ptr so that
 ;   decoding can be paused/resumed seamlessly (including after skips).
 ;===============================================================================
 
@@ -136,23 +149,23 @@
 ;===========================================
 ; Zero-page variables and constants
 ;===========================================
-compressed_data_ptr = $27    ; 16-bit pointer to compressed input stream (low at $27, high at $28)
-decompress_mode     = $29    ; current mode flag ($00 = direct, $FF = run). Only bit 7 is tested
-mode_counter        = $2a    ; remaining outputs for the current operation (stores L, meaning L+1 total outputs)
-symbol_to_repeat    = $2b    ; byte value to output while in run mode
-y_temp              = $2d    ; temporary storage for Y register within get_next_decompressed_byte
-data_count          = $2e    ; decompressed-byte skip counter (low at $2e, high at $2f) for skip helpers
-symbol_dictionary   = $0100	 ; dictionary of symbols (4 symbols: $0100-0103)
+decomp_src_ptr 		= $27    ; 16-bit pointer to compressed input stream (low at $27, high at $28)
+decomp_emit_mode    = $29    ; current mode flag ($00 = direct, $FF = run). Only bit 7 is tested
+decomp_emit_rem     = $2A    ; remaining outputs for the current operation (stores L, meaning L+1 total outputs)
+decomp_run_symbol   = $2B    ; byte value to output while in run mode
+decomp_y_save       = $2D    ; temporary storage for Y register within decomp_stream_next
+decomp_skip_rem     = $2E    ; decompressed-byte skip counter (low at $2e, high at $2f) for skip helpers
+decomp_dict4   		= $0100	 ; dictionary of symbols (4 symbols: $0100-0103)
 
-DIRECT_MODE         = #$00   ; constant: direct mode selector
-RUN_MODE            = #$FF   ; constant: run mode selector
+DIRECT_MODE         = $00   ; constant: direct mode selector
+RUN_MODE            = $FF   ; constant: run mode selector
 
 * = $0104
 ;===========================================
 ; Initializes the symbol dictionary with 4 entries.
 ;
 ; Arguments:
-;	compressed_data_ptr ($27/$28)	16-bit pointer to the start of compressed input data.
+;	decomp_src_ptr			16-bit pointer to the start of compressed input data.
 ;
 ; Returns:
 ;	None.
@@ -167,40 +180,44 @@ RUN_MODE            = #$FF   ; constant: run mode selector
 ;	the decompression state (mode and counter) so that the next decompression call
 ;	starts cleanly.
 ;===========================================
-setup_symbol_dictionary:
+decomp_dict4_init:
+
        ; Copy 4 dictionary bytes from input: Y = 3..0
-       LDY #$03
-       ;------------------------------------------------
-copy_loop:
-       LDA (compressed_data_ptr),Y   ; read source byte at ptr+Y
-       STA symbol_dictionary,Y       ; store to dictionary [$0100..$0103]
+       LDY #$03	   
+dict_copy_loop:
+       LDA (decomp_src_ptr),Y   ; read source byte at ptr+Y
+       STA decomp_dict4,Y       ; store to dictionary [$0100..$0103]
        DEY                           ; next lower index
-       BPL copy_loop                 ; loop until Y = $FF
-       ;------------------------------------------------
+       BPL dict_copy_loop            ; loop until Y = $FF
+	   
+       ;------------------------------------------------	   
        ; Advance input pointer by 4 (past the dictionary)
+       ;------------------------------------------------
        CLC
-       LDA <compressed_data_ptr
+       LDA decomp_src_ptr
        ADC #$04
-       STA <compressed_data_ptr
-       LDA compressed_data_ptr + 1
+       STA decomp_src_ptr
+       LDA decomp_src_ptr + 1
        ADC #$00
-       STA compressed_data_ptr + 1
+       STA decomp_src_ptr + 1
+	   
        ;------------------------------------------------
        ; Reset state: no active operation, counter = 0
+       ;------------------------------------------------
        LDA #$00
-       STA mode_counter
-       STA decompress_mode
+       STA decomp_emit_rem
+       STA decomp_emit_mode
        RTS
 
 ;===========================================
 ; Retrieves the next decompressed byte from the stream
 ;
 ; Arguments:
-;	compressed_data_ptr ($27/$28)	Pointer to current read position in compressed data.
-;	symbol_dictionary ($0100–$0103)	4-entry symbol lookup table initialized earlier.
-;	mode_counter ($2A)				Remaining repetitions or direct bytes to output.
-;	decompress_mode ($29)			Indicates current mode (#$00 = direct, #$FF = run).
-;	symbol_to_repeat ($2B)			Holds symbol currently being repeated in run mode.
+;	decomp_src_ptr 				Pointer to current read position in compressed data.
+;	decomp_dict4				4-entry symbol lookup table initialized earlier.
+;	decomp_emit_rem				Remaining repetitions or direct bytes to output.
+;	decomp_emit_mode 			Indicates current mode (#$00 = direct, #$FF = run).
+;	decomp_run_symbol 			Holds symbol currently being repeated in run mode.
 ;
 ; Returns:
 ;	A — The next decompressed byte.
@@ -220,50 +237,55 @@ copy_loop:
 ;			Bits 6–5 select one of four dictionary symbols and bits 4–0 give a run length (L+1)
 ;
 ; Note that the symbol dictionary has to be set up first, before calling this routine.
-; This is done via setup_symbol_dictionary.
+; This is done via decomp_dict4_init.
 ;===========================================
-get_next_decompressed_byte:
+decomp_stream_next:
        ; Preserve Y (routine uses Y)
-       STY y_temp
+       STY decomp_y_save
        ; If an operation is already active (counter > 0), continue it
-       LDA mode_counter
+       LDA decomp_emit_rem
        BNE repeat_operation
+	   
        ;--------------------------------------------------
        ; No active op: fetch a control byte and configure the next op
-       JSR read_next_compressed_data
+       ;--------------------------------------------------
+       JSR decomp_read_src_byte
        ; Classify by top bits
        CMP #$40
-       BCS byte_ge_40
+       BCS ctrl_ge_40
+	   
        ;--------------------------------------------------
        ; DIRECT: ctrl < $40 → L in A. Set counter=L and output first raw byte.
        ; (Total bytes in this direct block = L+1)
        ;--------------------------------------------------
-       STA mode_counter
+       STA decomp_emit_rem
        ; Set direct mode (bit7 clear)
-       LDA DIRECT_MODE
-       JMP set_mode
-       ;--------------------------------------------------
-byte_ge_40:
+       LDA #DIRECT_MODE
+       JMP set_emit_mode
+	   
+ctrl_ge_40:
        CMP #$80
-       BCS byte_ge_80
-       ;--------------------------------------------------
+       BCS ctrl_ge_80
+	   
+       ;--------------------------------------------------	   
        ; AD-HOC RUN: $40 ≤ ctrl < $80
        ; Low 6 bits = L (repeat count-1), next byte = literal to repeat
        ;--------------------------------------------------
        AND #$3F
-       STA mode_counter
+       STA decomp_emit_rem	   
        ; Get the literal to repeat
-       JSR read_next_compressed_data
-       JMP set_symbol_to_repeat
+       JSR decomp_read_src_byte
+       JMP latch_run_symbol
+	   
        ;--------------------------------------------------
        ; DICTIONARY RUN: ctrl ≥ $80
        ; Bits 4..0 = L, bits 6..5 = dictionary index
        ;--------------------------------------------------
-byte_ge_80:
+ctrl_ge_80:
        ; Extract L (run length-1) to counter
        TAX
        AND #$1F		
-       STA mode_counter
+       STA decomp_emit_rem
        ; Recover full ctrl in A
        TXA
        ; Compute index = (ctrl >> 5) & 3
@@ -275,229 +297,234 @@ byte_ge_80:
        AND #$03	
        TAX
        ; Fetch symbol from dictionary
-       LDA symbol_dictionary,X
+       LDA decomp_dict4,X
        ;--------------------------------------------------
        ; Initialize run with chosen symbol, then mark mode as RUN
-set_symbol_to_repeat:
-       STA symbol_to_repeat
+latch_run_symbol:
+       STA decomp_run_symbol
        ; Set run mode (bit7 set)
-       LDA RUN_MODE
-set_mode:
-       STA decompress_mode
+       LDA #RUN_MODE
+set_emit_mode:
+       STA decomp_emit_mode
        ; New op just set up: skip the pre-decrement path and emit first byte
-       JMP check_mode
-       ;--------------------------------------------------
+       JMP emit_by_mode
+	   
 repeat_operation:
        ; Active op: decrement remaining count before emitting this byte
-       DEC mode_counter
-       ;--------------------------------------------------
-check_mode:
+       DEC decomp_emit_rem
+	   
+emit_by_mode:
        ; Decide emission path by bit7 of mode: RUN (negative) vs DIRECT (non-negative)
-       BIT decompress_mode
-       BMI in_run_mode
+       BIT decomp_emit_mode
+       BMI emit_run_byte
+	   
        ;--------------------------------------------------
        ; DIRECT: output next raw byte from input
        ;--------------------------------------------------
-       JSR read_next_compressed_data
-       JMP exit
+       JSR decomp_read_src_byte
+       JMP return_byte
+	   
        ;--------------------------------------------------
-       ; RUN: output previously latched symbol_to_repeat
+       ; RUN: output previously latched decomp_run_symbol
        ;--------------------------------------------------
-in_run_mode:
-       LDA symbol_to_repeat
-exit:
+emit_run_byte:
+       LDA decomp_run_symbol
+	   
+return_byte:
        ; Restore Y and return byte in A
-       LDY y_temp
+       LDY decomp_y_save
        RTS
 
 ;===========================================
 ; Reads one byte from the compressed data stream.
 ;
 ; Arguments:
-;	compressed_data_ptr ($27/$28) — Pointer to current position in compressed data.
+;	decomp_src_ptr			Pointer to current position in compressed data.
 ;
 ; Returns:
-;	A — Byte read from compressed data.
+;	A						Byte read from compressed data.
 ;
 ; Description:
-;	Fetches a single byte from the memory location pointed to by compressed_data_ptr,
+;	Fetches a single byte from the memory location pointed to by decomp_src_ptr,
 ;	then automatically increments the pointer. This routine is used by higher-level
 ;	decompression functions whenever a new byte is required from the input stream.
 ;===========================================
-read_next_compressed_data:
-       LDY #$00                      ; Y=0 so (ptr),Y reads at ptr
-       LDA (compressed_data_ptr),Y   ; fetch byte
-       INC <compressed_data_ptr      ; bump low byte
-       BNE exit_2                    ; if not wrapped, done
-       INC compressed_data_ptr + 1   ; else bump high byte
-exit_2:
+decomp_read_src_byte:
+       LDY #$00                     ; Y=0 so (ptr),Y reads at ptr
+       LDA (decomp_src_ptr),Y   	; fetch byte
+       INC decomp_src_ptr       	; bump low byte
+       BNE return_read              ; if not wrapped, done
+       INC decomp_src_ptr + 1   	; else bump high byte
+return_read:
        RTS
 
 ;===========================================
 ; Skips a specified amount of decompressed data (16-bit count).
 ;
 ; Arguments:
-;	data_count ($2E/$2F) — 16-bit counter specifying how many decompressed bytes to skip.
+;	decomp_skip_rem			16-bit counter specifying how many decompressed bytes to skip.
 ;
 ; Returns:
 ;	None.
 ;
 ; Description:
 ;	Runs the decompression routine repeatedly to simulate producing data without
-;	storing it. Each decompressed byte decrements data_count until it reaches zero.
-;	This version supports skipping up to 65,535 bytes.
+;	storing it. Each decompressed byte decrements decomp_skip_rem until it reaches zero.
+;	This version supports skipping up to 64 kb.
 ;
 ;	This function is useful for fast-forwarding through portions of compressed
 ;	data without needing to actually copy or process the output.
 ;===========================================
-skip_compressed_data_16bit:
-       ; If data_count == 0, nothing to skip
-       LDA <data_count
-       ORA data_count + 1
-       BNE next_byte
+decomp_skip_16:
+       ; If decomp_skip_rem == 0, nothing to skip
+       LDA decomp_skip_rem
+       ORA decomp_skip_rem + 1
+       BNE skip16_step
        RTS
-       ;---------------------------------
-next_byte:
+
+skip16_step:
        ; Consume one decompressed byte (discard result)
-       JSR get_next_decompressed_byte
-       ; Decrement 16-bit data_count (low then high if needed)
-       LDA <data_count
-       BNE dec_lo_counter
-       ; data_count low is zero → borrow from high
-       DEC data_count + 1
-dec_lo_counter:
-       DEC <data_count
-       JMP skip_compressed_data_16bit
+       JSR decomp_stream_next
+       ; Decrement 16-bit decomp_skip_rem (low then high if needed)
+       LDA decomp_skip_rem
+       BNE dec_skip_lo
+       ; decomp_skip_rem low is zero → borrow from high
+       DEC decomp_skip_rem + 1
+	   
+dec_skip_lo:
+       DEC decomp_skip_rem
+       JMP decomp_skip_16
 
 ;===========================================
 ; Skips a specified amount of decompressed data (8-bit count).
 ;
 ; Arguments:
-;	data_count ($2E) — 8-bit counter specifying how many decompressed bytes to skip.
+;	decomp_skip_rem			8-bit counter specifying how many decompressed bytes to skip.
 ;
 ; Returns:
 ;	None.
 ;
 ; Description:
-;	A compact version of skip_compressed_data_16bit for skipping up to 255 bytes.
+;	A compact version of decomp_skip_16 for skipping up to 255 bytes.
 ;	It repeatedly calls the decompression routine, discarding each byte produced,
 ;	until the counter reaches zero. Commonly used for small, localized skips in
 ;	the compressed data stream.
 ;===========================================
-skip_compressed_data_8bit:
+decomp_skip_8:
        ; Load 8-bit count once; if zero, done
-       LDY data_count
-       BNE next_byte_8
+       LDY decomp_skip_rem
+       BNE skip8_step
        RTS
-next_byte_8:
+	   
+skip8_step:
        ; Consume one decompressed byte (discard result)
-       JSR get_next_decompressed_byte
+       JSR decomp_stream_next
        DEY
-       BNE next_byte_8
+       BNE skip8_step
        RTS
 
 
 ; HYBRID RLE + 4-SYMBOL DICTIONARY DECOMPRESSOR — TEXT FLOW DIAGRAM
 ; =================================================================
 ;
-; [setup_symbol_dictionary]
+; [decomp_dict4_init]
 ; ------------------------
 ; ENTRY
 ;   │
 ;   ├─ Y ← #$03                                ; copy 4 bytes (indices 3..0)
-;   ├─ LOOP:  A ← (compressed_data_ptr),Y
-;   │         symbol_dictionary[Y] ← A
+;   ├─ LOOP:  A ← (decomp_src_ptr),Y
+;   │         decomp_dict4[Y] ← A
 ;   │         Y ← Y-1
 ;   │         IF Y ≥ 0 THEN LOOP
 ;   │
-;   ├─ Advance compressed_data_ptr by +4       ; skip past dictionary
+;   ├─ Advance decomp_src_ptr by +4       ; skip past dictionary
 ;   │
-;   ├─ mode_counter ← 0
-;   ├─ decompress_mode ← 0                     ; clear state
+;   ├─ decomp_emit_rem ← 0
+;   ├─ decomp_emit_mode ← 0                     ; clear state
 ;   └─ RTS
 ;
 ;
-; [get_next_decompressed_byte]
+; [decomp_stream_next]
 ; ----------------------------
 ; ENTRY
 ;   │
-;   ├─ Save Y into y_temp
+;   ├─ Save Y into decomp_y_save
 ;   │
-;   ├─ IF mode_counter ≠ 0 THEN
-;   │      ├─ mode_counter ← mode_counter - 1  ; continue current op
+;   ├─ IF decomp_emit_rem ≠ 0 THEN
+;   │      ├─ decomp_emit_rem ← decomp_emit_rem - 1  ; continue current op
 ;   │      └─ GOTO EMIT
 ;   │
 ;   ├─ ELSE  (no active op: parse a control byte)
-;   │      ├─ ctrl ← read_next_compressed_data()
+;   │      ├─ ctrl ← decomp_read_src_byte()
 ;   │      │
 ;   │      ├─ IF ctrl < $40  (DIRECT) THEN
-;   │      │     ├─ mode_counter ← ctrl        ; L (will emit L+1 total)
-;   │      │     ├─ decompress_mode ← $00      ; DIRECT_MODE (bit7=0)
+;   │      │     ├─ decomp_emit_rem ← ctrl        ; L (will emit L+1 total)
+;   │      │     ├─ decomp_emit_mode ← $00      ; DIRECT_MODE (bit7=0)
 ;   │      │     └─ GOTO EMIT
 ;   │      │
 ;   │      ├─ IF $40 ≤ ctrl < $80  (AD-HOC RUN) THEN
-;   │      │     ├─ mode_counter ← (ctrl & $3F)       ; L
-;   │      │     ├─ symbol_to_repeat ← read_next_compressed_data()
-;   │      │     ├─ decompress_mode ← $FF             ; RUN_MODE (bit7=1)
+;   │      │     ├─ decomp_emit_rem ← (ctrl & $3F)       ; L
+;   │      │     ├─ decomp_run_symbol ← decomp_read_src_byte()
+;   │      │     ├─ decomp_emit_mode ← $FF             ; RUN_MODE (bit7=1)
 ;   │      │     └─ GOTO EMIT
 ;   │      │
 ;   │      └─ ELSE  (ctrl ≥ $80 → DICTIONARY RUN)
 ;   │            ├─ L        ←  ctrl & $1F
 ;   │            ├─ index    ← (ctrl >> 5) & 3
-;   │            ├─ mode_counter ← L
-;   │            ├─ symbol_to_repeat ← symbol_dictionary[index]
-;   │            ├─ decompress_mode ← $FF             ; RUN_MODE
+;   │            ├─ decomp_emit_rem ← L
+;   │            ├─ decomp_run_symbol ← decomp_dict4[index]
+;   │            ├─ decomp_emit_mode ← $FF             ; RUN_MODE
 ;   │            └─ GOTO EMIT
 ;   │
 ; EMIT:
-;   │  Decide by decompress_mode bit7:
+;   │  Decide by decomp_emit_mode bit7:
 ;   │
 ;   ├─ IF RUN_MODE (bit7=1) THEN
-;   │      A ← symbol_to_repeat
+;   │      A ← decomp_run_symbol
 ;   │
 ;   ├─ ELSE (DIRECT_MODE, bit7=0)
-;   │      A ← read_next_compressed_data()
+;   │      A ← decomp_read_src_byte()
 ;   │
-;   ├─ Restore Y from y_temp
+;   ├─ Restore Y from decomp_y_save
 ;   └─ RTS   ; A = next decompressed byte
 ;
 ;
-; [read_next_compressed_data]
+; [decomp_read_src_byte]
 ; ---------------------------
 ; ENTRY
 ;   │
-;   ├─ A ← (compressed_data_ptr)               ; with Y=0
-;   ├─ compressed_data_ptr.low  ← +1
+;   ├─ A ← (decomp_src_ptr)               ; with Y=0
+;   ├─ decomp_src_ptr.low  ← +1
 ;   ├─ IF low wrapped to 0 THEN
-;   │      compressed_data_ptr.high ← +1
+;   │      decomp_src_ptr.high ← +1
 ;   └─ RTS   ; A = fetched byte
 ;
 ;
-; [skip_compressed_data_16bit]
+; [decomp_skip_16]
 ; ----------------------------
 ; ENTRY
 ;   │
-;   ├─ IF data_count == 0 THEN RTS
+;   ├─ IF decomp_skip_rem == 0 THEN RTS
 ;   │
 ;   ├─ LOOP:
-;   │     JSR get_next_decompressed_byte       ; discard A
-;   │     IF data_count.low == 0 THEN
-;   │         data_count.high ← data_count.high - 1
-;   │     data_count.low  ← data_count.low - 1
-;   │     IF data_count != 0 THEN LOOP
+;   │     JSR decomp_stream_next       ; discard A
+;   │     IF decomp_skip_rem.low == 0 THEN
+;   │         decomp_skip_rem.high ← decomp_skip_rem.high - 1
+;   │     decomp_skip_rem.low  ← decomp_skip_rem.low - 1
+;   │     IF decomp_skip_rem != 0 THEN LOOP
 ;   │
 ;   └─ RTS
 ;
 ;
-; [skip_compressed_data_8bit]
+; [decomp_skip_8]
 ; ---------------------------
 ; ENTRY
 ;   │
-;   ├─ Y ← data_count.low
+;   ├─ Y ← decomp_skip_rem.low
 ;   ├─ IF Y == 0 THEN RTS
 ;   │
 ;   ├─ LOOP:
-;   │     JSR get_next_decompressed_byte       ; discard A
+;   │     JSR decomp_stream_next       ; discard A
 ;   │     Y ← Y - 1
 ;   │     IF Y ≠ 0 THEN LOOP
 ;   │
@@ -511,11 +538,11 @@ next_byte_8:
 ;     AD-HOC RUN       : 01LLLLLL val   ($40..$7F)   → repeat ‘val’ (L+1) times
 ;     DICTIONARY RUN   : 1IILLLLL       (≥ $80)      → index=II (0..3), repeat dict[index] (L+1) times
 ; • Internal state across calls:
-;     mode_counter     : remaining outputs for the current op (stores L; the routine emits on entry,
+;     decomp_emit_rem     : remaining outputs for the current op (stores L; the routine emits on entry,
 ;                        and pre-decrements on subsequent calls).
-;     decompress_mode  : $00 (DIRECT) / $FF (RUN); only bit7 is tested at EMIT time.
-;     symbol_to_repeat : latched at op start for both AD-HOC and DICT runs.
-;     y_temp           : saves caller’s Y.
-; • Contract: call setup_symbol_dictionary once (copies 4 bytes, advances input by 4, clears state),
-;   then call get_next_decompressed_byte repeatedly to stream the output. The skip_* helpers advance
+;     decomp_emit_mode  : $00 (DIRECT) / $FF (RUN); only bit7 is tested at EMIT time.
+;     decomp_run_symbol : latched at op start for both AD-HOC and DICT runs.
+;     decomp_y_save           : saves caller’s Y.
+; • Contract: call decomp_dict4_init once (copies 4 bytes, advances input by 4, clears state),
+;   then call decomp_stream_next repeatedly to stream the output. The skip_* helpers advance
 ;   the same state while discarding data, allowing fast-forwarding within the compressed stream.

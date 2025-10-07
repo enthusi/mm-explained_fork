@@ -611,7 +611,7 @@ random_2 = $de
 random_3 = $df
 irq_lock = $e3
 
-symbol_dictionary = $0100
+decomp_dict4 = $0100
 ;Base address for message bar source buffers
 source_msg_base = $0200
 
@@ -1554,45 +1554,45 @@ irq_handler = $fffe
 ;===========================================
 ; Initializes the compression dictionary with 4 symbols.
 ;
-; Arguments:	compressed_data_ptr		pointer to compressed data
+; Arguments:	decomp_src_ptr		pointer to compressed data
 ;
 ; This routine will also reset the repeat counter and value to #00.
-; After reading the dictionary, the compressed_data_ptr will be advanced by 4.
+; After reading the dictionary, the decomp_src_ptr will be advanced by 4.
 ;===========================================
-decompress_mode = $29
-compressed_data_ptr = $27
-mode_counter = $2a
-symbol_to_repeat = $2b
+decomp_emit_mode = $29
+decomp_src_ptr = $27
+decomp_emit_rem = $2a
+decomp_run_symbol = $2b
 
-setup_symbol_dictionary:
+decomp_dict4_init:
 ;Use .Y as offset, start at #03, go downwards
 .C:0104  A0 03       LDY #$03
 ;------------------------------------------------
 copy_loop:
-.C:0106  B1 27       LDA (compressed_data_ptr),Y
-.C:0108  99 00 01    STA symbol_dictionary,Y
+.C:0106  B1 27       LDA (decomp_src_ptr),Y
+.C:0108  99 00 01    STA decomp_dict4,Y
 .C:010b  88          DEY
 .C:010c  10 F8       BPL copy_loop
 ;------------------------------------------------
 ;Add 4 to read pointer
 .C:010e  18          CLC
-.C:010f  A5 27       LDA <compressed_data_ptr
+.C:010f  A5 27       LDA <decomp_src_ptr
 .C:0111  69 04       ADC #$04
-.C:0113  85 27       STA <compressed_data_ptr
-.C:0115  A5 28       LDA >compressed_data_ptr
+.C:0113  85 27       STA <decomp_src_ptr
+.C:0115  A5 28       LDA >decomp_src_ptr
 .C:0117  69 00       ADC #$00
-.C:0119  85 28       STA >compressed_data_ptr
+.C:0119  85 28       STA >decomp_src_ptr
 ;------------------------------------------------
 ;Reset mode counter and mode
 .C:011b  A9 00       LDA #$00
-.C:011d  85 2A       STA mode_counter
-.C:011f  85 29       STA decompress_mode
+.C:011d  85 2A       STA decomp_emit_rem
+.C:011f  85 29       STA decomp_emit_mode
 .C:0121  60          RTS
 ;===========================================
 ; Get the next decompressed byte
 ;
-; Arguments:	symbol_dictionary		dictionary of symbols
-;				compressed_data_ptr		pointer to compressed data
+; Arguments:	decomp_dict4		dictionary of symbols
+;				decomp_src_ptr		pointer to compressed data
 ;
 ; Returns:		.A					decompressed symbol
 ;
@@ -1640,21 +1640,21 @@ copy_loop:
 ;								Following bytes represent symbols
 ;
 ; Note that the symbol dictionary has to be set up first, before calling this routine.
-; This is done via setup_symbol_dictionary.
+; This is done via decomp_dict4_init.
 ;===========================================
-decompress_mode = $29
-mode_counter = $2a
-symbol_to_repeat = $2b
+decomp_emit_mode = $29
+decomp_emit_rem = $2a
+decomp_run_symbol = $2b
 y_temp = $2d
 DIRECT_MODE = #$00
 RUN_MODE = #$FF
 
-get_next_decompressed_byte:
+decomp_stream_next:
 ;Save .Y as we'll overwrite it
 .C:0122  84 2D       STY y_temp
-;Is there an ongoing repetition? (mode_counter != 0)
+;Is there an ongoing repetition? (decomp_emit_rem != 0)
 ;If so, handle the repetition
-.C:0124  A5 2A       LDA mode_counter
+.C:0124  A5 2A       LDA decomp_emit_rem
 .C:0126  D0 36       BNE repeat_operation
 ;--------------------------------------------------
 ;No counter ongoing
@@ -1668,7 +1668,7 @@ get_next_decompressed_byte:
 ;--------------------------------------------------
 ;Set the byte read as the repetition counter
 ;As this is necessarily < #40, this limits long runs expressed in this manner to 64 repetitions
-.C:012f  85 2A       STA mode_counter
+.C:012f  85 2A       STA decomp_emit_rem
 ;Set the mode, as we'll need to read another byte later to get the value to be repeated
 .C:0131  A9 00       LDA DIRECT_MODE
 .C:0133  4C 59 01    JMP set_mode
@@ -1681,7 +1681,7 @@ byte_ge_40:
 ;--------------------------------------------------
 ;Bits 5-0 are the run-length
 .C:013a  29 3F       AND #$3F
-.C:013c  85 2A       STA mode_counter
+.C:013c  85 2A       STA decomp_emit_rem
 ;The symbol to repeat is the next byte in the input data
 .C:013e  20 6F 01    JSR read_next_compressed_data
 .C:0141  4C 55 01    JMP set_symbol_to_repeat
@@ -1692,7 +1692,7 @@ byte_ge_80:
 ;Use bits 4-0 as the run-length
 .C:0144  AA          TAX
 .C:0145  29 1F       AND #$1F		
-.C:0147  85 2A       STA mode_counter
+.C:0147  85 2A       STA decomp_emit_rem
 .C:0149  8A          TXA
 ;Use bits 5 and 6 as the index to dictionary
 .C:014a  4A          LSR A
@@ -1703,26 +1703,26 @@ byte_ge_80:
 .C:014f  29 03       AND #$03	
 .C:0151  AA          TAX
 ;Load the symbol from the dictionary 
-.C:0152  BD 00 01    LDA symbol_dictionary,X
+.C:0152  BD 00 01    LDA decomp_dict4,X
 ;--------------------------------------------------
 ;Set the new symbol to be repeated
 set_symbol_to_repeat:
-.C:0155  85 2B       STA symbol_to_repeat
+.C:0155  85 2B       STA decomp_run_symbol
 ;Set mode to "run"
 .C:0157  A9 FF       LDA RUN_MODE
 set_mode:
-.C:0159  85 29       STA decompress_mode
+.C:0159  85 29       STA decomp_emit_mode
 ;We have just set a new mode, so skip the operation counter decrement
 .C:015b  4C 60 01    JMP check_mode
 ;--------------------------------------------------
 repeat_operation:
 ; Decrement the counter
-.C:015e  C6 2A       DEC mode_counter
+.C:015e  C6 2A       DEC decomp_emit_rem
 ;--------------------------------------------------
 check_mode:
 ;Which mode are we running on? Run (#FF) or direct (#00)? 
 ;Bit 7 is enough to differentiate them
-.C:0160  24 29       BIT decompress_mode
+.C:0160  24 29       BIT decomp_emit_mode
 .C:0162  30 06       BMI run_mode
 ;--------------------------------------------------
 ; Direct mode
@@ -1737,7 +1737,7 @@ check_mode:
 run_mode:
 ;The symbol to return is already set
 ;Read it and return it in .A
-.C:016a  A5 2B       LDA symbol_to_repeat
+.C:016a  A5 2B       LDA decomp_run_symbol
 exit:
 ;Restore .Y from stack
 .C:016c  A4 2D       LDY y_temp
@@ -1745,67 +1745,67 @@ exit:
 ;===========================================
 ; Reads one byte from the pointer to compressed data
 ;
-; Arguments:	compressed_data_ptr		pointer to compressed data
+; Arguments:	decomp_src_ptr		pointer to compressed data
 ; Returns:		.A						byte read
 ;
-; Advances compressed_data_ptr by 1 after reading
+; Advances decomp_src_ptr by 1 after reading
 ;===========================================
-compressed_data_ptr = $27
+decomp_src_ptr = $27
 
 read_next_compressed_data:
 .C:016f  A0 00       LDY #$00
-.C:0171  B1 27       LDA (compressed_data_ptr),Y
-.C:0173  E6 27       INC <compressed_data_ptr
+.C:0171  B1 27       LDA (decomp_src_ptr),Y
+.C:0173  E6 27       INC <decomp_src_ptr
 .C:0175  D0 02       BNE exit
-.C:0177  E6 28       INC >compressed_data_ptr
+.C:0177  E6 28       INC >decomp_src_ptr
 exit:
 .C:0179  60          RTS
 ;===========================================
 ; Skips over a specific amount of compressed data (16-bit counter version)
 ;
-; Arguments:	data_count		size of decompressed data to skip over
+; Arguments:	decomp_skip_rem		size of decompressed data to skip over
 ;
 ; Note that this routine runs the decompression but doesn't write any
 ; decompressed data anywhere. It's only useful for skipping over specific
 ; portions of compressed information.
 ;===========================================
-data_count = $2e
+decomp_skip_rem = $2e
 
-skip_compressed_data_16bit:
+decomp_skip_16:
 ;Is there a count pending? If not, exit now
-.C:017a  A5 2E       LDA <data_count
-.C:017c  05 2F       ORA >data_count
+.C:017a  A5 2E       LDA <decomp_skip_rem
+.C:017c  05 2F       ORA >decomp_skip_rem
 .C:017e  D0 01       BNE next_byte
 .C:0180  60          RTS
 ;---------------------------------
 next_byte:
-.C:0181  20 22 01    JSR get_next_decompressed_byte
-.C:0184  A5 2E       LDA <data_count
+.C:0181  20 22 01    JSR decomp_stream_next
+.C:0184  A5 2E       LDA <decomp_skip_rem
 .C:0186  D0 02       BNE dec_lo_counter
 ;---------------------------------
-;data_count lo is zero, decrement data_count hi as well
-.C:0188  C6 2F       DEC >data_count
+;decomp_skip_rem lo is zero, decrement decomp_skip_rem hi as well
+.C:0188  C6 2F       DEC >decomp_skip_rem
 dec_lo_counter:
-.C:018a  C6 2E       DEC <data_count
-.C:018c  4C 7A 01    JMP skip_compressed_data_16bit
+.C:018a  C6 2E       DEC <decomp_skip_rem
+.C:018c  4C 7A 01    JMP decomp_skip_16
 ;===========================================
 ; Skips over a specific amount of compressed data (8-bit counter version)
 ;
-; Arguments:	data_count		size of decompressed data to skip over
+; Arguments:	decomp_skip_rem		size of decompressed data to skip over
 ;
 ; Note that this routine runs the decompression but doesn't write any
 ; decompressed data anywhere. It's only useful for skipping over specific
 ; portions of compressed information.
 ;===========================================
-data_count = $2e
+decomp_skip_rem = $2e
 
-skip_compressed_data_8bit:
+decomp_skip_8:
 ;Is there a count pending? If not, exit now
-.C:018f  A4 2E       LDY data_count
+.C:018f  A4 2E       LDY decomp_skip_rem
 .C:0191  D0 01       BNE next_byte
 .C:0193  60          RTS
 next_byte:
-.C:0194  20 22 01    JSR get_next_decompressed_byte
+.C:0194  20 22 01    JSR decomp_stream_next
 .C:0197  88          DEY
 .C:0198  D0 FA       BNE next_byte
 .C:019a  60          RTS
@@ -13140,7 +13140,7 @@ raw_data_size_lo = $1D
 raw_data_size_hi = $1E
 read_ptr_lo = $27
 read_ptr_hi = $28
-compressed_data_ptr = $27
+decomp_src_ptr = $27
 memory_range_lo = $4F
 memory_range_hi = $50
 room_width_unused = $fd91
@@ -13188,24 +13188,24 @@ bkg_color_set_loop:
 .C:3749  18          CLC
 .C:374a  A5 C3       LDA room_data_lo
 .C:374c  6D 3F 71    ADC <room_tile_definitions_offset
-.C:374f  85 27       STA <compressed_data_ptr
+.C:374f  85 27       STA <decomp_src_ptr
 .C:3751  A5 C4       LDA room_data_hi
 .C:3753  6D 40 71    ADC >room_tile_definitions_offset
-.C:3756  85 28       STA >compressed_data_ptr
+.C:3756  85 28       STA >decomp_src_ptr
 ;------------------------------------------------------
 ;Set destination of decompression to D800
 .C:3758  A9 00       LDA #$00
 .C:375a  85 19       STA write_ptr_lo
 .C:375c  A9 D8       LDA #$D8
 .C:375e  85 1A       STA write_ptr_hi
-.C:3760  20 04 01    JSR setup_symbol_dictionary
+.C:3760  20 04 01    JSR decomp_dict4_init
 ;------------------------------------------------------
 ; Decompress dot-data
 ;------------------------------------------------------
 .C:3763  A0 00       LDY #$00
 loop_1:
 ;Decompress a byte
-.C:3765  20 22 01    JSR get_next_decompressed_byte
+.C:3765  20 22 01    JSR decomp_stream_next
 ;Write byte into dest_ptr
 .C:3768  91 19       STA (write_ptr_lo),Y
 ;Update dest_ptr
@@ -13314,20 +13314,20 @@ setup_mask_data_load:
 .C:3807  18          CLC
 .C:3808  A5 27       LDA read_ptr_lo
 .C:380a  69 02       ADC #$02
-.C:380c  85 27       STA <compressed_data_ptr
+.C:380c  85 27       STA <decomp_src_ptr
 .C:380e  A5 28       LDA read_ptr_hi
 .C:3810  69 00       ADC #$00
-.C:3812  85 28       STA >compressed_data_ptr
+.C:3812  85 28       STA >decomp_src_ptr
 ;--------------------
 ;Setup the compression by initializing the symbol dictionary
-.C:3814  20 04 01    JSR setup_symbol_dictionary
+.C:3814  20 04 01    JSR decomp_dict4_init
 .C:3817  A0 00       LDY #$00
 ;------------------------------------------------------
 ; Decompress room_mask_indexes data
 ;------------------------------------------------------
 loop_2:
 ;Decompress a byte
-.C:3819  20 22 01    JSR get_next_decompressed_byte
+.C:3819  20 22 01    JSR decomp_stream_next
 ;Write byte into dest_ptr
 .C:381c  91 19       STA (write_ptr_lo),Y
 ;Update dest_ptr
@@ -14302,7 +14302,7 @@ next_obj:
 ; Otherwise, it will decompress the object's visible columns.
 ;
 ;===========================================
-compressed_data_ptr = $27
+decomp_src_ptr = $27
 
 draw_visible_part_of_object:
 .C:3d27  A5 4E       LDA screen_scroll_flag
@@ -14417,10 +14417,10 @@ decompress_object_gfx:
 .C:3da2  18          CLC
 .C:3da3  A5 C3       LDA <room_resource
 .C:3da5  79 91 72    ADC compressed_object_data_offsets,Y
-.C:3da8  85 27       STA <compressed_data_ptr
+.C:3da8  85 27       STA <decomp_src_ptr
 .C:3daa  A5 C4       LDA >room_resource
 .C:3dac  79 92 72    ADC compressed_object_data_offsets+1,Y
-.C:3daf  85 28       STA >compressed_data_ptr
+.C:3daf  85 28       STA >decomp_src_ptr
 ;------------------------------------------
 ;Check how much to trim is needed on the left side by comparing 
 ; the left edge of the room's view with the left edge of the object
@@ -14521,7 +14521,7 @@ trim_determined:
 ;-----------------------------------------
 decompress:
 ;Add offset to frame_buffer_base
-.C:3e30  20 04 01    JSR setup_symbol_dictionary
+.C:3e30  20 04 01    JSR decomp_dict4_init
 .C:3e33  18          CLC
 .C:3e34  A5 1B       LDA <screen_row_offset
 .C:3e36  65 24       ADC <frame_buffer_base
@@ -14566,7 +14566,7 @@ decompress:
 ;===========================================
 row_counter = $15
 destination_ptr = $19
-data_count = $2e
+decomp_skip_rem = $2e
 left_trim = $3e99
 right_trim = $3e9a
 total_columns = $3e9b
@@ -14579,13 +14579,13 @@ decompress_graphic_trimmed:
 skip_left_trim:
 ;Skip the previous part as needed
 .C:3e6c  AD 99 3E    LDA left_trim
-.C:3e6f  85 2E       STA data_count
-.C:3e71  20 8F 01    JSR skip_compressed_data_8bit
+.C:3e6f  85 2E       STA decomp_skip_rem
+.C:3e71  20 8F 01    JSR decomp_skip_8
 ;----------------------------------------
 ;Decompress the desired part, using total_columns as size
 .C:3e74  A0 00       LDY #$00
 decompress_next:
-.C:3e76  20 22 01    JSR get_next_decompressed_byte
+.C:3e76  20 22 01    JSR decomp_stream_next
 .C:3e79  91 19       STA (destination_ptr),Y
 .C:3e7b  C8          INY
 .C:3e7c  CC 9B 3E    CPY total_columns
@@ -14602,8 +14602,8 @@ decompress_next:
 skip_right_trim:
 ;Skip the post part as needed
 .C:3e8c  AD 9A 3E    LDA right_trim
-.C:3e8f  85 2E       STA data_count
-.C:3e91  20 8F 01    JSR skip_compressed_data_8bit
+.C:3e8f  85 2E       STA decomp_skip_rem
+.C:3e91  20 8F 01    JSR decomp_skip_8
 ;----------------------------------------
 ;Continue with next row
 .C:3e94  C6 15       DEC row_counter
@@ -15137,7 +15137,7 @@ no_scroll:
 .C:4115  AD 64 06    LDA room_scene_left_edge
 ;------------------------------
 decompressed_data_ptr = $15
-compressed_data_ptr = $27
+decomp_src_ptr = $27
 value_to_repeat = $2b
 inlined_run_length_dict_base = $419f
 
@@ -15159,9 +15159,9 @@ decompress_visible_columns:
 .C:4128  8D A0 41    STA >inlined_run_length_dict_base
 ;Load the decompression input pointer for this column
 .C:412b  B1 64       LDA (tile_matrix_compressed_lo),Y
-.C:412d  85 27       STA <compressed_data_ptr
+.C:412d  85 27       STA <decomp_src_ptr
 .C:412f  B1 66       LDA (tile_matrix_compressed_hi),Y
-.C:4131  85 28       STA >compressed_data_ptr
+.C:4131  85 28       STA >decomp_src_ptr
 ;Load the symbol to repeat for this column
 .C:4133  B1 6A       LDA (tile_matrix_value_to_repeat),Y
 .C:4135  85 2B       STA value_to_repeat
@@ -15183,9 +15183,9 @@ decompress_visible_columns:
 .C:414b  8D A0 41    STA >inlined_run_length_dict_base
 ;Load the decompression input pointer for this column
 .C:414e  B1 6C       LDA (color_layer_compressed_lo),Y
-.C:4150  85 27       STA <compressed_data_ptr
+.C:4150  85 27       STA <decomp_src_ptr
 .C:4152  B1 6E       LDA (color_layer_compressed_hi),Y
-.C:4154  85 28       STA >compressed_data_ptr
+.C:4154  85 28       STA >decomp_src_ptr
 ;Load the symbol to repeat for this column
 .C:4156  B1 72       LDA (color_layer_value_to_repeat),Y
 .C:4158  85 2B       STA value_to_repeat
@@ -15207,9 +15207,9 @@ decompress_visible_columns:
 .C:416e  8D A0 41    STA >inlined_run_length_dict_base
 ;Load the decompression input pointer for this column
 .C:4171  B1 74       LDA (mask_layer_compressed_lo),Y
-.C:4173  85 27       STA <compressed_data_ptr
+.C:4173  85 27       STA <decomp_src_ptr
 .C:4175  B1 76       LDA (mask_layer_compressed_hi),Y
-.C:4177  85 28       STA >compressed_data_ptr
+.C:4177  85 28       STA >decomp_src_ptr
 ;Load the symbol to repeat for this column
 .C:4179  B1 7A       LDA (mask_layer_value_to_repeat),Y
 .C:417b  85 2B       STA value_to_repeat
@@ -15240,8 +15240,8 @@ decompress_visible_columns:
 ;				#00		decompress one column
 ;				#01		decompress the whole visible room (#28 columns)
 ;===========================================
-decompress_mode = $29
-mode_counter = $2a
+decomp_emit_mode = $29
+decomp_emit_rem = $2a
 DIRECT_MODE = #$00
 RUN_MODE = #$FF
 DECOMPRESS_ONE_COL = #$00
@@ -15254,24 +15254,24 @@ decompress_room_gfx:
 ;Bit 7 set - run-length mode, bits 6-0 are the repeat counter
 ;------------------------------------------------
 .C:418d  29 7F       AND #$7F
-.C:418f  85 2A       STA mode_counter
+.C:418f  85 2A       STA decomp_emit_rem
 .C:4191  A9 FF       LDA RUN_MODE
 .C:4193  4C 9A 41    JMP set_initial_repeat_mode
 ;------------------------------------------------
 ;Bit 7 clear - direct mode, byte in .A is the repeat counter
 ;------------------------------------------------
 direct_mode:
-.C:4196  85 2A       STA mode_counter
+.C:4196  85 2A       STA decomp_emit_rem
 .C:4198  A9 00       LDA DIRECT_MODE
 ;------------------------------------------------
 set_initial_repeat_mode:
-.C:419a  85 29       STA decompress_mode
+.C:419a  85 29       STA decomp_emit_mode
 ;Setup symbol dictionary
 .C:419c  A2 03       LDX #$03
 dict_setup_loop:
 inlined_run_length_dict_base = $419f
 .C:419e  BD FF FF    LDA $FFFF,X	;Inlined
-.C:41a1  9D 00 01    STA symbol_dictionary,X
+.C:41a1  9D 00 01    STA decomp_dict4,X
 .C:41a4  CA          DEX
 .C:41a5  10 F7       BPL dict_setup_loop
 ;------------------------------------------------
@@ -15306,7 +15306,7 @@ decompress_room_gfx_column:
 ;--------------------------------------------------
 next_byte:
 ;Decompress a byte and store it in the destination
-.C:41bb  20 22 01    JSR get_next_decompressed_byte
+.C:41bb  20 22 01    JSR decomp_stream_next
 .C:41be  91 15       STA (dest_ptr),Y
 ;Point to the next element downwards in the column
 ;That is, add row length to index
@@ -15835,7 +15835,7 @@ calculate_rsrc_size:
 ;
 ;		src_lo
 ;		src_hi
-;		mode_counter
+;		decomp_emit_rem
 ;		value_to_repeat
 ;
 ; These 4 values can be thought of as the initial state for the decompression state machine.
@@ -16050,15 +16050,15 @@ mode_counter_ptr = $1b
 symbol_to_repeat_ptr = $1d
 
 compressed_data = $27
-decompress_mode = $29
-mode_counter = $2a
-symbol_to_repeat = $2b
+decomp_emit_mode = $29
+decomp_emit_rem = $2a
+decomp_run_symbol = $2b
 
 precompute_column_decompression_states:
 ;Sanity check
 .C:4463  20 9B 44    JSR verify_memory_equality
 ;compressed_data points to the compression dictionary - read it and set it up
-.C:4466  20 04 01    JSR setup_symbol_dictionary
+.C:4466  20 04 01    JSR decomp_dict4_init
 ;After the call, it will move past the dictionary and point straight to the compressed data
 ;-------------------------------------------
 ; Use .Y as column counter, start from #00, move upwards
@@ -16071,24 +16071,24 @@ save_state:
 .C:446f  A5 28       LDA >compressed_data
 .C:4471  91 19       STA (compressed_data_hi_ptr),Y
 ;Are we in run mode or direct mode?
-.C:4473  A5 29       LDA decompress_mode
+.C:4473  A5 29       LDA decomp_emit_mode
 .C:4475  10 07       BPL run_mode
 ;-------------------------------------------
 ;Direct mode - set bit 7 of the mode counter
 ;This converts the mode to a dictionary run??
 .C:4477  A9 80       LDA #$80
-.C:4479  05 2A       ORA mode_counter
+.C:4479  05 2A       ORA decomp_emit_rem
 .C:447b  4C 80 44    JMP save_mode_counter
 ;-------------------------------------------
 ;Run mode - use the counter as is
 run_mode:
-.C:447e  A5 2A       LDA mode_counter
+.C:447e  A5 2A       LDA decomp_emit_rem
 ;-------------------------------------------
 save_mode_counter:
 ;Save the mode counter
 .C:4480  91 1B       STA (mode_counter_ptr),Y
 ;Save the symbol to be repeated
-.C:4482  A5 2B       LDA symbol_to_repeat
+.C:4482  A5 2B       LDA decomp_run_symbol
 .C:4484  91 1D       STA (symbol_to_repeat_ptr),Y
 ;-------------------------------------------
 ;At this point, we have saved the initial state of decompression for this column
@@ -16102,7 +16102,7 @@ decompress_next:
 ;Save .X
 .C:4488  8E F9 41    STX temp_x
 ;Read a decompressed byte (it will be ignored and discarded)
-.C:448b  20 22 01    JSR get_next_decompressed_byte
+.C:448b  20 22 01    JSR decomp_stream_next
 ;Restore .X
 .C:448e  AE F9 41    LDX temp_x
 ;Is the count pending? If so, continue
