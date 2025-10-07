@@ -557,8 +557,8 @@ video_memory_mode = $22
 frame_buffer = $23
 frame_buffer_base = $24		;Base address of frame buffer
 processor_port_reg_copy = $26
-key_code_scanned = $30
-joystick_inputs = $33
+kbd_keycode = $30
+joy_state = $33
 
 ;Mask bit patterns (to be applied when masking an actor's sprites with foreground)
 global_mask_index_ptr_1 = $43
@@ -5861,7 +5861,7 @@ set_cursor_color:
 .C:17d8  8D D9 0F    STA cursor_sprite_color
 ;--------------------------------------------------
 do_keyboard:
-.C:17db  20 62 20    JSR scan_keyboard
+.C:17db  20 62 20    JSR kbd_scan
 ;--------------------------------------------------
 ;map_in_io
 .C:17de  A0 25       LDY #$25
@@ -8249,8 +8249,8 @@ flip_address_set_hi = $2053
 ;	-usage of a secondary "shifted" matrix, to support Shift keys being pressed
 ;	
 ; On return:
-;	keycode_ready		boolean - will hold #01 if there's an input detected, #00 otherwise
-;	key_code_scanned	will hold the input code scanned (if any)
+;	kbd_key_ready		boolean - will hold #01 if there's an input detected, #00 otherwise
+;	kbd_keycode	will hold the input code scanned (if any)
 ;===========================================
 poll_delay_hi = $fe4e
 poll_delay_lo = $fe4d
@@ -8263,10 +8263,10 @@ col_adjustment_bitmask = $205F
 row_adjustment_bitmask = $2060
 last_keycode_scanned = $205D
 zero_lsb_column = $205C
-keycode_ready = $2061
+kbd_key_ready = $2061
 
 
-scan_keyboard:
+kbd_scan:
 .C:2062  A0 FF       LDY #$FF
 .C:2064  8C 57 20    STY keyb_column_bits
 .C:2067  8C 59 20    STY keyb_row_bits
@@ -8281,7 +8281,7 @@ scan_keyboard:
 ;-------------
 poll_input:
 ; Poll joystick inputs - on return, the Zero flag will be clear if there's any input activated; set, if not.
-.C:2079  20 A6 21    JSR poll_joystick
+.C:2079  20 A6 21    JSR joy_latch
 .C:207c  F0 0B       BEQ delay_count_check	;No inputs detected, continue
 ;Joystick input detected - reset the polling delay and exit
 .C:207e  A9 20       LDA #$20
@@ -8436,10 +8436,10 @@ direct_exit_check:
 ;If we come from the instruction above (LDA #00), the branch will always be taken, as Z is set
 .C:215e  F0 07       BEQ exit
 ;If we're here, then we have detected a keycode, store it
-.C:2160  85 30       STA key_code_scanned
+.C:2160  85 30       STA kbd_keycode
 ;Mark that there's a keycode ready
 .C:2162  A9 01       LDA #$01
-.C:2164  8D 61 20    STA keycode_ready
+.C:2164  8D 61 20    STA kbd_key_ready
 exit:
 .C:2167  60          RTS
 ;===========================================
@@ -8518,7 +8518,7 @@ next_bit_index:
 ; 4 - Read result from port B
 ; 5 - Any input activated will have its bit set to 0
 ;-------------
-poll_joystick:
+joy_latch:
 ;Set CIA 1 Port A all bits to R/W
 .C:21a6  A0 FF       LDY #$FF
 .C:21a8  8C 02 DC    STY cia1_port_a_data_direction_reg
@@ -8529,7 +8529,7 @@ poll_joystick:
 .C:21b0  8D 03 DC    STA cia1_port_b_data_direction_reg
 ;Read result from port B
 .C:21b3  AD 01 DC    LDA cia1_port_b_data_register
-.C:21b6  85 33       STA joystick_inputs
+.C:21b6  85 33       STA joy_state
 ;Mask bits for joystick inputs (bits 0-4)
 .C:21b8  29 1F       AND #$1F
 ;Check if any joystick input was activated by comparing all joy input lines (bits 0-4, #1F) against the read value
@@ -8573,8 +8573,8 @@ CC 7B 58 56 4E 3C 3F 5F
 ;===========================================
 ; Process a key
 ;===========================================
-process_key:
-.C:2244  AD 61 20    LDA keycode_ready
+kbd_key_read:
+.C:2244  AD 61 20    LDA kbd_key_ready
 ;Is there a key to process?
 .C:2247  D0 01       BNE keycode_is_ready
 ;No, exit
@@ -8582,9 +8582,9 @@ process_key:
 keycode_is_ready:
 ;Yes, mark there's no longer a key ready (to avoid repeat processing)
 .C:224a  A9 00       LDA #$00
-.C:224c  8D 61 20    STA keycode_ready
+.C:224c  8D 61 20    STA kbd_key_ready
 ;Load the key in .A and leave
-.C:224f  A5 30       LDA key_code_scanned
+.C:224f  A5 30       LDA kbd_keycode
 .C:2251  60          RTS
 ;===========================================
 ; Setup an actor so it's ready to be drawn on screen
@@ -10091,7 +10091,7 @@ key_to_process = $29f7
 
 handle_keys:
 ;Scan for keys pressed, return key in .A
-.C:28c2  20 44 22    JSR process_key
+.C:28c2  20 44 22    JSR kbd_key_read
 ;Save the key pressed
 .C:28c5  8D F7 29    STA key_to_process
 .C:28c8  C9 04       CMP #$04		;F7 key
@@ -10149,13 +10149,13 @@ copy_game_paused_msg:
 ;---------------------------------
 ;Wait indefinitely for the space key to be pressed
 wait_for_space_key:
-;Set polling delay to #00
+;Set keyboard polling delay to #00
 .C:2913  A9 00       LDA #$00
-.C:2915  8D 4D FE    STA poll_delay_lo
+.C:2915  8D 4D FE    STA kbd_delay_lo
 .C:2918  A9 00       LDA #$00
-.C:291a  8D 4E FE    STA poll_delay_hi
+.C:291a  8D 4E FE    STA kbd_delay_hi
 ;Check for keys
-.C:291d  20 44 22    JSR process_key
+.C:291d  20 44 22    JSR kbd_key_read
 ;If the Space key was not pressed, loop back
 .C:2920  C9 20       CMP #$20		;Space key
 .C:2922  D0 EF       BNE wait_for_space_key
@@ -13938,7 +13938,7 @@ copy_pause_msg_next_char:
 .C:3b3b  C8          INY
 .C:3b3c  D0 F6       BNE copy_pause_msg_next_char
 wait_for_button_press:
-.C:3b3e  20 A6 21    JSR poll_joystick
+.C:3b3e  20 A6 21    JSR joy_latch
 .C:3b41  29 10       AND #$10		;Check joy #1 fire button pressed?
 .C:3b43  D0 F9       BNE wait_for_button_press
 ;Clear the top bar msg
@@ -27246,7 +27246,7 @@ set_drag_upper_2:
 .C:f723  8D 85 CB    STA cursor_y_speed_hi
 ;--------------------------
 ;Read joystick inputs
-.C:f726  A5 33       LDA joystick_inputs
+.C:f726  A5 33       LDA joy_state
 ;Mask low nibble (which contains bits for directions)
 .C:f728  29 0F       AND #$0F
 .C:f72a  AA          TAX
@@ -27391,7 +27391,7 @@ exit:
 .C:f7ca  60          RTS
 ;===================================================
 handle_joystick_button:
-.C:f7cb  A5 33       LDA joystick_inputs
+.C:f7cb  A5 33       LDA joy_state
 .C:f7cd  29 10       AND #$10
 .C:f7cf  AA          TAX
 .C:f7d0  4D 89 CB    EOR $CB89
