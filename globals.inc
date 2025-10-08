@@ -1,5 +1,6 @@
 #importonce
 
+.label decomp_src_ptr 		= $27    // 16-bit pointer to compressed input stream (low at $27, high at $28)
 .label kbd_keycode         = $0030    // ZP: published keycode when ready
 .label kbd_key_ready       = $2061    // flag: 1 when kbd_keycode is valid
 .label joy_state     	   = $0033    // ZP: snapshot of joystick mask (bits 0–4)
