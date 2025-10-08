@@ -1437,7 +1437,7 @@ queued_sentence_indirect_objects_hi = $fe43
 
 refresh_sentence_bar_flag = $fe49	;#00 = don't refresh the sentence bar, #01 = refresh it
 									;By "refresh", we mean to update its contents
-rsrc_has_been_released = $fe4a
+rsrc_released_flag = $fe4a
 
 item_index_saved = $fe52
 costume_for_actor = $fe53			;#FF = actor not in use
@@ -1519,8 +1519,8 @@ animation_set_for_costume = $ff47		;The animation set for a costume, limited to 
 ;===========================================================
 ;Memory management - free blocks
 ;===========================================================
-first_free_block = $ff63
-last_free_block = $ff65
+mem_free_head = $ff63
+mem_free_tail = $ff65
 
 ;===========================================================
 ; Game script variables
@@ -12679,7 +12679,7 @@ set_result:
 .C:34c1  AE 79 7B    LDX room_layers_rsrc_lo
 .C:34c4  AC 77 7B    LDY room_layers_rsrc_hi
 .C:34c7  F0 03       BEQ clear_foreground_mask_layer_rsrc
-.C:34c9  20 03 55    JSR release_resource
+.C:34c9  20 03 55    JSR rsrc_release
 clear_foreground_mask_layer_rsrc:
 .C:34cc  A9 00       LDA #$00
 .C:34ce  8D 77 7B    STA room_layers_rsrc_hi
@@ -12688,7 +12688,7 @@ clear_foreground_mask_layer_rsrc:
 .C:34d1  AE 7A 7B    LDX mask_bit_patterns_rsrc_lo
 .C:34d4  AC 78 7B    LDY mask_bit_patterns_rsrc_hi
 .C:34d7  F0 03       BEQ clear_mask_bit_patterns_rsrc
-.C:34d9  20 03 55    JSR release_resource
+.C:34d9  20 03 55    JSR rsrc_release
 clear_mask_bit_patterns_rsrc:
 .C:34dc  A9 00       LDA #$00
 .C:34de  8D 78 7B    STA mask_bit_patterns_rsrc_hi
@@ -13228,7 +13228,7 @@ decrement_lo_counter:
 .C:377e  AE 7A 7B    LDX mask_bit_patterns_rsrc_lo
 .C:3781  AC 78 7B    LDY mask_bit_patterns_rsrc_hi
 .C:3784  F0 03       BEQ setup_mask_data_load
-.C:3786  20 03 55    JSR release_resource
+.C:3786  20 03 55    JSR rsrc_release
 ;--------------------
 ;Point to the offset for the mask data
 setup_mask_data_load:
@@ -13259,7 +13259,7 @@ setup_mask_data_load:
 ;Allocate a memory block for the data
 .C:37b0  A6 15       LDX copy_counter_lo
 .C:37b2  A4 16       LDY copy_counter_hi
-.C:37b4  20 E4 54    JSR alloc_data
+.C:37b4  20 E4 54    JSR rsrc_alloc
 ;--------------------
 ;Setup block metadata (size, type #04, index #01)
  C:37b7  86 4F       STX memory_range_lo
@@ -15696,7 +15696,7 @@ setup_room_scene_rsrc:
 .C:4315  AC 77 7B    LDY room_layers_rsrc_hi
 ;If so, release it - otherwise continue
 .C:4318  F0 03       BEQ calculate_rsrc_size
-.C:431a  20 03 55    JSR release_resource
+.C:431a  20 03 55    JSR rsrc_release
 ;-------------------------------------
 ; We need to allocate memory for the new type 4 A resource
 ; The space needed is: the room's total number of columns * 12
@@ -15780,7 +15780,7 @@ calculate_rsrc_size:
 ; Allocate a block of the needed size
 .C:4350  A6 15       LDX <block_size
 .C:4352  A4 16       LDY >block_size
-.C:4354  20 E4 54    JSR alloc_data
+.C:4354  20 E4 54    JSR rsrc_alloc
 ;Save the block address in block_ptr
 .C:4357  86 4F       STX <block_ptr
 .C:4359  84 50       STY >block_ptr
@@ -19362,7 +19362,7 @@ music_track_offsets_hi:
 temp_x = $5501
 temp_y = $5502
 	
-alloc_data:
+rsrc_alloc:
 ;Backup .X and .Y
 .C:54e4  8E 01 55    STX temp_x
 .C:54e7  8C 02 55    STY temp_y
@@ -19376,7 +19376,7 @@ alloc_data:
 .C:54f4  20 7B 56    JSR release_one_costume
 .C:54f7  AE 01 55    LDX temp_x
 .C:54fa  AC 02 55    LDY temp_y
-.C:54fd  4C E4 54    JMP alloc_data
+.C:54fd  4C E4 54    JMP rsrc_alloc
 block_found:
 .C:5500  60          RTS
 ;===========================================
@@ -19391,22 +19391,22 @@ block_found:
 ;===========================================
 free_block = $61
 
-release_resource:
+rsrc_release:
 ;Fetch the last free block into free_block so we can edit it later
-.C:5503  AD 65 FF    LDA <last_free_block
+.C:5503  AD 65 FF    LDA <mem_free_tail
 .C:5506  85 61       STA <free_block
-.C:5508  AD 66 FF    LDA >last_free_block
+.C:5508  AD 66 FF    LDA >mem_free_tail
 .C:550b  85 62       STA >free_block
 ;Set the block we're deleting as the new last free block
-.C:550d  8E 65 FF    STX <last_free_block
-.C:5510  8C 66 FF    STY >last_free_block
-;Append last_free_block to the list by doing
-; free_block->next = last_free_block
+.C:550d  8E 65 FF    STX <mem_free_tail
+.C:5510  8C 66 FF    STY >mem_free_tail
+;Append mem_free_tail to the list by doing
+; free_block->next = mem_free_tail
 .C:5513  A0 02       LDY #$02
-.C:5515  AD 65 FF    LDA <last_free_block
+.C:5515  AD 65 FF    LDA <mem_free_tail
 .C:5518  91 61       STA (free_block),Y
 .C:551a  C8          INY
-.C:551b  AD 66 FF    LDA >last_free_block
+.C:551b  AD 66 FF    LDA >mem_free_tail
 .C:551e  91 61       STA (free_block),Y
 ;Point to the new free block so we can edit it further
 .C:5520  86 61       STX <free_block
@@ -19423,7 +19423,7 @@ release_resource:
 .C:5530  20 C8 56    JSR mem_coalesce_right
 ;Mark that a resource has been released
 .C:5533  A9 01       LDA #$01
-.C:5535  8D 4A FE    STA rsrc_has_been_released
+.C:5535  8D 4A FE    STA rsrc_released_flag
 .C:5538  60          RTS
 ;===========================================
 ; Load room data from disk
@@ -19477,7 +19477,7 @@ find_memory_for_data:
 .C:5569  AE 3B 55    LDX <rsrc_size
 .C:556c  AC 3C 55    LDY >rsrc_size
 ;Allocate memory
-.C:556f  20 E4 54    JSR alloc_data
+.C:556f  20 E4 54    JSR rsrc_alloc
 ;Store available memory range into room_data_ptr
 .C:5572  8E 3F 55    STX <rsrc_data
 .C:5575  8C 40 55    STY >rsrc_data
@@ -19729,9 +19729,9 @@ hangup_loop:
 ; It can be thought of right-adjacency.
 ;
 ; 	Arguments:	None
-;	Reads:		first_free_block
-;				last_free_block
-;	Updates: 	last_free_block
+;	Reads:		mem_free_head
+;				mem_free_tail
+;	Updates: 	mem_free_tail
 ;===========================================
 block_size = $56c5
 free_block = $4f
@@ -19739,9 +19739,9 @@ adjacent_block = $59
 
 mem_coalesce_right:
 ;Start with the first block
-.C:56c8  AD 63 FF    LDA <first_free_block
+.C:56c8  AD 63 FF    LDA <mem_free_head
 .C:56cb  85 4F       STA <free_block
-.C:56cd  AD 64 FF    LDA >first_free_block				
+.C:56cd  AD 64 FF    LDA >mem_free_head				
 .C:56d0  85 50       STA >free_block
 ;If there's not a first block, exit
 .C:56d2  F0 71       BEQ exit
@@ -19800,16 +19800,16 @@ adjacency_check_2:
 ;Was the adjacent block the last free block?
 ; If not, continue
 .C:571f  A5 59       LDA <adjacent_block
-.C:5721  CD 65 FF    CMP <last_free_block
+.C:5721  CD 65 FF    CMP <mem_free_tail
 .C:5724  D0 11       BNE continue
 .C:5726  A5 5A       LDA >adjacent_block
-.C:5728  CD 66 FF    CMP >last_free_block
+.C:5728  CD 66 FF    CMP >mem_free_tail
 .C:572b  D0 0A       BNE continue
 ;Yes, it was the last one - then set the coalesced block as the last free block
 .C:572d  A5 4F       LDA <free_block
-.C:572f  8D 65 FF    STA <last_free_block
+.C:572f  8D 65 FF    STA <mem_free_tail
 .C:5732  A5 50       LDA >free_block
-.C:5734  8D 66 FF    STA >last_free_block
+.C:5734  8D 66 FF    STA >mem_free_tail
 continue:
 .C:5737  A5 50       LDA >free_block
 .C:5739  4C 43 57    JMP is_block_null
@@ -20022,15 +20022,15 @@ next_start_block:
 .C:5805  4C 54 57    JMP setup_comparison
 no_more_blocks:
 .C:5808  A5 51       LDA <start_block
-.C:580a  8D 65 FF    STA <last_free_block						
+.C:580a  8D 65 FF    STA <mem_free_tail						
 .C:580d  A5 52       LDA >start_block
-.C:580f  8D 66 FF    STA >last_free_block
+.C:580f  8D 66 FF    STA >mem_free_tail
 .C:5812  60          RTS
 ;===========================================
 ; Get a free block for a given data size
 ;
 ; Arguments:	raw_data_size
-;	Reads:	first_free_block
+;	Reads:	mem_free_head
 ;===========================================
 raw_data_size = $fd9c
 size_needed = $5819
@@ -20048,9 +20048,9 @@ mem_alloc_bestfit:
 .C:582d  69 00       ADC #$00
 .C:582f  8D 1A 58    STA >size_needed
 ;Start with the first free block
-.C:5832  AD 63 FF    LDA <first_free_block
+.C:5832  AD 63 FF    LDA <mem_free_head
 .C:5835  85 4F       STA <free_block
-.C:5837  AD 64 FF    LDA >first_free_block
+.C:5837  AD 64 FF    LDA >mem_free_head
 .C:583a  85 50       STA >free_block
 ;If free block is non-zero, there's at least 1 free block, find the best one
 .C:583c  D0 01       BNE mem_bestfit_select
@@ -20338,9 +20338,9 @@ next_block = $59a6
 
 move_free_blocks_to_back:
 ;Start with the first free block
-.C:59aa  AD 63 FF    LDA <first_free_block
+.C:59aa  AD 63 FF    LDA <mem_free_head
 .C:59ad  85 4F       STA <free_block
-.C:59af  AD 64 FF    LDA >first_free_block
+.C:59af  AD 64 FF    LDA >mem_free_head
 .C:59b2  85 50       STA >free_block
 ;Fetch the block size
 .C:59b4  A0 00       LDY #$00
@@ -20500,9 +20500,9 @@ copy_block_data:
 ;
 ;Update the first free block
 .C:5a65  A5 4F       LDA <destination
-.C:5a67  8D 63 FF    STA <first_free_block
+.C:5a67  8D 63 FF    STA <mem_free_head
 .C:5a6a  A5 50       LDA >destination
-.C:5a6c  8D 64 FF    STA >first_free_block
+.C:5a6c  8D 64 FF    STA >mem_free_head
 ;Copy the original free block metadata (size and pointer to next) to the destination
 .C:5a6f  A0 00       LDY #$00
 .C:5a71  AD A2 59    LDA <free_block_size
@@ -20608,7 +20608,7 @@ old_priority = $fe4c
 release_rsrcs_by_priority:
 ;Set that no resource has been released yet
 .C:5ae3  A9 00       LDA #$00
-.C:5ae5  8D 4A FE    STA rsrc_has_been_released
+.C:5ae5  8D 4A FE    STA rsrc_released_flag
 ;Save the current priority
 .C:5ae8  AD 4B FE    LDA current_priority
 .C:5aeb  8D 4C FE    STA old_priority
@@ -20658,7 +20658,7 @@ check_04:
 next_priority:
 .C:5b22  EE 4B FE    INC current_priority
 ;Has a resource been released? If not, continue
-.C:5b25  AD 4A FE    LDA rsrc_has_been_released
+.C:5b25  AD 4A FE    LDA rsrc_released_flag
 .C:5b28  F0 03       BEQ no_releases
 ;If so, return True (#FF)
 .C:5b2a  A9 FF       LDA #$FF
@@ -20739,7 +20739,7 @@ release_room:
 .C:5b7e  68          PLA
 .C:5b7f  AA          TAX
 ;Release the memory in .X/.Y and exit
-.C:5b80  20 03 55    JSR release_resource
+.C:5b80  20 03 55    JSR rsrc_release
 .C:5b83  60          RTS
 ;===========================================
 ; Release one costume eligible for eviction
@@ -20782,7 +20782,7 @@ check_eligibility:
 .C:5bab  68          PLA
 .C:5bac  AA          TAX
 ;Release the memory in .X/.Y and exit
-.C:5bad  20 03 55    JSR release_resource
+.C:5bad  20 03 55    JSR rsrc_release
 .C:5bb0  60          RTS
 ;------------------
 next_costume:
@@ -20836,7 +20836,7 @@ check_eligibility:
 .C:5bdf  68          PLA
 .C:5be0  AA          TAX
 ;Release the memory in .X/.Y
-.C:5be1  20 03 55    JSR release_resource
+.C:5be1  20 03 55    JSR rsrc_release
 ;Restore sound index and continue
 .C:5be4  68          PLA
 .C:5be5  AA          TAX
@@ -20885,7 +20885,7 @@ check_eligibility:
 .C:5c08  68          PLA
 .C:5c09  AA          TAX
 ;Release the memory in .X/.Y
-.C:5c0a  20 03 55    JSR release_resource
+.C:5c0a  20 03 55    JSR rsrc_release
 ;Restore script index and continue
 .C:5c0d  68          PLA
 .C:5c0e  AA          TAX
@@ -21155,11 +21155,11 @@ init_free_block:
 .C:5d5d  8D 7E 7B    STA $7B7E
 ;Set first and last free blocks pointing to $7b7b
 .C:5d60  A9 7B       LDA #$7B
-.C:5d62  8D 63 FF    STA <first_free_block
-.C:5d65  8D 65 FF    STA <last_free_block
+.C:5d62  8D 63 FF    STA <mem_free_head
+.C:5d65  8D 65 FF    STA <mem_free_tail
 .C:5d68  A9 7B       LDA #$7B
-.C:5d6a  8D 64 FF    STA >first_free_block
-.C:5d6d  8D 66 FF    STA >last_free_block
+.C:5d6a  8D 64 FF    STA >mem_free_head
+.C:5d6d  8D 66 FF    STA >mem_free_tail
 .C:5d70  60          RTS
 ;===========================================
 ; Executes each runing script
@@ -22722,7 +22722,7 @@ object_found:
 ;Allocate a block for that size
 .C:62b0  A6 9C       LDX <object_size
 .C:62b2  A4 9D       LDY >object_size
-.C:62b4  20 E4 54    JSR alloc_data
+.C:62b4  20 E4 54    JSR rsrc_alloc
 ;Save the pointer to the allocated block
 .C:62b7  86 9A       STX <allocated_block
 .C:62b9  84 9B       STY >allocated_block
@@ -23132,7 +23132,7 @@ remove_from_inventory:
 .C:645c  A6 15       LDX <resource_ptr
 .C:645e  A4 16       LDY >resource_ptr
 ;Release the resource
-.C:6460  20 03 55    JSR release_resource
+.C:6460  20 03 55    JSR rsrc_release
 ;Restore inventory slot index from stack
 .C:6463  68          PLA
 .C:6464  AA          TAX
