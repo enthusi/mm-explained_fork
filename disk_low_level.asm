@@ -54,6 +54,8 @@
  * ===========================================
  */
 
+#import "registers.inc"
+
 /*
  * --- CIA2 Port A bit masks (PRA = $DD00) ---
  * NOTE: IEC lines are typically active-low through inverters (e.g., 7406).
