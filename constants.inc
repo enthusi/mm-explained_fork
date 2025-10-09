@@ -20,3 +20,16 @@
 */
 .const DISK_ERROR_MSG 			    = $3B81
 
+
+.const RSRC_TYPE_OBJECT      = $01
+.const RSRC_TYPE_COSTUME     = $02
+.const RSRC_TYPE_ROOM        = $03
+.const RSRC_TYPE_ROOM_LAYERS = $04
+.const RSRC_TYPE_SCRIPT      = $05
+.const RSRC_TYPE_SOUND       = $06
+
+.const ROOM_MAX_INDEX      = $36       // Highest valid room index.
+.const COSTUME_MAX_INDEX   = $18       // Highest valid costume index.
+.const SCRIPT_MAX_INDEX    = $9F       // Highest valid script index
+.const SOUND_MAX_INDEX     = $45       // Highest valid sound index.
+
