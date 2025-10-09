@@ -85,7 +85,7 @@
  * ===============================================================================
  */
 
-//.include "globals.inc"
+#import "globals.inc"
 #import "constants.inc"
 
 /*
@@ -177,10 +177,6 @@ max_sector_index_by_track:
 .label disk_start_off            	= $463A   // Initial intra-sector byte offset (for first read)
 .label disk_chain_step          	= $463B   // How many physical sectors to step from (start_track,start_sector)
 
-// --- Copy/write byte-count accumulator ---
-.label disk_copy_count_lo 			= $463C // 16-bit count of bytes to copy/write: low byte
-.label disk_copy_count_hi 			= $463D // 16-bit count of bytes to copy/write: high byte
-                                      // (write path rounds up to whole sectors: hi += (lo != 0))
 
 // --- “Start” geometry for a physical sector chain (seed) ---
 .label start_sector                = $4633   // First sector index (0-based) of the chain

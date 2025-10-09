@@ -837,8 +837,8 @@ resource_type = $5677
 resource_index = $5676
 
 inventory_objects = $7031
-object_rsrc_ptrs_lo = $705e
-object_rsrc_ptrs_hi = $708b
+object_ptr_lo_tbl = $705e
+object_ptr_hi_tbl = $708b
 ;===================================================
 ; Concurrent script engine variables
 ;===================================================
@@ -991,23 +991,23 @@ sound_sector_index = $7718
 ;	-After a room is loaded, all loaded rooms with nonzero age have their age incremented by 1
 ;	-When a room is released, its age is set to 0
 ;
-costume_memory_attrs = $77a3
-room_memory_attrs = $77bc
-room_rsrc_ptrs_hi = $77f3		;Total rooms: 55
-room_rsrc_ptrs_lo = $782a
-costume_rsrc_ptrs_hi = $7861	;Total costumes: 25
-costume_rsrc_ptrs_lo = $787A
-sound_rsrc_ptrs_hi = $78C5		;Total sounds: 70
-sound_rsrc_ptrs_lo = $790B
-sound_memory_attrs = $7951
+costume_mem_attrs = $77a3
+room_mem_attrs = $77bc
+room_ptr_hi_tbl = $77f3		;Total rooms: 55
+room_ptr_lo_tbl = $782a
+costume_ptr_hi_tbl = $7861	;Total costumes: 25
+costume_ptr_lo_tbl = $787A
+sound_ptr_hi_tbl = $78C5		;Total sounds: 70
+sound_ptr_lo_tbl = $790B
+sound_mem_attrs = $7951
 sound_1_memory_attr = $7952
 sound_2_memory_attr = $7953
-script_rsrc_ptrs_hi = $7997		;Total scripts: 160
-script_rsrc_ptrs_lo = $7a37
-script_memory_attrs = $7ad7
+script_ptr_hi_tbl = $7997		;Total scripts: 160
+script_ptr_lo_tbl = $7a37
+script_mem_attrs = $7ad7
 script_2_mem_attr = $7ad9
-room_layers_rsrc_hi = $7b77		;Total type 4 resources: 2	- room scene graphic layers
-room_layers_rsrc_lo = $7b79
+room_layers_ptr_hi_tbl = $7b77		;Total type 4 resources: 2	- room scene graphic layers
+room_layers_ptr_lo_tbl = $7b79
 mask_bit_patterns_rsrc_hi = $7b78		
 mask_bit_patterns_rsrc_lo = $7b7a
 ;The room layers and the mask bit patterns resources don't have memory attributes - they are tied to the current room's lifetime
@@ -1966,25 +1966,25 @@ clear_game_variables:
 ; 6 is the footstep sound
 ; 8 and 9 are the door open/close sounds
 .C:04c3  A9 80       LDA #$80
-.C:04c5  8D 54 79    STA sound_memory_attrs + 3 
-.C:04c8  8D 55 79    STA sound_memory_attrs + 4
-.C:04cb  8D 56 79    STA sound_memory_attrs + 5
-.C:04ce  8D 57 79    STA sound_memory_attrs + 6
-.C:04d1  8D 59 79    STA sound_memory_attrs + 8
-.C:04d4  8D 5A 79    STA sound_memory_attrs + 9
+.C:04c5  8D 54 79    STA sound_mem_attrs + 3 
+.C:04c8  8D 55 79    STA sound_mem_attrs + 4
+.C:04cb  8D 56 79    STA sound_mem_attrs + 5
+.C:04ce  8D 57 79    STA sound_mem_attrs + 6
+.C:04d1  8D 59 79    STA sound_mem_attrs + 8
+.C:04d4  8D 5A 79    STA sound_mem_attrs + 9
 ;Set pointers to sounds 3, 4 and 5 (embedded in the middle of the code)
 .C:04d7  A9 CD       LDA #$CD
-.C:04d9  8D 0E 79    STA sound_rsrc_ptrs_lo + 3
+.C:04d9  8D 0E 79    STA sound_ptr_lo_tbl + 3
 .C:04dc  A9 53       LDA #$53
-.C:04de  8D C8 78    STA sound_rsrc_ptrs_hi + 3
+.C:04de  8D C8 78    STA sound_ptr_hi_tbl + 3
 .C:04e1  A9 FA       LDA #$FA
-.C:04e3  8D 0F 79    STA sound_rsrc_ptrs_lo + 4
+.C:04e3  8D 0F 79    STA sound_ptr_lo_tbl + 4
 .C:04e6  A9 53       LDA #$53
-.C:04e8  8D C9 78    STA sound_rsrc_ptrs_hi + 4
+.C:04e8  8D C9 78    STA sound_ptr_hi_tbl + 4
 .C:04eb  A9 27       LDA #$27
-.C:04ed  8D 10 79    STA sound_rsrc_ptrs_lo + 5
+.C:04ed  8D 10 79    STA sound_ptr_lo_tbl + 5
 .C:04f0  A9 54       LDA #$54
-.C:04f2  8D CA 78    STA sound_rsrc_ptrs_hi + 5
+.C:04f2  8D CA 78    STA sound_ptr_hi_tbl + 5
 ;Setup raster interrupts
 .C:04f5  20 1C 34    JSR raster_setup
 ;Start global script #01 (the kid selection screen)
@@ -3192,9 +3192,9 @@ check_inventory_object:
 .C:0a1b  C5 15       CMP object_index_lo
 .C:0a1d  D0 15       BNE next_inventory_object
 ;Object found - copy object resource pointers
-.C:0a1f  B9 8B 70    LDA object_rsrc_ptrs_hi,Y
+.C:0a1f  B9 8B 70    LDA object_ptr_hi_tbl,Y
 .C:0a22  85 16       STA object_ptr_hi
-.C:0a24  B9 5E 70    LDA object_rsrc_ptrs_lo,Y
+.C:0a24  B9 5E 70    LDA object_ptr_lo_tbl,Y
 .C:0a27  85 15       STA object_ptr_lo
 ;Clear the room object offset
 .C:0a29  A9 00       LDA #$00
@@ -3247,11 +3247,11 @@ object_found:
 .C:0a65  85 18       STA >object_offset_in_room_rsrc
 ;object_ptr = room_rsrc_ptrs + object_offset_in_room_rsrc
 .C:0a67  AE 49 71    LDX current_room
-.C:0a6a  BD 2A 78    LDA room_rsrc_ptrs_lo,X
+.C:0a6a  BD 2A 78    LDA room_ptr_lo_tbl,X
 .C:0a6d  18          CLC
 .C:0a6e  65 17       ADC <object_offset_in_room_rsrc
 .C:0a70  85 15       STA object_ptr_lo
-.C:0a72  BD F3 77    LDA room_rsrc_ptrs_hi,X
+.C:0a72  BD F3 77    LDA room_ptr_hi_tbl,X
 .C:0a75  65 18       ADC >object_offset_in_room_rsrc
 .C:0a77  85 16       STA object_ptr_hi
 ;Return #01 - object found in room
@@ -5916,9 +5916,9 @@ handle_sound:
 .C:1834  D0 12       BNE clear_semaphore
 ;Reload the current music pointers
 .C:1836  AE A3 FE    LDX music_index
-.C:1839  BD C5 78    LDA sound_rsrc_ptrs_hi,X
+.C:1839  BD C5 78    LDA sound_ptr_hi_tbl,X
 .C:183c  8D A1 FE    STA <music_to_start_ptr
-.C:183f  BD 0B 79    LDA sound_rsrc_ptrs_lo,X
+.C:183f  BD 0B 79    LDA sound_ptr_lo_tbl,X
 .C:1842  8D A2 FE    STA >music_to_start_ptr
 ;Call the sound IRQ handler
 .C:1845  20 1B 48    JSR sound_irq_handler
@@ -9123,10 +9123,10 @@ setup_costume_for_actor:
 check_if_new_costume_for_actor:
 ;Is the current costume resource pointer already the one we want?
 ;If so, exit
-.C:2479  BD 61 78    LDA costume_rsrc_ptrs_hi,X
+.C:2479  BD 61 78    LDA costume_ptr_hi_tbl,X
 .C:247c  DD 93 78    CMP rsrc_ptr_for_active_costume_hi,X
 .C:247f  D0 09       BNE compute_data_pointer
-.C:2481  BD 7A 78    LDA costume_rsrc_ptrs_lo,X
+.C:2481  BD 7A 78    LDA costume_ptr_lo_tbl,X
 .C:2484  DD AC 78    CMP rsrc_ptr_for_active_costume_lo,X
 .C:2487  D0 01       BNE compute_data_pointer
 .C:2489  60          RTS
@@ -9137,11 +9137,11 @@ compute_data_pointer:
 .C:248b  48          PHA
 ;Use .Y as actor index, .X as costume index
 ;Copy the costume resource address to costume_base_address
-.C:248c  BD 61 78    LDA costume_rsrc_ptrs_hi,X
+.C:248c  BD 61 78    LDA costume_ptr_hi_tbl,X
 .C:248f  BC 57 FE    LDY actor_for_costume,X
 .C:2492  99 46 CB    STA graphic_data_ptr_for_actor_hi,Y
 .C:2495  85 18       STA >costume_base_address
-.C:2497  BD 7A 78    LDA costume_rsrc_ptrs_lo,X
+.C:2497  BD 7A 78    LDA costume_ptr_lo_tbl,X
 .C:249a  85 17       STA <costume_base_address
 ;Add 9 to the base address to get the address of the graphic section start (past the metadata section)
 .C:249c  18          CLC
@@ -9155,9 +9155,9 @@ compute_data_pointer:
 ;------------------------------------------------------
 set_new_costume_ptr_for_actor:
 ;Set the costume pointer as the current costume pointer
-.C:24ac  BD 61 78    LDA costume_rsrc_ptrs_hi,X
+.C:24ac  BD 61 78    LDA costume_ptr_hi_tbl,X
 .C:24af  9D 93 78    STA rsrc_ptr_for_active_costume_hi,X
-.C:24b2  BD 7A 78    LDA costume_rsrc_ptrs_lo,X
+.C:24b2  BD 7A 78    LDA costume_ptr_lo_tbl,X
 .C:24b5  9D AC 78    STA rsrc_ptr_for_active_costume_lo,X
 ;------------------------------------------------------
 ;Use .X now as actor index and .Y as read offset
@@ -11109,7 +11109,7 @@ get_walkboxes_for_room:
 ;Get target room
 .C:2da3  AC 74 FE    LDY walkbox_room
 ;Get room resource pointer
-.C:2da6  B9 F3 77    LDA room_rsrc_ptrs_hi,Y
+.C:2da6  B9 F3 77    LDA room_ptr_hi_tbl,Y
 .C:2da9  D0 03       BNE ptr_present
 ;Room resource not in memory, return #FF
 .C:2dab  A9 FF       LDA #$FF
@@ -11130,7 +11130,7 @@ get_walkboxes_for_costume:
 .C:2db4  B9 FC FE    LDA room_for_character,Y
 ;Get room resource pointer
 .C:2db7  A8          TAY
-.C:2db8  B9 F3 77    LDA room_rsrc_ptrs_hi,Y
+.C:2db8  B9 F3 77    LDA room_ptr_hi_tbl,Y
 .C:2dbb  D0 03       BNE get_walkboxes_ptr
 ;Room resource not in memory, return #FF
 .C:2dbd  A9 FF       LDA #$FF
@@ -11149,7 +11149,7 @@ box_data_ptr = $17
 get_walkboxes_ptr:
 ;Copy low and hi bytes of the room resource to the read pointer
 .C:2dc0  85 18       STA >box_data_ptr
-.C:2dc2  B9 2A 78    LDA room_rsrc_ptrs_lo,Y
+.C:2dc2  B9 2A 78    LDA room_ptr_lo_tbl,Y
 .C:2dc5  85 17       STA <box_data_ptr
 ;Set read offset to #15
 ;IMPORTANT - this is an offset from the block's start, not the room data
@@ -12421,7 +12421,7 @@ check_character:
 .C:336e  85 D8       STA actor
 .C:3370  8E 30 FC    STX active_costume
 ;Is the costume resource in memory? If not, continue
-.C:3373  BD 61 78    LDA costume_rsrc_ptrs_hi,X
+.C:3373  BD 61 78    LDA costume_ptr_hi_tbl,X
 .C:3376  F0 09       BEQ next_character
 ;Set the waypoint for this actor
 .C:3378  20 81 1C    JSR set_desired_waypoint_for_actor
@@ -12660,7 +12660,7 @@ setup_rsrcs_for_gfx_and_objects:
 ; Set room age to 1 - keep locking status unchanged (bit 7)
 ;----------------------------------------------
 ;Is the room unlocked?
-.C:34a9  B9 BC 77    LDA room_memory_attrs,Y
+.C:34a9  B9 BC 77    LDA room_mem_attrs,Y
 .C:34ac  10 05       BPL room_unlocked
 ;Room is locked - keep it locked, set age to 1
 .C:34ae  A9 81       LDA #$81
@@ -12669,26 +12669,26 @@ room_unlocked:
 ;Keep it unlocked, set age to 1
 .C:34b3  A9 01       LDA #$01
 set_result:
-.C:34b5  99 BC 77    STA room_memory_attrs,Y
+.C:34b5  99 BC 77    STA room_mem_attrs,Y
 ;----------------------------------------------
 .C:34b8  8E 49 71    STX current_room
 .C:34bb  AD 49 71    LDA current_room
 .C:34be  8D 6B FF    STA var_current_room
 ;----------------------------------------------
 ;Release room layers resource if needed
-.C:34c1  AE 79 7B    LDX room_layers_rsrc_lo
-.C:34c4  AC 77 7B    LDY room_layers_rsrc_hi
+.C:34c1  AE 79 7B    LDX room_layers_ptr_lo_tbl
+.C:34c4  AC 77 7B    LDY room_layers_ptr_hi_tbl
 .C:34c7  F0 03       BEQ clear_foreground_mask_layer_rsrc
-.C:34c9  20 03 55    JSR rsrc_release
+.C:34c9  20 03 55    JSR mem_release
 clear_foreground_mask_layer_rsrc:
 .C:34cc  A9 00       LDA #$00
-.C:34ce  8D 77 7B    STA room_layers_rsrc_hi
+.C:34ce  8D 77 7B    STA room_layers_ptr_hi_tbl
 ;----------------------------------------------
 ;Release mask bit patterns resource, if needed
 .C:34d1  AE 7A 7B    LDX mask_bit_patterns_rsrc_lo
 .C:34d4  AC 78 7B    LDY mask_bit_patterns_rsrc_hi
 .C:34d7  F0 03       BEQ clear_mask_bit_patterns_rsrc
-.C:34d9  20 03 55    JSR rsrc_release
+.C:34d9  20 03 55    JSR mem_release
 clear_mask_bit_patterns_rsrc:
 .C:34dc  A9 00       LDA #$00
 .C:34de  8D 78 7B    STA mask_bit_patterns_rsrc_hi
@@ -12714,7 +12714,7 @@ load_room_gfx_and_objects:
 ;---------------------------
 ;Set room age to 0, keeping locked/unlocked status unchanged (bit 7)
 ;Load resource memory attribute
-.C:34fd  BD BC 77    LDA room_memory_attrs,X
+.C:34fd  BD BC 77    LDA room_mem_attrs,X
 ;If room is unlocked, set age to 00
 .C:3500  10 05       BPL room_unlocked
 ;Room is locked, set age to 00
@@ -12723,7 +12723,7 @@ load_room_gfx_and_objects:
 room_unlocked:
 .C:3507  A9 00       LDA #$00
 set_result:
-.C:3509  9D BC 77    STA room_memory_attrs,X
+.C:3509  9D BC 77    STA room_mem_attrs,X
 ;---------------------------
 .C:350c  20 32 35    JSR read_room_misc_data		
 .C:350f  20 31 36    JSR read_room_objects		
@@ -12737,16 +12737,16 @@ set_result:
 .C:3518  A2 36       LDX #$36
 check_room_in_memory:
 ;Is the room resource in memory? If not, skip to the next one
-.C:351a  BD F3 77    LDA room_rsrc_ptrs_hi,X
+.C:351a  BD F3 77    LDA room_ptr_hi_tbl,X
 .C:351d  F0 0C       BEQ next_room
 ;Unlock room
-.C:351f  BD BC 77    LDA room_memory_attrs,X
+.C:351f  BD BC 77    LDA room_mem_attrs,X
 .C:3522  29 7F       AND #$7F
 ;Is the room age zero? If it is, leave it as zero.
 .C:3524  C9 00       CMP #$00
 .C:3526  F0 03       BEQ next_room
 ;If not, increment by 1
-.C:3528  FE BC 77    INC room_memory_attrs,X
+.C:3528  FE BC 77    INC room_mem_attrs,X
 next_room:
 .C:352b  CA          DEX
 .C:352c  D0 EC       BNE check_room_in_memory
@@ -12769,10 +12769,10 @@ read_ptr_hi = $16
 read_room_misc_data:
 ;Read pointer to room block, store a copy in room_block_ptr_copy
 .C:3532  AE 49 71    LDX current_room
-.C:3535  BD F3 77    LDA room_rsrc_ptrs_hi,X
+.C:3535  BD F3 77    LDA room_ptr_hi_tbl,X
 .C:3538  8D 5B 71    STA >current_room_rsrc
 .C:353b  85 C4       STA room_block_ptr_hi_copy
-.C:353d  BD 2A 78    LDA room_rsrc_ptrs_lo,X
+.C:353d  BD 2A 78    LDA room_ptr_lo_tbl,X
 .C:3540  8D 5A 71    STA <current_room_rsrc
 .C:3543  85 C3       STA room_block_ptr_lo_copy
 ;----------------------------------------------
@@ -12892,11 +12892,11 @@ data_start = $19
 load_room_sounds_and_scripts:
 ;Compute the actual data start address (skip the header - 4 bytes)
 .C:35d5  AE 49 71    LDX current_room
-.C:35d8  BD 2A 78    LDA room_rsrc_ptrs_lo,X
+.C:35d8  BD 2A 78    LDA room_ptr_lo_tbl,X
 .C:35db  18          CLC
 .C:35dc  69 04       ADC #$04
 .C:35de  85 19       STA <data_start
-.C:35e0  BD F3 77    LDA room_rsrc_ptrs_hi,X
+.C:35e0  BD F3 77    LDA room_ptr_hi_tbl,X
 .C:35e3  69 00       ADC #$00
 .C:35e5  85 1A       STA >data_start
 ;Read sound and script counters from offsets #12 and #13
@@ -12957,9 +12957,9 @@ get_room_subresources_ptr:
 .C:3621  69 1C       ADC #$1C
 ;Add the resulting offset to the room resource address to get the desired pointer
 .C:3623  18          CLC
-.C:3624  7D 2A 78    ADC room_rsrc_ptrs_lo,X
+.C:3624  7D 2A 78    ADC room_ptr_lo_tbl,X
 .C:3627  85 15       STA <room_subresources_ptr
-.C:3629  BD F3 77    LDA room_rsrc_ptrs_hi,X
+.C:3629  BD F3 77    LDA room_ptr_hi_tbl,X
 .C:362c  69 00       ADC #$00
 .C:362e  85 16       STA >room_subresources_ptr
 .C:3630  60          RTS
@@ -12984,9 +12984,9 @@ object_counter = $1b
 read_room_objects:
 ;Get pointer to current room's resource
 .C:3631  AE 49 71    LDX current_room
-.C:3634  BD F3 77    LDA room_rsrc_ptrs_hi,X
+.C:3634  BD F3 77    LDA room_ptr_hi_tbl,X
 .C:3637  85 C4       STA room_block_ptr_hi_copy
-.C:3639  BD 2A 78    LDA room_rsrc_ptrs_lo,X
+.C:3639  BD 2A 78    LDA room_ptr_lo_tbl,X
 .C:363c  85 C3       STA room_block_ptr_lo_copy
 ;------------
 ; Skip the block header
@@ -13155,9 +13155,9 @@ read_room_graphics:
 ;------------------------------------------------------
 ; Get room resource base address
 .C:371c  AE 49 71    LDX current_room
-.C:371f  BD 2A 78    LDA room_rsrc_ptrs_lo,X
+.C:371f  BD 2A 78    LDA room_ptr_lo_tbl,X
 .C:3722  85 C3       STA room_data_lo
-.C:3724  BD F3 77    LDA room_rsrc_ptrs_hi,X
+.C:3724  BD F3 77    LDA room_ptr_hi_tbl,X
 .C:3727  85 C4       STA room_data_hi
 ;------------------------------------------------------
 ;map_in_io
@@ -13228,7 +13228,7 @@ decrement_lo_counter:
 .C:377e  AE 7A 7B    LDX mask_bit_patterns_rsrc_lo
 .C:3781  AC 78 7B    LDY mask_bit_patterns_rsrc_hi
 .C:3784  F0 03       BEQ setup_mask_data_load
-.C:3786  20 03 55    JSR rsrc_release
+.C:3786  20 03 55    JSR mem_release
 ;--------------------
 ;Point to the offset for the mask data
 setup_mask_data_load:
@@ -13259,7 +13259,7 @@ setup_mask_data_load:
 ;Allocate a memory block for the data
 .C:37b0  A6 15       LDX copy_counter_lo
 .C:37b2  A4 16       LDY copy_counter_hi
-.C:37b4  20 E4 54    JSR rsrc_alloc
+.C:37b4  20 E4 54    JSR mem_alloc
 ;--------------------
 ;Setup block metadata (size, type #04, index #01)
  C:37b7  86 4F       STX memory_range_lo
@@ -13296,9 +13296,9 @@ setup_mask_data_load:
 ;--------------------
 ;Load room resource base address
 .C:37eb  AE 49 71    LDX current_room
-.C:37ee  BD 2A 78    LDA room_rsrc_ptrs_lo,X
+.C:37ee  BD 2A 78    LDA room_ptr_lo_tbl,X
 .C:37f1  85 C3       STA room_data_lo
-.C:37f3  BD F3 77    LDA room_rsrc_ptrs_hi,X
+.C:37f3  BD F3 77    LDA room_ptr_hi_tbl,X
 .C:37f6  85 C4       STA room_data_hi
 ;--------------------
 ;Add room_mask_indexes_offset to set the read pointer to the start of room_mask_indexes
@@ -13360,7 +13360,7 @@ room_index = $387d
 
 load_room_resource:
 ;If the room is already loaded in memory, skip the loading from storage
-.C:3833  BD F3 77    LDA room_rsrc_ptrs_hi,X
+.C:3833  BD F3 77    LDA room_ptr_hi_tbl,X
 ;Bug here - if the branch is taken, .Y will not contain the correct room index
 .C:3836  D0 33       BNE set_room_age_to_1
 ;Set up disk load parameters
@@ -13369,30 +13369,30 @@ load_room_resource:
 .C:383e  20 BD 3A    JSR prepare_disk_load_for_room
 ;Set read offset to #00
 .C:3841  A9 00       LDA #$00
-.C:3843  8D 78 56    STA read_offset
+.C:3843  8D 78 56    STA rsrc_read_offset
 ;Set sector index to #00
 .C:3846  A9 00       LDA #$00
-.C:3848  8D 79 56    STA sector_chain_index
+.C:3848  8D 79 56    STA rsrc_sector_step
 ;Set resource type to #03 (room)
 .C:384b  A9 03       LDA #$03
 .C:384d  8D 77 56    STA resource_type
 ;Load room resource from storage - returns data pointer in .X/.Y
-.C:3850  20 41 55    JSR load_resource
+.C:3850  20 41 55    JSR rsrc_load_from_disk
 .C:3853  8E 7B 38    STX room_data_lo
 .C:3856  8C 7C 38    STY room_data_hi
 ;Save resource address
 .C:3859  AC 7D 38    LDY room_index
 .C:385c  AD 7B 38    LDA room_data_lo
-.C:385f  99 2A 78    STA room_rsrc_ptrs_lo,Y
+.C:385f  99 2A 78    STA room_ptr_lo_tbl,Y
 .C:3862  AD 7C 38    LDA room_data_hi
-.C:3865  99 F3 77    STA room_rsrc_ptrs_hi,Y
+.C:3865  99 F3 77    STA room_ptr_hi_tbl,Y
 ;---------------------------
 ; Update the room's memory age for the LRU algorithm
 ;---------------------------
 .C:3868  AC 76 56    LDY resource_index
 set_room_age_to_1:
 ;Set room age to 1, keep bit 7 (locked/unlocked status) unchanged
-.C:386b  B9 BC 77    LDA room_memory_attrs,Y		
+.C:386b  B9 BC 77    LDA room_mem_attrs,Y		
 .C:386e  10 05       BPL room_unlocked
 room_locked:
 ;It's locked, set age to 1
@@ -13403,7 +13403,7 @@ room_unlocked:
 .C:3875  A9 01       LDA #$01
 set_memory_attribute:
 ;Write back new attribute
-.C:3877  99 BC 77    STA room_memory_attrs,Y
+.C:3877  99 BC 77    STA room_mem_attrs,Y
 .C:387a  60          RTS
 ;===========================================
 ; Load all costumes in a room
@@ -13451,7 +13451,7 @@ load_costume:
 ;Save resource index
 .C:38a8  8E 76 56    STX resource_index
 ;If the costume is already loaded in memory, return
-.C:38ab  BD 61 78    LDA costume_rsrc_ptrs_hi,X
+.C:38ab  BD 61 78    LDA costume_ptr_hi_tbl,X
 .C:38ae  F0 01       BEQ costume_not_in_memory
 .C:38b0  60          RTS
 costume_not_in_memory:
@@ -13468,23 +13468,23 @@ costume_not_in_memory:
 .C:38bd  AA          TAX
 ;Read the costume offset in the room resource
 .C:38be  BD BF 74    LDA costume_offset_in_sector,X
-.C:38c1  8D 78 56    STA read_offset
+.C:38c1  8D 78 56    STA rsrc_read_offset
 ;Read the sector index for the costume
 .C:38c4  BD C0 74    LDA costume_sector_index,X
-.C:38c7  8D 79 56    STA sector_chain_index
+.C:38c7  8D 79 56    STA rsrc_sector_step
 ;Set resource type as #02 (costume)
 .C:38ca  A9 02       LDA #$02
 .C:38cc  8D 77 56    STA resource_type
 ;Load resource data - returns data pointer in .X/.Y
-.C:38cf  20 41 55    JSR load_resource
+.C:38cf  20 41 55    JSR rsrc_load_from_disk
 .C:38d2  86 17       STX temp_1
 .C:38d4  84 18       STY temp_2
 ;Save resource address
 .C:38d6  AC 76 56    LDY resource_index
 .C:38d9  A5 17       LDA temp_1
-.C:38db  99 7A 78    STA costume_rsrc_ptrs_lo,Y
+.C:38db  99 7A 78    STA costume_ptr_lo_tbl,Y
 .C:38de  A5 18       LDA temp_2
-.C:38e0  99 61 78    STA costume_rsrc_ptrs_hi,Y
+.C:38e0  99 61 78    STA costume_ptr_hi_tbl,Y
 .C:38e3  60          RTS
 ;===========================================
 ; Release a costume
@@ -13677,7 +13677,7 @@ load_sound:
 .C:39e9  8D 76 56    STA resource_index		
 ;Check if sound is already in memory by looking at the sound resource pointer table
 .C:39ec  AA          TAX
-.C:39ed  BD C5 78    LDA sound_rsrc_ptrs_hi,X
+.C:39ed  BD C5 78    LDA sound_ptr_hi_tbl,X
 .C:39f0  F0 01       BEQ sound_not_in_memory
 ;If sound is in memory, return
 .C:39f2  60          RTS
@@ -13695,22 +13695,22 @@ sound_not_in_memory:
 .C:39ff  AA          TAX
 ;Get the sector offset and sector index for this sound
 .C:3a00  BD 17 77    LDA sound_offset_in_sector,X		
-.C:3a03  8D 78 56    STA read_offset
+.C:3a03  8D 78 56    STA rsrc_read_offset
 .C:3a06  BD 18 77    LDA sound_sector_index,X	
-.C:3a09  8D 79 56    STA sector_chain_index
+.C:3a09  8D 79 56    STA rsrc_sector_step
 ;Set resource type as #06 (sound)
 .C:3a0c  A9 06       LDA #$06
 .C:3a0e  8D 77 56    STA resource_type
 ;Load room data - returns data pointer in .X/.Y
-.C:3a11  20 41 55    JSR load_resource
+.C:3a11  20 41 55    JSR rsrc_load_from_disk
 .C:3a14  86 19       STX temp_1
 .C:3a16  84 1A       STY temp_2
 .C:3a18  AC 76 56    LDY resource_index		
 ;Store data pointer for the sound resource
 .C:3a1b  A5 19       LDA temp_1
-.C:3a1d  99 0B 79    STA sound_rsrc_ptrs_lo,Y
+.C:3a1d  99 0B 79    STA sound_ptr_lo_tbl,Y
 .C:3a20  A5 1A       LDA temp_2
-.C:3a22  99 C5 78    STA sound_rsrc_ptrs_hi,Y
+.C:3a22  99 C5 78    STA sound_ptr_hi_tbl,Y
 ;Restore .Y from a local variable
 .C:3a25  AC DC 3B    LDY temp_y
 .C:3a28  60          RTS
@@ -13735,7 +13735,7 @@ load_script:
 .C:3a2c  8D 76 56    STA resource_index
 ;Check if resource is in memory by looking at the resource pointer table
 .C:3a2f  AA          TAX
-.C:3a30  BD 97 79    LDA script_rsrc_ptrs_hi,X
+.C:3a30  BD 97 79    LDA script_ptr_hi_tbl,X
 .C:3a33  F0 01       BEQ script_not_in_memory
 .C:3a35  60          RTS
 script_not_in_memory:
@@ -13755,31 +13755,31 @@ script_not_in_memory:
 .C:3a43  90 0F       BCC global_script
 ;Room script - fetch offset and sector index 
 .C:3a45  BD 91 76    LDA room_script_offset_in_sector,X
-.C:3a48  8D 78 56    STA read_offset
+.C:3a48  8D 78 56    STA rsrc_read_offset
 .C:3a4b  BD 92 76    LDA room_script_sector_index,X
-.C:3a4e  8D 79 56    STA sector_chain_index
+.C:3a4e  8D 79 56    STA rsrc_sector_step
 .C:3a51  4C 60 3A    JMP load_script_from_disk
 global_script:
 ;Global script
 .C:3a54  BD 91 75    LDA global_script_read_offsets,X
-.C:3a57  8D 78 56    STA read_offset
+.C:3a57  8D 78 56    STA rsrc_read_offset
 .C:3a5a  BD 92 75    LDA global_script_sector_index,X
-.C:3a5d  8D 79 56    STA sector_chain_index
+.C:3a5d  8D 79 56    STA rsrc_sector_step
 load_script_from_disk:
 ;Set resource type = #05 - script
 .C:3a60  A9 05       LDA #$05
 .C:3a62  8D 77 56    STA resource_type
 ;Load room data - returns data pointer in .X/.Y
-.C:3a65  20 41 55    JSR load_resource
+.C:3a65  20 41 55    JSR rsrc_load_from_disk
 .C:3a68  86 19       STX temp_1
 .C:3a6a  84 1A       STY temp_2
 ;Fetch resource index
 .C:3a6c  AC 76 56    LDY resource_index
 ;Store data pointer for the script resource
 .C:3a6f  A5 19       LDA temp_1
-.C:3a71  99 37 7A    STA script_rsrc_ptrs_lo,Y		
+.C:3a71  99 37 7A    STA script_ptr_lo_tbl,Y		
 .C:3a74  A5 1A       LDA temp_2
-.C:3a76  99 97 79    STA script_rsrc_ptrs_hi,Y		
+.C:3a76  99 97 79    STA script_ptr_hi_tbl,Y		
 ;Restore .Y from a local variable
 .C:3a79  AC DC 3B    LDY temp_y
 .C:3a7c  60          RTS
@@ -13832,7 +13832,7 @@ exit_script_present:
 ;===========================================
 ; Prepare load of a room data from disk
 ;
-; On exit, it will setup a new sector chain, leaving it ready for calling "load_resource"
+; On exit, it will setup a new sector chain, leaving it ready for calling "rsrc_load_from_disk"
 ;
 ; Arguments: .X	- room index
 ;===========================================
@@ -14172,9 +14172,9 @@ draw_objects_in_room:
 entry:
 ;Load the total objects for the room from the room resource (redundant code)
 .C:3c98  AE 49 71    LDX current_room
-.C:3c9b  BD 2A 78    LDA room_rsrc_ptrs_lo,X
+.C:3c9b  BD 2A 78    LDA room_ptr_lo_tbl,X
 .C:3c9e  85 C3       STA <room_resource
-.C:3ca0  BD F3 77    LDA room_rsrc_ptrs_hi,X
+.C:3ca0  BD F3 77    LDA room_ptr_hi_tbl,X
 .C:3ca3  85 C4       STA >room_resource
 .C:3ca5  AE 5C 71    LDX total_objects_in_room
 decompress_object_gfx_loop:
@@ -14993,27 +14993,27 @@ draw_room_scene:
 .C:404d  AE 49 71    LDX current_room
 ;Does the current room resource pointer match the one for "current_room"?
 ;If yes, continue
-.C:4050  BD 2A 78    LDA room_rsrc_ptrs_lo,X
+.C:4050  BD 2A 78    LDA room_ptr_lo_tbl,X
 .C:4053  CD 5A 71    CMP <current_room_rsrc
 .C:4056  D0 1B       BNE room_scene_data_not_in_memory
-.C:4058  BD F3 77    LDA room_rsrc_ptrs_hi,X
+.C:4058  BD F3 77    LDA room_ptr_hi_tbl,X
 .C:405b  CD 5B 71    CMP >current_room_rsrc
 .C:405e  D0 13       BNE room_scene_data_not_in_memory
 ;Does the current room layers resource pointer match the one for "current_room?"?
 ;If yes, continue checking if there's scroll
-.C:4060  AD 79 7B    LDA room_layers_rsrc_lo
+.C:4060  AD 79 7B    LDA room_layers_ptr_lo_tbl
 .C:4063  CD 98 FE    CMP <current_room_layers_rsrc
 .C:4066  D0 0B       BNE room_scene_data_not_in_memory
-.C:4068  AD 77 7B    LDA room_layers_rsrc_hi
+.C:4068  AD 77 7B    LDA room_layers_ptr_hi_tbl
 .C:406b  CD 99 FE    CMP >current_room_layers_rsrc
 .C:406e  D0 03       BNE room_scene_data_not_in_memory
 .C:4070  4C 82 40    JMP check_scroll_right
 ;---------------------------------------------
 ;Otherwise, setup the room scene
 room_scene_data_not_in_memory:
-.C:4073  BD 2A 78    LDA room_rsrc_ptrs_lo,X
+.C:4073  BD 2A 78    LDA room_ptr_lo_tbl,X
 .C:4076  8D 5A 71    STA <current_room_rsrc
-.C:4079  BD F3 77    LDA room_rsrc_ptrs_hi,X
+.C:4079  BD F3 77    LDA room_ptr_hi_tbl,X
 .C:407c  8D 5B 71    STA >current_room_rsrc
 .C:407f  20 12 43    JSR setup_room_scene_rsrc
 ;---------------------------------------------
@@ -15692,11 +15692,11 @@ rsrc_ptr_local = $17
 
 setup_room_scene_rsrc:
 ;Is there a resource in memory right now?
-.C:4312  AE 79 7B    LDX room_layers_rsrc_lo
-.C:4315  AC 77 7B    LDY room_layers_rsrc_hi
+.C:4312  AE 79 7B    LDX room_layers_ptr_lo_tbl
+.C:4315  AC 77 7B    LDY room_layers_ptr_hi_tbl
 ;If so, release it - otherwise continue
 .C:4318  F0 03       BEQ calculate_rsrc_size
-.C:431a  20 03 55    JSR rsrc_release
+.C:431a  20 03 55    JSR mem_release
 ;-------------------------------------
 ; We need to allocate memory for the new type 4 A resource
 ; The space needed is: the room's total number of columns * 12
@@ -15780,7 +15780,7 @@ calculate_rsrc_size:
 ; Allocate a block of the needed size
 .C:4350  A6 15       LDX <block_size
 .C:4352  A4 16       LDY >block_size
-.C:4354  20 E4 54    JSR rsrc_alloc
+.C:4354  20 E4 54    JSR mem_alloc
 ;Save the block address in block_ptr
 .C:4357  86 4F       STX <block_ptr
 .C:4359  84 50       STY >block_ptr
@@ -15795,8 +15795,8 @@ calculate_rsrc_size:
 ;Copy the resource pointer to room_layers_rsrc
 .C:4368  A6 4F       LDX <block_ptr
 .C:436a  A4 50       LDY >block_ptr
-.C:436c  8E 79 7B    STX room_layers_rsrc_lo
-.C:436f  8C 77 7B    STY room_layers_rsrc_hi
+.C:436c  8E 79 7B    STX room_layers_ptr_lo_tbl
+.C:436f  8C 77 7B    STY room_layers_ptr_hi_tbl
 ;Also copy it to current_room_layers_rsrc
 ;This is used later to check if the type4 resource has changed and needs to be released
 .C:4372  8E 98 FE    STX <current_room_layers_rsrc
@@ -15933,9 +15933,9 @@ precomputed_pointer_array_16bit = $0064
 ;---------------------------------------------------
 ;Get a pointer to the room's resource (room_data_ptr)
 .C:43b7  AE 49 71    LDX current_room
-.C:43ba  BD 2A 78    LDA room_rsrc_ptrs_lo,X
+.C:43ba  BD 2A 78    LDA room_ptr_lo_tbl,X
 .C:43bd  8D B9 44    STA <room_data_ptr
-.C:43c0  BD F3 77    LDA room_rsrc_ptrs_hi,X
+.C:43c0  BD F3 77    LDA room_ptr_hi_tbl,X
 .C:43c3  8D BA 44    STA >room_data_ptr
 ;---------------------------------------------------
 ;Pre-compute column pointers to the tile matrix layer 
@@ -16894,9 +16894,9 @@ next_voice_2:
 .C:48a6  F0 2B       BEQ exit
 ;Copy the sound resource for the music to music_to_start_ptr
 .C:48a8  AE A3 FE    LDX music_index
-.C:48ab  BD C5 78    LDA sound_rsrc_ptrs_hi,X
+.C:48ab  BD C5 78    LDA sound_ptr_hi_tbl,X
 .C:48ae  8D A1 FE    STA <music_to_start_ptr
-.C:48b1  BD 0B 79    LDA sound_rsrc_ptrs_lo,X
+.C:48b1  BD 0B 79    LDA sound_ptr_lo_tbl,X
 .C:48b4  8D A2 FE    STA >music_to_start_ptr
 ;Is the music to start the same as the music in progress?
 ;If so, jump to the music code and then exit
@@ -17634,7 +17634,7 @@ voice_base = $4815
 update_voice_base_and_instruction_ptr:
 ;Ensure the sound resource is actually loaded in memory
 .C:4c1c  BC 9C 47    LDY rsrc_for_voice_0,X
-.C:4c1f  B9 C5 78    LDA sound_rsrc_ptrs_hi,Y
+.C:4c1f  B9 C5 78    LDA sound_ptr_hi_tbl,Y
 .C:4c22  D0 1A       BNE resource_in_memory
 ;-------------------------------------
 sound_ptr_unset:
@@ -17654,7 +17654,7 @@ return_01:
 resource_in_memory:
 ;Copy the sound resource pointer to voice_base
 .C:4c3e  8D 14 48    STA >voice_base
-.C:4c41  B9 0B 79    LDA sound_rsrc_ptrs_lo,Y
+.C:4c41  B9 0B 79    LDA sound_ptr_lo_tbl,Y
 .C:4c44  8D 15 48    STA <voice_base
 ;Check that voice_base and voice_base_addr actually match
 ;They might not match if there has been a relocation
@@ -17752,7 +17752,7 @@ reset_voice_priorities:
 ;===========================================
 decrease_sound_memory_attribute:
 ;Load the memory attribute for this sound
-.C:4cda  BD 51 79    LDA sound_memory_attrs,X
+.C:4cda  BD 51 79    LDA sound_mem_attrs,X
 ;Save flags in stack - specifically, flag N (bit 7) is relevant
 .C:4cdd  08          PHP
 ;Clear bit 7
@@ -17775,7 +17775,7 @@ restore_bit7:
 ;Otherwise set bit 7
 .C:4ceb  09 80       ORA #$80
 set_result:
-.C:4ced  9D 51 79    STA sound_memory_attrs,X
+.C:4ced  9D 51 79    STA sound_mem_attrs,X
 .C:4cf0  60          RTS
 ;===========================================
 ; Starts a sound
@@ -17829,7 +17829,7 @@ start_sound:
 ; Check if the sound resource is actually loaded in memory - if not, exit
 check_resource_loaded:
 .C:4d2a  AC 05 4D    LDY sound_to_start
-.C:4d2d  B9 C5 78    LDA sound_rsrc_ptrs_hi,Y
+.C:4d2d  B9 C5 78    LDA sound_ptr_hi_tbl,Y
 .C:4d30  D0 05       BNE set_sound_read_pointer
 ;Sound not in memory - return #01
 .C:4d32  A9 01       LDA #$01
@@ -17838,7 +17838,7 @@ check_resource_loaded:
 ; Set the resource memory address as the sound data base address
 set_sound_read_pointer:
 .C:4d37  85 BD       STA >sound_read_ptr
-.C:4d39  B9 0B 79    LDA sound_rsrc_ptrs_lo,Y
+.C:4d39  B9 0B 79    LDA sound_ptr_lo_tbl,Y
 .C:4d3c  85 BC       STA <sound_read_ptr
 ;Set offset to #04 (to skip the resource header)
 .C:4d3e  A0 04       LDY #$04
@@ -18519,7 +18519,7 @@ increment_sound_memory_attr:
 .C:4ff7  F0 01       BEQ do_increase
 .C:4ff9  60          RTS
 do_increase:
-.C:4ffa  FE 51 79    INC sound_memory_attrs,X
+.C:4ffa  FE 51 79    INC sound_mem_attrs,X
 .C:4ffd  60          RTS
 ;===========================================
 ; Allocate a voice
@@ -19362,7 +19362,7 @@ music_track_offsets_hi:
 temp_x = $5501
 temp_y = $5502
 	
-rsrc_alloc:
+mem_alloc:
 ;Backup .X and .Y
 .C:54e4  8E 01 55    STX temp_x
 .C:54e7  8C 02 55    STY temp_y
@@ -19373,10 +19373,10 @@ rsrc_alloc:
 .C:54ef  20 D5 58    JSR mem_compact_then_release
 .C:54f2  D0 0C       BNE block_found
 ;Release one costume and try again
-.C:54f4  20 7B 56    JSR release_one_costume
+.C:54f4  20 7B 56    JSR rsrc_release_one_evictable_costume
 .C:54f7  AE 01 55    LDX temp_x
 .C:54fa  AC 02 55    LDY temp_y
-.C:54fd  4C E4 54    JMP rsrc_alloc
+.C:54fd  4C E4 54    JMP mem_alloc
 block_found:
 .C:5500  60          RTS
 ;===========================================
@@ -19391,7 +19391,7 @@ block_found:
 ;===========================================
 free_block = $61
 
-rsrc_release:
+mem_release:
 ;Fetch the last free block into free_block so we can edit it later
 .C:5503  AD 65 FF    LDA <mem_free_tail
 .C:5506  85 61       STA <free_block
@@ -19430,11 +19430,11 @@ rsrc_release:
 ;
 ; Requires previously setting:
 ; 	read_offset
-;	sector_chain_index
+;	rsrc_sector_step
 ; Returns:	.X/.Y	pointer to room data loaded
 ;===========================================
-read_offset = $5678
-sector_chain_index = $5679
+rsrc_read_offset = $5678
+rsrc_sector_step = $5679
 
 ZERO_BYTE_OFFSET = #$02
 CHECKSUM_OFFSET = #$03
@@ -19449,12 +19449,12 @@ running_checksum = $e8
 retry_counter = $EA
 checksum_ptr = $4f
 
-load_resource:
+rsrc_load_from_disk:
 ;Pause game
 .C:5541  20 D1 18    JSR pause_game
 ;Read the first data sector from disk
-.C:5544  AE 78 56    LDX read_offset
-.C:5547  AC 79 56    LDY sector_chain_index
+.C:5544  AE 78 56    LDX rsrc_read_offset
+.C:5547  AC 79 56    LDY rsrc_sector_step
 .C:554a  20 F7 44    JSR disk_seek_read
 ;Copy the resource header to local memory
 .C:554d  A2 3B       LDX #<local_header
@@ -19469,7 +19469,7 @@ load_resource:
 .C:555e  AD 3D 55    LDA local_header + ZERO_BYTE_OFFSET
 .C:5561  F0 06       BEQ find_memory_for_data
 .C:5563  20 27 56    JSR disk_id_check
-.C:5566  4C 41 55    JMP load_resource
+.C:5566  4C 41 55    JMP rsrc_load_from_disk
 ;----------------------------------------
 ;Allocate space for the whole data
 find_memory_for_data:
@@ -19477,7 +19477,7 @@ find_memory_for_data:
 .C:5569  AE 3B 55    LDX <rsrc_size
 .C:556c  AC 3C 55    LDY >rsrc_size
 ;Allocate memory
-.C:556f  20 E4 54    JSR rsrc_alloc
+.C:556f  20 E4 54    JSR mem_alloc
 ;Store available memory range into room_data_ptr
 .C:5572  8E 3F 55    STX <rsrc_data
 .C:5575  8C 40 55    STY >rsrc_data
@@ -19486,8 +19486,8 @@ find_memory_for_data:
 ;----------------------------------------
 room_raw_data_load:
 ;Load the whole resource data from disk into memory
-.C:557c  AE 78 56    LDX read_offset
-.C:557f  AC 79 56    LDY sector_chain_index
+.C:557c  AE 78 56    LDX rsrc_read_offset
+.C:557f  AC 79 56    LDY rsrc_sector_step
 .C:5582  20 F7 44    JSR disk_seek_read
 .C:5585  AE 3F 55    LDX <rsrc_data
 .C:5588  AC 40 55    LDY >rsrc_data
@@ -19661,16 +19661,16 @@ disk_id_mismatch:
 ;===========================================
 MAX_costume_index = #$18
 
-release_one_costume:
+rsrc_release_one_evictable_costume:
 .C:567b  A2 18       LDX MAX_costume_index
 check_costume:
 ;Check memory attribute of costume
-.C:567d  BD A3 77    LDA costume_memory_attrs,X
+.C:567d  BD A3 77    LDA costume_mem_attrs,X
 ;Is it unlocked? (bit 7 clear) - if so, continue
 .C:5680  10 06       BPL next_costume
 ;It's locked, unlock it (clear bit 7) and return
 .C:5682  29 7F       AND #$7F
-.C:5684  9D A3 77    STA costume_memory_attrs,X
+.C:5684  9D A3 77    STA costume_mem_attrs,X
 .C:5687  60          RTS
 next_costume:
 .C:5688  CA          DEX
@@ -19683,14 +19683,14 @@ check_eligibility:
 .C:568d  EC 67 FF    CPX current_kid
 .C:5690  F0 21       BEQ next_costume_2
 ;Is it loaded in memory? If not, continue
-.C:5692  BD 61 78    LDA costume_rsrc_ptrs_hi,X
+.C:5692  BD 61 78    LDA costume_ptr_hi_tbl,X
 .C:5695  F0 1C       BEQ next_costume_2
 ;------------------------------------------------
 ; Release the costume
 ;------------------------------------------------
 ;It's loaded (and unlocked), mark it as released
 .C:5697  A9 00       LDA #$00
-.C:5699  9D A3 77    STA costume_memory_attrs,X
+.C:5699  9D A3 77    STA costume_mem_attrs,X
 ;Save costume index in stack
 .C:569c  8A          TXA
 .C:569d  48          PHA
@@ -20196,7 +20196,7 @@ mem_compact_then_release:
 ;Did we find anything?
 .C:58f7  D0 05       BNE free_block_found
 ;No free block found - release resources and try again
-.C:58f9  20 E3 5A    JSR release_rsrcs_by_priority
+.C:58f9  20 E3 5A    JSR rsrc_evict_one_by_priority
 .C:58fc  D0 D7       BNE mem_compact_then_release
 ;We found a free block, return
 free_block_found:
@@ -20424,7 +20424,7 @@ move_to_back:
 .C:5a01  C9 06       CMP #$06
 .C:5a03  D0 0A       BNE copy_block_data
 ;Is the sound in use? If not, continue
-.C:5a05  B9 51 79    LDA sound_memory_attrs,Y
+.C:5a05  B9 51 79    LDA sound_mem_attrs,Y
 .C:5a08  F0 05       BEQ copy_block_data
 ;It's a sound possibly in use - reload sound resource pointers
 .C:5a0a  A9 01       LDA #$01
@@ -20454,7 +20454,7 @@ copy_block_data:
 ;Update resource pointers after relocation
 .C:5a2c  AE A9 59    LDX resource_index
 .C:5a2f  AC A8 59    LDY resource_type
-.C:5a32  20 89 5A    JSR update_rsrc_pointers
+.C:5a32  20 89 5A    JSR rsrc_update_ptr
 ;Don't reload the sound resource pointers
 .C:5a35  A9 00       LDA #$00
 .C:5a37  8D 70 FE    STA reload_snd_rsrc_ptrs
@@ -20526,16 +20526,16 @@ copy_block_data:
 ;===========================================
 resource_ptr = $4F
 
-update_rsrc_pointers:
+rsrc_update_ptr:
 ;Switch on the resource type
 .C:5a89  C0 03       CPY #$03
 .C:5a8b  D0 0B       BNE check_type_4
 ;------------------
 ;Case 3 (room)
 .C:5a8d  A5 4F       LDA <resource_ptr
-.C:5a8f  9D 2A 78    STA room_rsrc_ptrs_lo,X
+.C:5a8f  9D 2A 78    STA room_ptr_lo_tbl,X
 .C:5a92  A5 50       LDA >resource_ptr
-.C:5a94  9D F3 77    STA room_rsrc_ptrs_hi,X
+.C:5a94  9D F3 77    STA room_ptr_hi_tbl,X
 .C:5a97  60          RTS
 ;------------------
 check_type_4:
@@ -20544,9 +20544,9 @@ check_type_4:
 ;------------------
 ;Case 4 (room scene graphics layers)
 .C:5a9c  A5 4F       LDA <resource_ptr
-.C:5a9e  9D 79 7B    STA room_layers_rsrc_lo,X
+.C:5a9e  9D 79 7B    STA room_layers_ptr_lo_tbl,X
 .C:5aa1  A5 50       LDA >resource_ptr
-.C:5aa3  9D 77 7B    STA room_layers_rsrc_hi,X
+.C:5aa3  9D 77 7B    STA room_layers_ptr_hi_tbl,X
 .C:5aa6  60          RTS
 ;------------------
 check_type_2:
@@ -20555,9 +20555,9 @@ check_type_2:
 ;------------------
 ;Case 2 (costume)
 .C:5aab  A5 4F       LDA <resource_ptr
-.C:5aad  9D 7A 78    STA costume_rsrc_ptrs_lo,X
+.C:5aad  9D 7A 78    STA costume_ptr_lo_tbl,X
 .C:5ab0  A5 50       LDA >resource_ptr
-.C:5ab2  9D 61 78    STA costume_rsrc_ptrs_hi,X
+.C:5ab2  9D 61 78    STA costume_ptr_hi_tbl,X
 .C:5ab5  60          RTS
 ;------------------
 check_type_1:
@@ -20566,9 +20566,9 @@ check_type_1:
 ;------------------
 ;Case 1 (object)
 .C:5aba  A5 4F       LDA <resource_ptr
-.C:5abc  9D 5E 70    STA object_rsrc_ptrs_lo,X
+.C:5abc  9D 5E 70    STA object_ptr_lo_tbl,X
 .C:5abf  A5 50       LDA >resource_ptr
-.C:5ac1  9D 8B 70    STA object_rsrc_ptrs_hi,X
+.C:5ac1  9D 8B 70    STA object_ptr_hi_tbl,X
 .C:5ac4  60          RTS
 ;------------------
 check_type_5:
@@ -20577,20 +20577,20 @@ check_type_5:
 ;------------------
 ;Case 5 (script)
 .C:5ac9  A5 4F       LDA <resource_ptr
-.C:5acb  9D 37 7A    STA script_rsrc_ptrs_lo,X
+.C:5acb  9D 37 7A    STA script_ptr_lo_tbl,X
 .C:5ace  A5 50       LDA >resource_ptr
-.C:5ad0  9D 97 79    STA script_rsrc_ptrs_hi,X
+.C:5ad0  9D 97 79    STA script_ptr_hi_tbl,X
 .C:5ad3  60          RTS
 ;------------------
 check_type_6:
 .C:5ad4  C0 06       CPY #$06
-.C:5ad6  D0 0B       BNE release_rsrcs_by_priority
+.C:5ad6  D0 0B       BNE rsrc_evict_one_by_priority
 ;------------------
 ;Case 6 (sound)
 .C:5ad8  A5 4F       LDA <resource_ptr
-.C:5ada  9D 0B 79    STA sound_rsrc_ptrs_lo,X
+.C:5ada  9D 0B 79    STA sound_ptr_lo_tbl,X
 .C:5add  A5 50       LDA >resource_ptr
-.C:5adf  9D C5 78    STA sound_rsrc_ptrs_hi,X
+.C:5adf  9D C5 78    STA sound_ptr_hi_tbl,X
 .C:5ae2  60          RTS
 ;===========================================
 ; Release resources by priority
@@ -20605,7 +20605,7 @@ check_type_6:
 current_priority = $fe4b
 old_priority = $fe4c
 
-release_rsrcs_by_priority:
+rsrc_evict_one_by_priority:
 ;Set that no resource has been released yet
 .C:5ae3  A9 00       LDA #$00
 .C:5ae5  8D 4A FE    STA rsrc_released_flag
@@ -20619,7 +20619,7 @@ switch_on_priority:
 .C:5af3  D0 06       BNE check_01
 ;------------------
 ;Case #00 - release one room
-.C:5af5  20 38 5B    JSR release_room_lru
+.C:5af5  20 38 5B    JSR rsrc_release_evictable_room_lru
 .C:5af8  4C 22 5B    JMP next_priority
 ;------------------
 check_01:
@@ -20635,7 +20635,7 @@ check_02:
 .C:5b07  D0 06       BNE check_03
 ;------------------
 ;Case #02 - release evictable sounds
-.C:5b09  20 B5 5B    JSR release_sounds
+.C:5b09  20 B5 5B    JSR release_evictable_sounds
 .C:5b0c  4C 22 5B    JMP next_priority
 ;------------------
 check_03:
@@ -20643,7 +20643,7 @@ check_03:
 .C:5b11  D0 06       BNE check_04
 ;------------------
 ;Case #03 - release evictable scripts
-.C:5b13  20 EA 5B    JSR release_scripts
+.C:5b13  20 EA 5B    JSR rsrc_release_evictable_scripts
 .C:5b16  4C 22 5B    JMP next_priority
 ;------------------
 check_04:
@@ -20677,29 +20677,29 @@ no_releases:
 ; Release the LRU room eligible for eviction
 ;
 ; Arguments: None
-; Reads:	room_memory_attrs
+; Reads:	room_mem_attrs
 ;			room_rsrc_ptrs
-; Updates:	room_memory_attrs
+; Updates:	room_mem_attrs
 ;			room_rsrc_ptrs
 
 ;===========================================
-MAX_ROOM_INDEX = #$36
+ROOM_MAX_INDEX = #$36
 
 candidate_attrs = $fd9f
 candidate_index = $fd9e
 
-release_room_lru:
+rsrc_release_evictable_room_lru:
 .C:5b38  A9 00       LDA #$00
 .C:5b3a  8D 9F FD    STA candidate_attrs
 .C:5b3d  8D 9E FD    STA candidate_index
-.C:5b40  A2 36       LDX MAX_ROOM_INDEX
+.C:5b40  A2 36       LDX ROOM_MAX_INDEX
 ;------------------
 check_eligibility:
 ;Check if the room is loaded into memory - if not, continue
-.C:5b42  BD F3 77    LDA room_rsrc_ptrs_hi,X
+.C:5b42  BD F3 77    LDA room_ptr_hi_tbl,X
 .C:5b45  F0 16       BEQ next_room
 ;Is the room resource locked? - if so, continue
-.C:5b47  BD BC 77    LDA room_memory_attrs,X
+.C:5b47  BD BC 77    LDA room_mem_attrs,X
 .C:5b4a  30 11       BMI next_room
 ;Check if the memory attribute is zero - if so, continue
 .C:5b4c  C9 00       CMP #$00
@@ -20724,30 +20724,30 @@ next_room:
 release_room:
 .C:5b66  AE 9E FD    LDX candidate_index
 ;Fetch the pointer to the resource into .A/.Y
-.C:5b69  BD F3 77    LDA room_rsrc_ptrs_hi,X
+.C:5b69  BD F3 77    LDA room_ptr_hi_tbl,X
 .C:5b6c  A8          TAY
-.C:5b6d  BD 2A 78    LDA room_rsrc_ptrs_lo,X
+.C:5b6d  BD 2A 78    LDA room_ptr_lo_tbl,X
 .C:5b70  48          PHA
 ;Clear reference to resource
 .C:5b71  A9 00       LDA #$00
-.C:5b73  9D F3 77    STA room_rsrc_ptrs_hi,X
-.C:5b76  9D 2A 78    STA room_rsrc_ptrs_lo,X
+.C:5b73  9D F3 77    STA room_ptr_hi_tbl,X
+.C:5b76  9D 2A 78    STA room_ptr_lo_tbl,X
 ;Clear memory attributes
 .C:5b79  A9 00       LDA #$00
-.C:5b7b  9D BC 77    STA room_memory_attrs,X
+.C:5b7b  9D BC 77    STA room_mem_attrs,X
 ;Restore resource pointer lo as .X
 .C:5b7e  68          PLA
 .C:5b7f  AA          TAX
 ;Release the memory in .X/.Y and exit
-.C:5b80  20 03 55    JSR rsrc_release
+.C:5b80  20 03 55    JSR mem_release
 .C:5b83  60          RTS
 ;===========================================
 ; Release one costume eligible for eviction
 ;
 ; Arguments: None
-; Reads:	costume_memory_attrs
+; Reads:	costume_mem_attrs
 ;			costume_rsrc_ptrs
-; Updates:	costume_memory_attrs
+; Updates:	costume_mem_attrs
 ;			costume_rsrc_ptrs
 ;===========================================
 MAX_costume_index = #$18
@@ -20756,33 +20756,33 @@ release_costume:
 .C:5b84  A2 18       LDX MAX_costume_index
 check_eligibility:
 ;Check if the costume is loaded into memory - if not, continue
-.C:5b86  BD 61 78    LDA costume_rsrc_ptrs_hi,X
+.C:5b86  BD 61 78    LDA costume_ptr_hi_tbl,X
 .C:5b89  F0 26       BEQ next_costume
 ;Check if the costume is in the current room - if not, continue
 .C:5b8b  BD FC FE    LDA room_for_character,X
 .C:5b8e  CD 49 71    CMP current_room
 .C:5b91  F0 1E       BEQ next_costume
 ;Check if the memory attributes are zero - if not, continue
-.C:5b93  BD A3 77    LDA costume_memory_attrs,X
+.C:5b93  BD A3 77    LDA costume_mem_attrs,X
 .C:5b96  D0 19       BNE next_costume
 ;------------------
 ;Fetch the pointer to the resource into .A/.Y
-.C:5b98  BD 61 78    LDA costume_rsrc_ptrs_hi,X
+.C:5b98  BD 61 78    LDA costume_ptr_hi_tbl,X
 .C:5b9b  A8          TAY
-.C:5b9c  BD 7A 78    LDA costume_rsrc_ptrs_lo,X
+.C:5b9c  BD 7A 78    LDA costume_ptr_lo_tbl,X
 ;Save .A in stack
 .C:5b9f  48          PHA
 ;Clear reference to resource
 .C:5ba0  A9 00       LDA #$00
-.C:5ba2  9D 7A 78    STA costume_rsrc_ptrs_lo,X
-.C:5ba5  9D 61 78    STA costume_rsrc_ptrs_hi,X
+.C:5ba2  9D 7A 78    STA costume_ptr_lo_tbl,X
+.C:5ba5  9D 61 78    STA costume_ptr_hi_tbl,X
 ;Clear memory attributes
-.C:5ba8  9D A3 77    STA costume_memory_attrs,X
+.C:5ba8  9D A3 77    STA costume_mem_attrs,X
 ;Restore resource pointer lo as .X
 .C:5bab  68          PLA
 .C:5bac  AA          TAX
 ;Release the memory in .X/.Y and exit
-.C:5bad  20 03 55    JSR rsrc_release
+.C:5bad  20 03 55    JSR mem_release
 .C:5bb0  60          RTS
 ;------------------
 next_costume:
@@ -20793,22 +20793,22 @@ next_costume:
 ; Release all sounds eligible for eviction
 ;
 ; Arguments: None
-; Reads:	sound_memory_attrs
+; Reads:	sound_mem_attrs
 ;			sound_rsrc_ptrs
-; Updates:	sound_memory_attrs
+; Updates:	sound_mem_attrs
 ;			sound_rsrc_ptrs
 ;===========================================
-MAX_SOUND_INDEX = #$45
+SOUND_MAX_INDEX = #$45
 
-release_sounds:
-.C:5bb5  A2 45       LDX MAX_SOUND_INDEX
+release_evictable_sounds:
+.C:5bb5  A2 45       LDX SOUND_MAX_INDEX
 check_eligibility:
 ;Check the memory attributes
 ;If non-zero, continue with next sound
-.C:5bb7  BD 51 79    LDA sound_memory_attrs,X
+.C:5bb7  BD 51 79    LDA sound_mem_attrs,X
 .C:5bba  D0 2A       BNE next_sound
 ;Check if the sound is loaded into memory - if not, continue
-.C:5bbc  BD C5 78    LDA sound_rsrc_ptrs_hi,X
+.C:5bbc  BD C5 78    LDA sound_ptr_hi_tbl,X
 .C:5bbf  F0 25       BEQ next_sound
 ;Sounds 3, 4 and 5 are not releaseable
 .C:5bc1  E0 03       CPX #$03
@@ -20823,20 +20823,20 @@ check_eligibility:
 .C:5bcd  8A          TXA
 .C:5bce  48          PHA
 ;Fetch the pointer to the resource into .A/.Y
-.C:5bcf  BD C5 78    LDA sound_rsrc_ptrs_hi,X
+.C:5bcf  BD C5 78    LDA sound_ptr_hi_tbl,X
 .C:5bd2  A8          TAY
-.C:5bd3  BD 0B 79    LDA sound_rsrc_ptrs_lo,X
+.C:5bd3  BD 0B 79    LDA sound_ptr_lo_tbl,X
 ;Save .A in stack
 .C:5bd6  48          PHA
 ;Clear reference to resource
 .C:5bd7  A9 00       LDA #$00
-.C:5bd9  9D 0B 79    STA sound_rsrc_ptrs_lo,X
-.C:5bdc  9D C5 78    STA sound_rsrc_ptrs_hi,X
+.C:5bd9  9D 0B 79    STA sound_ptr_lo_tbl,X
+.C:5bdc  9D C5 78    STA sound_ptr_hi_tbl,X
 ;Restore resource pointer lo as .X
 .C:5bdf  68          PLA
 .C:5be0  AA          TAX
 ;Release the memory in .X/.Y
-.C:5be1  20 03 55    JSR rsrc_release
+.C:5be1  20 03 55    JSR mem_release
 ;Restore sound index and continue
 .C:5be4  68          PLA
 .C:5be5  AA          TAX
@@ -20849,22 +20849,22 @@ next_sound:
 ; Release all scripts eligible for eviction
 ;
 ; Arguments: None
-; Reads:	script_memory_attrs
+; Reads:	script_mem_attrs
 ;			script_rsrc_ptrs
-; Updates:	script_memory_attrs
+; Updates:	script_mem_attrs
 ;			script_rsrc_ptrs
 ;===========================================
-MAX_SCRIPT_INDEX = #$9F
+SCRIPT_MAX_INDEX = #$9F
 
-release_scripts:
-.C:5bea  A2 9F       LDX MAX_SCRIPT_INDEX
+rsrc_release_evictable_scripts:
+.C:5bea  A2 9F       LDX SCRIPT_MAX_INDEX
 check_eligibility:
 ;Check the memory attributes
 ;If non-zero, continue with next script
-.C:5bec  BD D7 7A    LDA script_memory_attrs,X
+.C:5bec  BD D7 7A    LDA script_mem_attrs,X
 .C:5bef  D0 1E       BNE next_script
 ;Check if the script is loaded into memory - if not, continue
-.C:5bf1  BD 97 79    LDA script_rsrc_ptrs_hi,X
+.C:5bf1  BD 97 79    LDA script_ptr_hi_tbl,X
 .C:5bf4  F0 19       BEQ next_script
 ;------------------
 ;We found a loaded script that has a memory attribute of #00
@@ -20872,20 +20872,20 @@ check_eligibility:
 .C:5bf6  8A          TXA
 .C:5bf7  48          PHA
 ;Fetch the pointer to the resource into .A/.Y
-.C:5bf8  BD 97 79    LDA script_rsrc_ptrs_hi,X
+.C:5bf8  BD 97 79    LDA script_ptr_hi_tbl,X
 .C:5bfb  A8          TAY
-.C:5bfc  BD 37 7A    LDA script_rsrc_ptrs_lo,X
+.C:5bfc  BD 37 7A    LDA script_ptr_lo_tbl,X
 ;Save .A in stack
 .C:5bff  48          PHA
 ;Clear reference to resource
 .C:5c00  A9 00       LDA #$00
-.C:5c02  9D 37 7A    STA script_rsrc_ptrs_lo,X
-.C:5c05  9D 97 79    STA script_rsrc_ptrs_hi,X
+.C:5c02  9D 37 7A    STA script_ptr_lo_tbl,X
+.C:5c05  9D 97 79    STA script_ptr_hi_tbl,X
 ;Restore resource pointer lo as .X
 .C:5c08  68          PLA
 .C:5c09  AA          TAX
 ;Release the memory in .X/.Y
-.C:5c0a  20 03 55    JSR rsrc_release
+.C:5c0a  20 03 55    JSR mem_release
 ;Restore script index and continue
 .C:5c0d  68          PLA
 .C:5c0e  AA          TAX
@@ -21352,11 +21352,11 @@ set_script_resource_base_address:
 ;Copy the script resource base address
 ;Add 4 to skip the header 
 .C:5e2a  BE 29 71    LDX resource_index_for_script_slot,Y
-.C:5e2d  BD 37 7A    LDA script_rsrc_ptrs_lo,X
+.C:5e2d  BD 37 7A    LDA script_ptr_lo_tbl,X
 .C:5e30  18          CLC
 .C:5e31  69 04       ADC #$04
 .C:5e33  8D 8A FE    STA current_script_rsrc_base_lo
-.C:5e36  BD 97 79    LDA script_rsrc_ptrs_hi,X
+.C:5e36  BD 97 79    LDA script_ptr_hi_tbl,X
 .C:5e39  69 00       ADC #$00
 .C:5e3b  8D 8B FE    STA current_script_rsrc_base_hi
 .C:5e3e  60          RTS
@@ -21369,9 +21369,9 @@ is_01:
 ;-----------------------------
 ;Copy the room resource address
 .C:5e43  AE 49 71    LDX current_room
-.C:5e46  BD 2A 78    LDA room_rsrc_ptrs_lo,X
+.C:5e46  BD 2A 78    LDA room_ptr_lo_tbl,X
 .C:5e49  8D 8A FE    STA current_script_rsrc_base_lo
-.C:5e4c  BD F3 77    LDA room_rsrc_ptrs_hi,X
+.C:5e4c  BD F3 77    LDA room_ptr_hi_tbl,X
 .C:5e4f  8D 8B FE    STA current_script_rsrc_base_hi
 .C:5e52  60          RTS
 ;-----------------------------
@@ -21384,9 +21384,9 @@ is_00:
 ;-----------------------------
 ;Copy the object resource address
 .C:5e57  BE 29 71    LDX resource_index_for_script_slot,Y
-.C:5e5a  BD 5E 70    LDA object_rsrc_ptrs_lo,X
+.C:5e5a  BD 5E 70    LDA object_ptr_lo_tbl,X
 .C:5e5d  8D 8A FE    STA current_script_rsrc_base_lo
-.C:5e60  BD 8B 70    LDA object_rsrc_ptrs_hi,X
+.C:5e60  BD 8B 70    LDA object_ptr_hi_tbl,X
 .C:5e63  8D 8B FE    STA current_script_rsrc_base_hi
 .C:5e66  60          RTS
 ;===========================================
@@ -21416,7 +21416,7 @@ check_script_resource_index:
 ;We found a matching active script
 ;Decrement script's memory reference count
 .C:5e75  BE 29 71    LDX resource_index_for_script_slot,Y
-.C:5e78  DE D7 7A    DEC script_memory_attrs,X
+.C:5e78  DE D7 7A    DEC script_mem_attrs,X
 ;Clear script resource
 .C:5e7b  A9 00       LDA #$00
 .C:5e7d  99 29 71    STA resource_index_for_script_slot,Y
@@ -21443,7 +21443,7 @@ start_global_script:
 .C:5e8c  20 67 5E    JSR find_and_deactivate_script
 ;Is the script resource already in memory?
 .C:5e8f  A6 15       LDX script_rsrc_index
-.C:5e91  BD 97 79    LDA script_rsrc_ptrs_hi,X
+.C:5e91  BD 97 79    LDA script_ptr_hi_tbl,X
 .C:5e94  D0 07       BNE script_in_memory
 ;It's not in memory, load it
 .C:5e96  8A          TXA
@@ -21452,7 +21452,7 @@ start_global_script:
 script_in_memory:
 ;Increment script's memory refcount
 .C:5e9d  A6 15       LDX script_rsrc_index
-.C:5e9f  FE D7 7A    INC script_memory_attrs,X
+.C:5e9f  FE D7 7A    INC script_mem_attrs,X
 ;Find an available script slot
 .C:5ea2  20 C0 5E    JSR find_available_script_slot
 ;Store resource index for the new script
@@ -22722,7 +22722,7 @@ object_found:
 ;Allocate a block for that size
 .C:62b0  A6 9C       LDX <object_size
 .C:62b2  A4 9D       LDY >object_size
-.C:62b4  20 E4 54    JSR rsrc_alloc
+.C:62b4  20 E4 54    JSR mem_alloc
 ;Save the pointer to the allocated block
 .C:62b7  86 9A       STX <allocated_block
 .C:62b9  84 9B       STY >allocated_block
@@ -22768,9 +22768,9 @@ copy_loop:
 .C:62e0  20 CF 5F    JSR find_free_inventory_slot
 ;Store the pointer to the object block
 .C:62e3  A5 9A       LDA <allocated_block
-.C:62e5  99 5E 70    STA object_rsrc_ptrs_lo,Y
+.C:62e5  99 5E 70    STA object_ptr_lo_tbl,Y
 .C:62e8  A5 9B       LDA >allocated_block
-.C:62ea  99 8B 70    STA object_rsrc_ptrs_hi,Y
+.C:62ea  99 8B 70    STA object_ptr_hi_tbl,Y
 ;Save the object index in the inventory slot
 .C:62ed  A5 97       LDA object_index_copy
 .C:62ef  99 31 70    STA inventory_objects,Y
@@ -23132,7 +23132,7 @@ remove_from_inventory:
 .C:645c  A6 15       LDX <resource_ptr
 .C:645e  A4 16       LDY >resource_ptr
 ;Release the resource
-.C:6460  20 03 55    JSR rsrc_release
+.C:6460  20 03 55    JSR mem_release
 ;Restore inventory slot index from stack
 .C:6463  68          PLA
 .C:6464  AA          TAX
@@ -23140,8 +23140,8 @@ remove_from_inventory:
 .C:6465  A9 00       LDA #$00
 .C:6467  9D 31 70    STA inventory_objects,X
 ;Clear object resource pointer
-.C:646a  9D 8B 70    STA object_rsrc_ptrs_hi,X
-.C:646d  9D 5E 70    STA object_rsrc_ptrs_lo,X
+.C:646a  9D 8B 70    STA object_ptr_hi_tbl,X
+.C:646d  9D 5E 70    STA object_ptr_lo_tbl,X
 exit:
 .C:6470  60          RTS
 ;===========================================
@@ -23366,7 +23366,7 @@ destination_variable = $5f76
 .C:6568  20 98 5F    JSR script_load_operand_bit7
 ;Check bits 6-0 (the sound refcount) - if they are nonzero, the sound is running
 .C:656b  AA          TAX
-.C:656c  BD 51 79    LDA sound_memory_attrs,X
+.C:656c  BD 51 79    LDA sound_mem_attrs,X
 .C:656f  29 7F       AND #$7F
 ;Set the result into the variable
 .C:6571  AE 76 5F    LDX destination_variable
@@ -23444,10 +23444,10 @@ sound_code_ptr_hi = $6622
 
 ;If musics 1 or 2 are loaded in memory, play them
 .C:65c8  A2 01       LDX #$01
-.C:65ca  BD C5 78    LDA sound_rsrc_ptrs_hi,X
+.C:65ca  BD C5 78    LDA sound_ptr_hi_tbl,X
 .C:65cd  D0 16       BNE play_music
 .C:65cf  A2 02       LDX #$02
-.C:65d1  BD C5 78    LDA sound_rsrc_ptrs_hi,X
+.C:65d1  BD C5 78    LDA sound_ptr_hi_tbl,X
 .C:65d4  D0 0F       BNE play_music
 ;Musics 1 and 2 are not loaded
 ;Convert disk side ID to side # (31, 32 -> 1, 2)
@@ -23462,26 +23462,26 @@ sound_code_ptr_hi = $6622
 .C:65e4  AA          TAX
 play_music:
 .C:65e5  8E A3 FE    STX music_index
-.C:65e8  FE 51 79    INC sound_memory_attrs,X
+.C:65e8  FE 51 79    INC sound_mem_attrs,X
 ;Load music index from operand
 .C:65eb  20 98 5F    JSR script_load_operand_bit7
 .C:65ee  48          PHA
 .C:65ef  20 E6 39    JSR load_sound
 .C:65f2  AE A3 FE    LDX music_index
-.C:65f5  DE 51 79    DEC sound_memory_attrs,X
+.C:65f5  DE 51 79    DEC sound_mem_attrs,X
 ;Setup music playback pointers
-.C:65f8  BD C5 78    LDA sound_rsrc_ptrs_hi,X
+.C:65f8  BD C5 78    LDA sound_ptr_hi_tbl,X
 .C:65fb  8D A1 FE    STA <music_to_start_ptr
-.C:65fe  BD 0B 79    LDA sound_rsrc_ptrs_lo,X
+.C:65fe  BD 0B 79    LDA sound_ptr_lo_tbl,X
 .C:6601  8D A2 FE    STA >music_to_start_ptr
 .C:6604  20 76 4C    JSR setup_music_pointers	
 ;Skip header (4 bytes) and compute sound code pointer (inlined)
 .C:6607  AE A3 FE    LDX music_index
-.C:660a  BD 0B 79    LDA sound_rsrc_ptrs_lo,X
+.C:660a  BD 0B 79    LDA sound_ptr_lo_tbl,X
 .C:660d  18          CLC
 .C:660e  69 04       ADC #$04
 .C:6610  8D 21 66    STA <inlined_music_init_code_ptr
-.C:6613  BD C5 78    LDA sound_rsrc_ptrs_hi,X
+.C:6613  BD C5 78    LDA sound_ptr_hi_tbl,X
 .C:6616  69 00       ADC #$00
 .C:6618  8D 22 66    STA >inlined_music_init_code_ptr
 .C:661b  68          PLA
@@ -24392,9 +24392,9 @@ set_variable:
 ;===========================================
 .C:6a5b  20 14 5E    JSR script_read_byte
 .C:6a5e  AA          TAX
-.C:6a5f  BD 51 79    LDA sound_memory_attrs,X		
+.C:6a5f  BD 51 79    LDA sound_mem_attrs,X		
 .C:6a62  09 80       ORA #$80
-.C:6a64  9D 51 79    STA sound_memory_attrs,X
+.C:6a64  9D 51 79    STA sound_mem_attrs,X
 .C:6a67  60          RTS
 ;===========================================
 ;Opcode #D3 - unlock sound
@@ -24402,63 +24402,63 @@ set_variable:
 ;===========================================
 .C:6a68  20 14 5E    JSR script_read_byte
 .C:6a6b  AA          TAX
-.C:6a6c  BD 51 79    LDA sound_memory_attrs,X		
+.C:6a6c  BD 51 79    LDA sound_mem_attrs,X		
 .C:6a6f  29 7F       AND #$7F
-.C:6a71  9D 51 79    STA sound_memory_attrs,X
+.C:6a71  9D 51 79    STA sound_mem_attrs,X
 .C:6a74  60          RTS
 ;===========================================
 ;Opcode #33 - lock script
 ;===========================================
 .C:6a75  20 14 5E    JSR script_read_byte
 .C:6a78  AA          TAX
-.C:6a79  BD D7 7A    LDA script_memory_attrs,X
+.C:6a79  BD D7 7A    LDA script_mem_attrs,X
 .C:6a7c  09 80       ORA #$80
-.C:6a7e  9D D7 7A    STA script_memory_attrs,X
+.C:6a7e  9D D7 7A    STA script_mem_attrs,X
 .C:6a81  60          RTS
 ;===========================================
 ;Opcode #B3 - unlock script
 ;===========================================
 .C:6a82  20 14 5E    JSR script_read_byte
 .C:6a85  AA          TAX
-.C:6a86  BD D7 7A    LDA script_memory_attrs,X
+.C:6a86  BD D7 7A    LDA script_mem_attrs,X
 .C:6a89  29 7F       AND #$7F
-.C:6a8b  9D D7 7A    STA script_memory_attrs,X
+.C:6a8b  9D D7 7A    STA script_mem_attrs,X
 .C:6a8e  60          RTS
 ;===========================================
 ;Opcode #13 - lock costume
 ;===========================================
 .C:6a8f  20 14 5E    JSR script_read_byte
 .C:6a92  AA          TAX
-.C:6a93  BD A3 77    LDA costume_memory_attrs,X
+.C:6a93  BD A3 77    LDA costume_mem_attrs,X
 .C:6a96  09 80       ORA #$80
-.C:6a98  9D A3 77    STA costume_memory_attrs,X
+.C:6a98  9D A3 77    STA costume_mem_attrs,X
 .C:6a9b  60          RTS
 ;===========================================
 ;Opcode #93 - unlock costume
 ;===========================================
 .C:6a9c  20 14 5E    JSR script_read_byte
 .C:6a9f  AA          TAX
-.C:6aa0  BD A3 77    LDA costume_memory_attrs,X
+.C:6aa0  BD A3 77    LDA costume_mem_attrs,X
 .C:6aa3  29 7F       AND #$7F
-.C:6aa5  9D A3 77    STA costume_memory_attrs,X
+.C:6aa5  9D A3 77    STA costume_mem_attrs,X
 .C:6aa8  60          RTS
 ;===========================================
 ;Opcode #4D - lock room
 ;===========================================
 .C:6aa9  20 14 5E    JSR script_read_byte
 .C:6aac  AA          TAX
-.C:6aad  BD BC 77    LDA room_memory_attrs,X
+.C:6aad  BD BC 77    LDA room_mem_attrs,X
 .C:6ab0  09 80       ORA #$80
-.C:6ab2  9D BC 77    STA room_memory_attrs,X
+.C:6ab2  9D BC 77    STA room_mem_attrs,X
 .C:6ab5  60          RTS
 ;===========================================
 ;Opcode #CD - unlock room
 ;===========================================
 .C:6ab6  20 14 5E    JSR script_read_byte
 .C:6ab9  AA          TAX
-.C:6aba  BD BC 77    LDA room_memory_attrs,X
+.C:6aba  BD BC 77    LDA room_mem_attrs,X
 .C:6abd  29 7F       AND #$7F
-.C:6abf  9D BC 77    STA room_memory_attrs,X
+.C:6abf  9D BC 77    STA room_mem_attrs,X
 .C:6ac2  60          RTS
 ;===========================================
 ;Opcode #98 - restart game
@@ -26831,9 +26831,9 @@ copy_item_to_region:
 .C:f554  85 C6       STA >source
 .C:f556  4C 70 F5    JMP exit
 item_in_possession:
-.C:f559  B9 5E 70    LDA object_rsrc_ptrs_lo,Y
+.C:f559  B9 5E 70    LDA object_ptr_lo_tbl,Y
 .C:f55c  85 C5       STA <source
-.C:f55e  B9 8B 70    LDA object_rsrc_ptrs_hi,Y
+.C:f55e  B9 8B 70    LDA object_ptr_hi_tbl,Y
 .C:f561  85 C6       STA >source
 ;Read the object name's offset from offset #0D
 .C:f563  A0 0D       LDY #$0D

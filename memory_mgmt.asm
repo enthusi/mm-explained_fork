@@ -1,9 +1,9 @@
 /*
  * ===========================================
- * Memory Manager — Free-List + Best-Fit + Local Compaction
+ * Memory Manager
  *
  * Overview:
- *   - A singly-linked free list manages variable-size blocks. 
+ *  - A singly-linked free list manages variable-size blocks. 
  * 	- Allocation uses a best-fit scan, optionally splitting the chosen free node. 
  * 	- A localized compaction step ("mem_bubble_used_left") bubbles USED blocks left over the leading
  *   free region to grow contiguous free space. 
@@ -26,34 +26,39 @@
  *   - Size fields are (header+payload) for USED and “bytes-on-last-page/pages” encoding.
  *
  * Public routines:
+ * 	mem_alloc:
+ * 		- Resilient allocator wrapper.
+ *		Given payload size in X:Y, tries best-fit; on failure compacts/coalesces
+ * 		the FREE list and, as a last resort, releases one low-priority asset,
+ * 		then retries with the preserved request size (mem_req_size).
+ *  	Success: Z=0 and X:Y = allocated block header (lo/hi).
+ * 		Failure: Z=1 (no fit). Side effects: FREE list may be reordered/compacted;
+ * 		a low-priority asset may be released by policy.
+ *
+ * 	mem_release:
+ * 		- Release a memory block.
+ * 		Append freed block to FREE list, normalize, coalesce.
+ * 		Input:   X:Y = header pointer of the block being released.
+ * 		Actions: link old tail->next to X:Y; set mem_free_tail := X:Y; set new tail->next := NULL;
+ *      normalize FREE list order by address; coalesce right-adjacent blocks.
+ * 		Output:  mem_released_flag := 1. FREE list may be reordered/compacted; registers clobbered.
+ *
+ * Private routines:
+ * 
  *   mem_alloc_bestfit (X/Y = payload size):
  *     - Computes mem_req_total = payload + 4 (free header size), seeds the scan,
  *       and dispatches to best-fit. Returns X/Y = allocated header on success (Z=0).
  *       On failure (free list empty or no fit), returns Z=1 (X/Y unspecified).
  * 		Used externally by alloc_data.
  *
- *   mem_coalesce_right:
- *     - Merge right-adjacent free nodes in-place: if next == left+left.size,
- *       link-out right and grow left by right.size. Cascades at same left node.
- * 		Used externally by the resource releaser.
+ *   mem_bestfit_select:
+ *     - Best-fit scan over free nodes (ties prefer later). On success sets
+ *       mem_free_cur to winner and calls mem_alloc_from_free.
  *
- *   mem_sort_free_ao (AO pass):
- *     - For each anchor, finds the lowest-address node < anchor_next and swaps
- *       it into anchor_next by pointer rewiring. In-place, O(n^2), non-stable.
- *       Refresh mem_free_head from the stub on exit; update mem_free_tail.
- * 		Used externally by the resource releaser.
+ *   mem_alloc_from_free:
+ *     - Split-or-consume the chosen free node. Split if remainder ≥ 4 bytes;
+ *       otherwise splice out the node. Maintains mem_free_tail.
  *
- *   mem_compact_then_release
- *     - Recovery path when mem_alloc_bestfit fails. Runs address-order sort
- *       (mem_sort_free_ao), coalesces right-adjacent free nodes (mem_coalesce_right),
- *       and compacts by bubbling USED blocks left into the leading FREE region
- *       (mem_bubble_used_left). If still no fit, calls external
- *       release_rsrcs_by_priority and refreshes pointers via update_rsrc_pointers,
- *       then retries best-fit. Loops until allocation succeeds or nothing remains
- *       to release. Returns X/Y = allocated header, Z=0 on success; Z=1 on failure.
- * 		Used externally by alloc_data.
- *
- * Private routines:
  * 	mem_copy_pages
  *     - Copies a block as whole pages plus a tail: first moves total_pages
  *       full 256-byte pages from mem_src→mem_dst, then copies mem_copy_tail
@@ -65,18 +70,28 @@
  *       applies pointer fix-ups, advances mem_dst, and rebuilds the FREE header.
  *       Stops at the first non-adjacent or FREE block. Updates mem_free_head/tail.
  *
+ *   mem_sort_free_ao (AO pass):
+ *     - For each anchor, finds the lowest-address node < anchor_next and swaps
+ *       it into anchor_next by pointer rewiring. In-place, O(n^2), non-stable.
+ *       Refresh mem_free_head from the stub on exit; update mem_free_tail.
+ *
+ *   mem_coalesce_right:
+ *     - Merge right-adjacent free nodes in-place: if next == left+left.size,
+ *       link-out right and grow left by right.size. Cascades at same left node.
+ *
+ *   mem_compact_then_release:
+ *     - Recovery path when mem_alloc_bestfit fails. Runs address-order sort
+ *       (mem_sort_free_ao), coalesces right-adjacent free nodes (mem_coalesce_right),
+ *       and compacts by bubbling USED blocks left into the leading FREE region
+ *       (mem_bubble_used_left). If still no fit, calls external
+ *       release_rsrcs_by_priority and refreshes pointers via update_rsrc_pointers,
+ *       then retries best-fit. Loops until allocation succeeds or nothing remains
+ *       to release. Returns X/Y = allocated header, Z=0 on success; Z=1 on failure.
+ * 
  * 	mem_read_next_ptr
  *     - Utility: reads header +2..+3 (little-endian “next” pointer) from the
  *       block whose header pointer is in mem_hdr_ptr. Returns X/Y = next (hi/lo)
  *       and sets Z=1 if the next pointer is NULL.
- *
- *   mem_bestfit_select:
- *     - Best-fit scan over free nodes (ties prefer later). On success sets
- *       mem_free_cur to winner and calls mem_alloc_from_free.
- *
- *   mem_alloc_from_free:
- *     - Split-or-consume the chosen free node. Split if remainder ≥ 4 bytes;
- *       otherwise splice out the node. Maintains mem_free_tail.
  *
  *   mem_bubble_used_left:
  *     - While USED blocks immediately follow the leading free node, copy each
@@ -100,7 +115,35 @@
  * ===============================================================================
  */
 
+/*
+ * ----------------------------------------
+ * External routines / flags / tables
+ * ----------------------------------------
+ */
+.label update_rsrc_pointers     = $5a89    // subroutine: retarget external pointers for a relocated resource (uses type/index)
+.label release_rsrcs_by_priority = $5ae3   // subroutine: release resources by priority tiers, then retry allocation
+.label release_one_costume = $0
+
 // Invariant: no block headers reside in page $00; null pointers are detected via hi-byte==0
+
+
+/*
+ * ----------------------------------------
+ * mem_alloc vars
+ * ----------------------------------------
+ */
+.label mem_req_size = $5501   // 16-bit requested payload size (bytes, little-endian).
+                               // Contract: allocator treats this as payload bytes; it accounts
+                               // for header bytes internally. Access with <mem_req_size/>mem_req_size.
+
+/*
+ * ----------------------------------------
+ * mem_release vars
+ * ----------------------------------------
+ */
+.label mem_edit_tail = $61    // 16-bit ZP “edit tail” pointer (lo/hi) used while appending a
+                               // freed block to the FREE list. Points at the current tail node
+                               // when writing tail->next and terminating the list (next := NULL).
 
 /*
  * ----------------------------------------
@@ -184,15 +227,6 @@
 
 /*
  * ----------------------------------------
- * External routines / flags / tables
- * ----------------------------------------
- */
-.label update_rsrc_pointers     = $5a89    // subroutine: retarget external pointers for a relocated resource (uses type/index)
-.label release_rsrcs_by_priority = $5ae3   // subroutine: release resources by priority tiers, then retry allocation
-
-
-/*
- * ----------------------------------------
  * Head and Tail of free block list
  * ----------------------------------------
  */
@@ -212,8 +246,181 @@
 .label mem_write_ptr       = $5F      // mem_dst pointer (zp: lo @ $5F, hi @ $60); hi increments after each full page
 
 
-.const SOUND_RESOURCE  = $06
 
+/*===========================================
+ * mem_alloc: allocate block for payload with retries
+ *
+ * Summary:
+ *   Attempts to allocate a block for a payload.
+ *   Tries best-fit first; if that fails, compacts/coalesces the FREE list,
+ *   and as a last resort releases one low-priority asset, then retries.
+ *   The original requested size is preserved across attempts.
+ *
+ * Arguments:
+ *   X/Y                    Requested payload size in bytes (Y:hi/X:lo).
+ * 
+ * State:
+ *   mem_req_size		   	Scratch to preserve the request size for retries.
+ *   FREE list         		Memory manager state used by allocator/compactor.
+ *
+ * Returns:
+ *   Z                          0 on success, 1 on failure (after all attempts).
+ *   X/Y                        On success: pointer to allocated block header (lo/hi).
+ *   Globals                    FREE list may be reordered/compacted; low-prio asset
+ *                              may be released by policy.
+ *   Registers                  Clobbered by helper calls.
+ *
+ * Description:
+ *   1) Save the caller’s requested size in mem_req_size
+ *      (so we can restore it for any retry path).
+ *   2) mem_alloc_bestfit:
+ *        - If it finds a block: sets Z=0 → BNE to success path.
+ *        - Else: Z=1 → try recovery.
+ *   3) mem_compact_then_release:
+ *        - Compacts and coalesces the FREE list. 
+ *			If allocation now fits: Z=0 → BNE to success.
+ *   4) release_one_costume:
+ *        - Frees one low-priority “costume” and restores X:Y from
+ *          mem_req_size, then loops back to step (2).
+ *   5) On success, X:Y holds the allocated block header pointer; RTS.
+ *===========================================
+ */
+* = $54E4	
+mem_alloc:
+        /*
+         * Preserve caller’s requested size:
+         *   X/Y = payload size (bytes) — needed for retries below.
+         */
+        stx <mem_req_size
+        sty >mem_req_size
+
+        /*
+         * First attempt: allocate by best-fit over current free list.
+         * On return: Z=0 success (header ptr in X/Y), Z=1 failure → try recovery.
+         */
+        jsr mem_alloc_bestfit
+        bne mem_alloc_ok          // BNE = Z=0 → success → done
+
+        /*
+         * Recovery step 1: compact + coalesce (and optionally release resources).
+         * On return: Z=0 success (header ptr in X/Y), Z=1 still no fit.
+         */
+        jsr mem_compact_then_release
+        bne mem_alloc_ok          // BNE = Z=0 → success → done
+
+        // Recovery step 2: free one low-priority costume and retry original request.
+        jsr release_one_costume
+
+        // Restore original request size into X/Y and loop back to first attempt.
+        ldx <mem_req_size
+        ldy >mem_req_size
+        jmp mem_alloc
+
+mem_alloc_ok:
+        // Success path: X/Y = allocated block header (little-endian).
+        rts
+
+/*===========================================
+ * mem_release: append freed block to FREE list, normalize, coalesce
+ *
+ * Summary:
+ *   Given a block header pointer in X:Y, splice the block as the new
+ *   tail of the FREE list, terminate it, normalize list order by
+ *   address, and coalesce adjacent nodes. Signals that at least one
+ *   resource was released.
+ *
+ * Arguments:
+ *   X:Y 	              16-bit pointer to the block header being released.
+ *   mem_free_tail        16-bit pointer to current FREE-list tail (lo/hi).
+ *   rsrc_tail_old        ZP scratch; snapshot of old tail (lo/hi).
+ *   mem_edit_tail       ZP scratch; edit pointer to the new tail (lo/hi).
+ *   MEM_HDR_NEXT_LO    Header layout: +2..+3 = next pointer (lo/hi).
+ *   PTR_NULL           Null pointer value written to tail.next.
+ *
+ * Returns:
+ *   Registers                 	Not preserved.
+ *   Globals                   	mem_free_tail := X:Y
+ *                            	old_tail->next := X:Y
+ *                           	new_tail->next := NULL
+ *                            	mem_released_flag := 1
+ *   Flags                     	Clobbered by loads/stores and helper calls.
+ *
+ * Description:
+ *   - Snapshot current tail: rsrc_tail_old := mem_free_tail.
+ *   - Make released block the new tail: mem_free_tail := X:Y.
+ *   - Link old tail → new tail:
+ *       rsrc_tail_old->next := mem_free_tail
+ *       (header: +0..+1 size, +2..+3 next).
+ *   - Set edit pointer and terminate list:
+ *       mem_edit_tail := mem_free_tail
+ *       mem_edit_tail->next := NULL
+ *   - Normalize order by address: jsr mem_sort_free_ao  (O(n^2), non-stable).
+ *   - Coalesce right-adjacent blocks: jsr mem_coalesce_right.
+ *   Note:
+ *     The hi byte for mem_edit_tail is taken from A after linking; if this
+ *     sequence changes, prefer STY mem_edit_tail+1 to avoid stale-A hazards.
+ *===========================================
+ */
+* = $5503
+mem_release:
+        /*
+         * Snapshot current tail of the FREE list so we can splice after it.
+         *   mem_edit_tail := mem_free_tail   (little-endian pointer copy)
+         */
+        lda mem_free_tail
+        sta mem_edit_tail
+        lda mem_free_tail + 1
+        sta mem_edit_tail + 1
+
+        /*
+         * Make the block being released (X=lo, Y=hi) the new FREE tail.
+         *   mem_free_tail := (X,Y)
+         */
+        stx mem_free_tail
+        sty mem_free_tail + 1
+
+        /*
+         * Link old tail → new tail:
+         *   mem_edit_tail->next := mem_free_tail
+         *   Header layout: +0..+1 size (total), +2..+3 next (ptr)
+         */
+        ldy #MEM_HDR_NEXT_LO        // +2 = next.lo
+        lda mem_free_tail
+        sta (mem_edit_tail),Y
+        iny                         // +3 = next.hi
+        lda mem_free_tail + 1
+        sta (mem_edit_tail),Y
+
+        /*
+         * Advance our edit pointer to the newly appended FREE tail:
+         *   mem_edit_tail := mem_free_tail
+         */
+        stx mem_edit_tail              // lo = X (from above)
+        sta mem_edit_tail + 1          // hi = A (still = >mem_free_tail)
+
+        /*
+         * Terminate the list at the new tail:
+         *   mem_edit_tail->next := NULL
+         */
+        lda #PTR_NULL
+        ldy #MEM_HDR_NEXT_LO
+        sta (mem_edit_tail),Y          // next.lo = 0
+        iny
+        sta (mem_edit_tail),Y          // next.hi = 0
+
+        // Normalize FREE list order by address (in-place, O(n^2), non-stable).
+        jsr mem_sort_free_ao
+
+        /*
+         * Coalesce right-adjacent FREE nodes:
+         *   while (next == this + this.size) { this.size += next.size; unlink(next); }
+         */
+        jsr mem_coalesce_right
+
+        // Signal to callers/policies that a block has been released.
+        lda #$01
+        sta rsrc_released_flag
+        rts
 
 /*
  * ===========================================
@@ -1573,11 +1780,11 @@ mem_bubble_used_left:
 		 * A currently holds resource_type, Y holds resource_index.
 		 * ----------------------------------------
 		 */
-		cmp #SOUND_RESOURCE         // resource_type == sound?
+		cmp #RSRC_TYPE_SOUND         // resource_type == sound?
 		bne copy_block_data         // no → skip reload request
 
-		lda sound_memory_attrs,Y    // load usage attribute for this sound instance
-		// Indexing sound_memory_attrs by resource_index.
+		lda sound_mem_attrs,Y    // load usage attribute for this sound instance
+		// Indexing sound_mem_attrs by resource_index.
 		beq copy_block_data         // 0 → not in use → no reload needed
 
 		lda #$01
