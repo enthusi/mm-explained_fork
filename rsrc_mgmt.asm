@@ -1,9 +1,10 @@
 #importonce
 #import "globals.inc"
 #import "constants.inc"
+#import "rsrc_metadata.inc"
 #import "memory_mgmt.asm"
 #import "disk_high_level.asm"
-#import "rsrc_metadata.inc"
+#import "pause.asm"
 
 /*===========================================
  * Private variables & constants

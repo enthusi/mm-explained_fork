@@ -88,6 +88,7 @@
 #import "globals.inc"
 #import "constants.inc"
 #import "disk_low_level.asm"
+#import "pause.asm"
 
 /*
  * ===========================================

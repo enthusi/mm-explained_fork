@@ -47,12 +47,11 @@
 .label current_kid = $FF67
 						
 						
-.label pause_game = $0						
-.label unpause_game = $0						
 .label print_message_wait_for_button = $0 // UI: print message pointed by msg_to_print_ptr, wait for button
 .label release_one_costume = $0
 .label unassign_actor_for_costume = $0
 
 .label costume_y_destination = $ff15
 .label costume_x_destination = $ff2e
+.label game_paused = $1679
 
