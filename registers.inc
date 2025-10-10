@@ -1,5 +1,7 @@
 #importonce
 
+.label vic_border_color  = $D020
+
 .label cia1_pra        	= $DC00   	// PRA — CIA1 Port A data register
                                 /*
                                  * Holds current output values when bits are set as outputs,
