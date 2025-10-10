@@ -55,6 +55,8 @@
  */
 
 #import "registers.inc"
+#import "globals.inc"
+#import "constants.inc"
 
 /*
  * --- CIA2 Port A bit masks (PRA = $DD00) ---
