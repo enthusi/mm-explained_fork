@@ -4,6 +4,7 @@
 .label kbd_keycode         = $30    // ZP: published keycode when ready
 .label joy_state     	   = $33    // ZP: snapshot of joystick mask (bits 0–4)
 .label print_msg_ptr	   = $DA	// ZP: 16-bit pointer to message to be printed (print_message_wait_for_button)
+.label debug_error_code = $DC
 .label kbd_key_ready       = $2061    // flag: 1 when kbd_keycode is valid
 
 // --- Copy/write byte-count accumulator ---
@@ -40,4 +41,18 @@
 .label room_for_character = $FEFC
 .label current_room = $7149
 
+
+.label active_side_id = $fe9c //This represents the desired Side ID (the ID that identifies each of the game's disk sides)
+						//Once disk_ensure_side is called, this parameter is set and execution will not resume until the proper disk side is inserted
+.label current_kid = $FF67
+						
+						
+.label pause_game = $0						
+.label unpause_game = $0						
+.label print_message_wait_for_button = $0 // UI: print message pointed by msg_to_print_ptr, wait for button
+.label release_one_costume = $0
+.label unassign_actor_for_costume = $0
+
+.label costume_y_destination = $ff15
+.label costume_x_destination = $ff2e
 
