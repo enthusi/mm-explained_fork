@@ -19,6 +19,7 @@
 ;------------------------------------------------------------
 */
 .const DISK_ERROR_MSG 			    = $3B81
+.const SIDE_ID_MSG        = $3B59      // “Put in side # and push joystick button.” (in RAM)
 
 
 .const RSRC_TYPE_OBJECT      = $01
@@ -33,3 +34,11 @@
 .const SCRIPT_MAX_INDEX    = $9F       // Highest valid script index
 .const SOUND_MAX_INDEX     = $45       // Highest valid sound index.
 
+
+// --- I/O mapping presets for $01 (processor_port_register) ---
+.const MAP_IO_OFF                 	= $24     // Map RAM under I/O/KERNAL as needed by this program
+.const MAP_IO_ON                   = $25     // Map I/O visible at $D000–$DFFF during IEC transfers
+
+.const COSTUME_DFLT_X_DEST = $14
+.const COSTUME_DFLT_Y_DEST = $3C
+.const COSTUME_HOLDING_ROOM = $2C
