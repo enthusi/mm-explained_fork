@@ -1,12 +1,9 @@
-
+#importonce
 #import "globals.inc"
 #import "constants.inc"
 #import "memory_mgmt.asm"
 #import "disk_high_level.asm"
-
-.label disk_id_check = $0
-.label pause_game = $0
-.label unpause_game = $0
+#import "rsrc_metadata.inc"
 
 /*===========================================
  * Private variables & constants
@@ -34,6 +31,7 @@
 .const PRIORITY_SOUND      = $02    // Eviction dispatch code: try releasing EVICTABLE SOUNDS.
 .const PRIORITY_SCRIPT     = $03    // Eviction dispatch code: try releasing EVICTABLE SCRIPTS.
 .const PRIORITY_WRAP_AT    = $04    // Threshold: if evict_pri_cur ≥ this, set to $FF so INC → $00 (wrap to ROOM).
+
 
 /*-------------------------------------------*/
 
@@ -72,6 +70,23 @@
 .label best_room_idx       = $FD9E  // Index of the current best LRU room candidate.
                                     // 0 is used as a “no candidate” sentinel (scan runs MAX..1).
 
+.label chain_sector = $1d     // ZP: sector (lo)
+.label chain_track  = $1e     // ZP: track  (hi)
+.label saved_room_idx  = $3bdd   // scratch: preserves X across disk_ensure_side
+
+// rsrc_ensure_script_resident
+// rsrc_ensure_sound_resident
+.label script_idx_saved = $19
+.label sound_idx_saved  = $19        
+.label saved_y = $3bdc
+.label rsrc_ptr_lo_tmp  = $19        
+.label rsrc_ptr_hi_tmp  = $1A
+
+// rsrc_ensure_costume_resident
+.label tmp_ptr_lo = $17
+.label tmp_ptr_hi = $18
+.label costume_idx_saved = $15
+
 /*===========================================================
  * rsrc_load_from_disk: load resource, verify checksum, and stage header
  *
@@ -100,7 +115,7 @@
  * Description:
  *   1) Pause game; seek to header start.
  *   2) Copy header into rsrc_hdr_scratch; validate header sentinel == 0.
- *      If not zero: run disk_id_check and retry from the top.
+ *      If not zero: run disk_ensure_side and retry from the top.
  *   3) Allocate memory for rsrc_total_bytes; publish result in rsrc_data_ptr.
  *   4) Seek stream to the payload start and copy rsrc_total_bytes bytes to rsrc_data_ptr.
  *   5) Prepare checksum:
@@ -150,7 +165,7 @@ rsrc_load_from_disk:
          */
         lda rsrc_hdr_scratch + RSRC_DHDR_OFF_SENTINEL
         beq allocate_payload
-        jsr disk_id_check
+        jsr disk_ensure_side
         jmp rsrc_load_from_disk
 
 		/* ----------------------------------------
@@ -331,7 +346,6 @@ dec_rem_lo:
 retry_copy:
         // Re-read the raw data from disk, then recompute and re-validate checksum.
         jmp copy_payload_from_disk
-
 /*===========================================
  * rsrc_hdr_init (section): write resource header and return data pointer
  *
@@ -386,8 +400,6 @@ rsrc_hdr_init:
 		// Unpause game
         jsr unpause_game
         rts
-		
-		
 /*===========================================
  * rsrc_update_ptr: publish rsrc_ptr into per-type tables (used after block relocation)
  *
@@ -426,9 +438,7 @@ rsrc_hdr_init:
  *   - NOTE (bug/placeholder): if none match, current code jumps to
  *     rsrc_evict_one_by_priority; this should trap/halt instead.
  *===========================================*/
-
 * = $5A89
-
 rsrc_update_ptr:
         // Dispatch by resource_type in Y. Each test label *checks* a value and falls through
         // to the next check when not equal. On match, write table[X] := rsrc_ptr and RTS.
@@ -535,7 +545,6 @@ test_type_sound:
  *   4) If evict_pri_cur != evict_pri_start → continue dispatch loop.
  *      Else return #$00 (no release this cycle).
  *===========================================*/
-
 * = $5AE3
 rsrc_evict_one_by_priority:
         // Initialize: assume no release this pass (flag := #$00).
@@ -652,72 +661,79 @@ wrap_check_no_release:
  *===========================================*/
 * = $5B38
 rsrc_release_evictable_room_lru:
-        lda #$00
-        sta best_attr           // best-so-far “staleness” score (0 = none yet)
-        sta best_room_idx           // best-so-far room index (0 used as “no candidate” sentinel)
-        ldx #ROOM_MAX_INDEX           // start at highest index; loop scans X down to 1 (index 0 is not visited)
-
+        lda #$00                        // A := 0 (initializer for fields below)
+        sta best_attr                   // clear best LRU “staleness” score (0 ⇒ no candidate yet)
+        sta best_room_idx               // clear best room index (0 used as “no candidate” sentinel)
+        ldx #ROOM_MAX_INDEX             // start scan at highest room index; loop will DEX down to 1 (index 0 skipped)
+		
 scan_room:
-        // Must be loaded: hi byte non-zero ⇒ pointer is valid.
-        // BEQ takes the “not loaded” path (Z=1 when hi==0) → skip.
+        // Residency gate — only loaded rooms can be evicted:
+        // ptr.hi != 0 ⇒ resident; ptr.hi == 0 ⇒ not loaded → skip.
+        // BEQ branches when Z=1 (A==0).
         lda room_ptr_hi_tbl,x
         beq advance_room
 
-        // Must not be locked: attr bit7 set (negative) ⇒ locked → skip.
-        // BMI branches when N=1 (bit7 set).
-        lda room_mem_attrs,x
-        bmi advance_room
+        // Lock gate — skip rooms marked locked (bit7 set):
+        // BMI branches when N=1 (bit7 of A set).
+        lda room_mem_attrs,x              // A := attributes for room X
+        bmi advance_room                  // locked (bit7=1) → ineligible
 
-        // Evictable only if attr != 0. If attr == 0 → skip (in use / pinned / fresh).
+        // Eligibility gate — attribute must be non-zero to consider for eviction.
+        // CMP #$00 sets Z=1 when A==0 → BEQ skip (in use / pinned / fresh).
         cmp #$00
         beq advance_room
 
-        // LRU selection: prefer strictly larger attr (older/staler).
-        // CMP sets C=0 on a<b → BCC skip; Z=1 on a==b → BEQ skip; only a>b selects.
+        // LRU selection — prefer strictly larger attr (older/staler):
+        // After CMP best_attr:
+        //   A < best_attr → C=0  ⇒ BCC skip
+        //   A = best_attr → Z=1  ⇒ BEQ skip
+        //   A > best_attr → C=1,Z=0 → falls through (new candidate)
         cmp best_attr
         bcc advance_room
         beq advance_room
 
-        // New best candidate: remember its score and index.
+        // Promote this room as the current best LRU candidate:
+        // save its staleness score (A) and its index (X).
         sta best_attr
         stx best_room_idx
 
 advance_room:
-        dex                             // next candidate (X := X-1)
-        bne scan_room           		// continue while X != 0  (note: index 0 not checked)
-                                        // fallthrough when X==0 → selection phase
+        dex                               // examine next room: X := X-1
+        bne scan_room                     // loop while X != 0 (index 0 intentionally skipped)
+                                          // fall through when X == 0 → selection phase
 
-        // If no candidate was found, best_room_idx is still 0 → return.
+        // Selection phase: if no candidate was found, best_room_idx remains 0 → nothing to evict.
         lda best_room_idx
-        bne evict_room_candidate        // non-zero ⇒ have a candidate
-        rts
+        bne evict_room_candidate          // have a candidate → proceed to eviction
+        rts                               // none found → return without changes
 
 evict_room_candidate:
-        ldx best_room_idx             // X := chosen room index
+        ldx best_room_idx                 // X := selected (LRU) room index
 
-        // Form (X=ptr.lo, Y=ptr.hi) for mem_release.
-        // Load hi first, move to Y; then load lo and stash on stack to TAX later.
+        // Prepare mem_release arguments (expects X=ptr.lo, Y=ptr.hi):
+        //   - Load hi first and move to Y
+        //   - Load lo and park it on the stack (we’ll TAX it after clearing refs)
         lda room_ptr_hi_tbl,x
-        tay                             // Y := ptr.hi
+        tay                               // Y := ptr.hi
         lda room_ptr_lo_tbl,x
-        pha                             // save ptr.lo temporarily
+        pha                               // push ptr.lo (will restore → X later)
 
-        // Clear table reference before freeing to avoid dangling pointers.
+        // Proactively drop table references to avoid dangling/stale pointers elsewhere
         lda #$00
-        sta room_ptr_hi_tbl,x
-        sta room_ptr_lo_tbl,x
+        sta room_ptr_hi_tbl,x             // mark not-resident: hi := 0
+        sta room_ptr_lo_tbl,x             // mark not-resident: lo := 0
 
-        // Clear room memory attributes now that it’s being evicted.
+        // Mark attributes cleared for the evicted room
         lda #$00
         sta room_mem_attrs,x
 
-        // Restore ptr.lo into X (mem_release expects X=lo, Y=hi).
-        pla
-        tax
+        // Recover saved ptr.lo and place it in X for mem_release (expects X=lo, Y=hi).
+        pla                               // A := saved ptr.lo (pushed earlier)
+        tax                               // X := ptr.lo
 
-        // Free the block at X:lo, Y:hi. Helper may clobber flags/regs.
+        // Free the block at (X=lo, Y=hi). Callee may clobber A/X/Y and flags.
         jsr mem_release
-        rts
+        rts                               // done: room entry cleared and memory released
 /*===========================================
  * rsrc_release_one_evictable_costume: free one eligible costume
  *
@@ -760,49 +776,51 @@ evict_room_candidate:
  *===========================================*/
 * = $5B84
 rsrc_release_one_evictable_costume:
-        ldx #COSTUME_MAX_INDEX        // start at highest costume index; scan downward (X := max…0)
+        ldx #COSTUME_MAX_INDEX        // start from highest costume index; iterate X downward
 
 scan_costume:
-        // Must be loaded: hi byte non-zero ⇒ pointer is valid.
-        // BEQ branches on Z=1 when hi==0 ⇒ not loaded → skip.
+        // Residency gate — only loaded costumes can be freed:
+        // ptr.hi != 0 ⇒ resident. LDA sets Z=1 when A==0 ⇒ BEQ → not loaded → skip.
         lda costume_ptr_hi_tbl,x
         beq advance_costume
 
-        // Must not belong to the current room: if room_for_character[X] == current_room,
-        // the costume is in use. CMP sets Z=1 when equal; BEQ → skip.
+        // Usage gate — skip costumes currently in the active room:
+        // room_for_character[X] == current_room ⇒ in use. CMP sets Z=1 on equal ⇒ BEQ skip.
         lda room_for_character,x
         cmp current_room
         beq advance_costume
 
-        // Eviction policy: attrs == 0 ⇒ evictable. BNE (Z=0) means non-zero attrs → keep.
+        // Policy gate — only idle/unpinned costumes are evictable:
+        // costume_mem_attrs[X] == 0 ⇒ eligible. BNE (Z=0) ⇒ non-zero attrs → skip.
         lda costume_mem_attrs,x
         bne advance_costume
 
-        // Prepare mem_release(X=ptr.lo, Y=ptr.hi); preserve loop index across the call.
-        // Save X (index), load Y from ptr.hi, stash ptr.lo on stack to TAX later.
-        txa
-        pha                              // save index
+        // Set up mem_release(X=ptr.lo, Y=ptr.hi) while preserving the scan index.
+        // We push (index, ptr.lo) so we can (1) restore X after the free and
+        // (2) TAX ptr.lo after clearing table refs below.
         lda costume_ptr_hi_tbl,x
-        tay                              // Y := ptr.hi (mem_release convention)
+        tay                               // Y := ptr.hi (mem_release calling convention)
         lda costume_ptr_lo_tbl,x
-        pha                              // save ptr.lo; will TAX after clearing refs
+        pha                               // push ptr.lo; will TAX after clearing refs
 
-        // Clear table references *before* freeing to avoid dangling pointers.
+        // Clear table references *before* freeing to avoid dangling/stale pointers.
+        // Mark "not resident" by zeroing both bytes.
         lda #$00
-        sta costume_ptr_lo_tbl,x
-        sta costume_ptr_hi_tbl,x
+        sta costume_ptr_lo_tbl,x          // ptr.lo := 0
+        sta costume_ptr_hi_tbl,x          // ptr.hi := 0
+		// Clear memory attributes
+		sta costume_mem_attrs,X
+        // Restore saved ptr.lo → X for mem_release (expects X=lo, Y=hi).
+        pla                               // A := saved ptr.lo
+        tax                               // X := ptr.lo
 
-        // Restore ptr.lo into X for the free call.
-        pla
-        tax
-
-        // Free the block at X:lo, Y:hi (helper may clobber flags/regs).
+        // Free the block at (X=lo, Y=hi). Callee may clobber A/X/Y/flags.
         jsr mem_release
-        rts                               // done after freeing one costume
+        rts                               
 
 advance_costume:
-        dex                               // next candidate (X := X-1)
-        bne scan_costume             // Z=0 → more to scan; Z=1 → finished
+        dex                               // X := X-1 → next candidate
+        bne scan_costume                  // Z=0 ⇒ more to scan; Z=1 ⇒ finished
         rts
 /*===========================================
  * rsrc_release_evictable_sounds: free all evictable sounds
@@ -842,55 +860,58 @@ advance_costume:
  *===========================================*/
 * = $5BB5
 rsrc_release_evictable_sounds:
-        ldx #SOUND_MAX_INDEX          // begin at highest sound index; scan downward
+        ldx #SOUND_MAX_INDEX          // start from the highest sound index; iterate X downward
 
 scan_sound:
-        // Eviction policy: only sounds with attrs == 0 are evictable.
-        // LDA sets Z=1 when value==0; BNE branches on Z=0 → non-zero attrs → keep.
+        // Policy gate — only idle/unpinned sounds are evictable:
+        // sound_mem_attrs[X] == 0  ⇒ eligible
+        // LDA sets Z=1 when A==0; BNE (Z=0) ⇒ non-zero attrs → skip.
         lda sound_mem_attrs,x
-        bne advance_sound                // not evictable → skip
+        bne advance_sound              // in use/locked → not eligible
 
-        // Must be loaded: pointer hi byte non-zero indicates a valid in-memory resource.
-        // BEQ on Z=1 → not loaded → skip.
+        // Residency gate — only loaded sounds can be freed:
+        // ptr.hi != 0 ⇒ resident; ptr.hi == 0 ⇒ not loaded.
+        // BEQ (Z=1) when hi==0 → skip.
         lda sound_ptr_hi_tbl,x
-        beq advance_sound                // nothing to release
+        beq advance_sound              // not resident → nothing to release
 
-        // Skip protected sounds (reserved/non-evictable content).
-        // CPX compares X with the literal; BEQ when equal → skip.
-        cpx #SOUND_PROTECT_1
+        // Protection gate — reserved sounds must never be evicted.
+        // CPX sets Z=1 when X == IMM; BEQ branches on Z=1 → skip eviction on match.
+        cpx #SOUND_PROTECT_1        
+        beq advance_sound           // yes → keep; do not evict
+        cpx #SOUND_PROTECT_2        
         beq advance_sound
-        cpx #SOUND_PROTECT_2
-        beq advance_sound
-        cpx #SOUND_PROTECT_3
+        cpx #SOUND_PROTECT_3        
         beq advance_sound
 
-        // Prepare mem_release(X=ptr.lo, Y=ptr.hi) and preserve loop index across the call.
-        txa                           // save current index
-        pha
+        // Set up call to mem_release(X=ptr.lo, Y=ptr.hi) while preserving the scan index.
+        txa                               // A := current sound index (copy of X)
+        pha                               // push index so we can restore it after freeing
         lda sound_ptr_hi_tbl,x
-        tay                           // Y := ptr.hi (mem_release calling convention)
+        tay                               // Y := ptr.hi (mem_release calling convention)
         lda sound_ptr_lo_tbl,x
-        pha                           // stash ptr.lo; will TAX after clearing table refs
+        pha                               // stash ptr.lo on stack; will TAX after clearing refs
 
-        // Clear table references *before* freeing to avoid dangling pointers.
+        // Drop table references *before* freeing to avoid dangling/stale pointers elsewhere.
+        // Order matters: clear both lo/hi to mark "not resident" prior to mem_release.
         lda #$00
-        sta sound_ptr_lo_tbl,x
-        sta sound_ptr_hi_tbl,x
+        sta sound_ptr_lo_tbl,x            // ptr.lo := 0
+        sta sound_ptr_hi_tbl,x            // ptr.hi := 0
 
-        // Restore ptr.lo into X for the free call.
-        pla
-        tax
+        // Restore saved ptr.lo → X for mem_release (expects X=lo, Y=hi).
+        pla                               // A := saved ptr.lo
+        tax                               // X := ptr.lo
 
-        // Free the block at X:lo, Y:hi (helper may clobber flags/regs).
+        // Free the block at (X=lo, Y=hi). Callee may clobber A/X/Y/flags.
         jsr mem_release
 
-        // Restore loop index and continue scanning.
-        pla
-        tax
+        // Recover the loop index and continue scanning candidates.
+        pla                               // A := saved sound index
+        tax                               // X := sound index
 
 advance_sound:
-        dex                          // next candidate (X := X-1)
-        bne scan_sound		         // Z=0 → more to scan; Z=1 → finished
+        dex                               // X := X-1 → next candidate
+        bne scan_sound                    // Z=0 ⇒ more to scan; Z=1 ⇒ finished
         rts
 /*===========================================
  * rsrc_release_evictable_scripts: free all evictable scripts
@@ -925,48 +946,530 @@ advance_sound:
  *   - Clear table pointers *before* freeing to avoid dangling references.
  *   - Restore index and continue scanning until all candidates processed.
  *===========================================*/
-
 * = $5BEA
 rsrc_release_evictable_scripts:
-        ldx #SCRIPT_MAX_INDEX        // start at highest script index; scan downward
+        ldx #SCRIPT_MAX_INDEX        // start from highest script index; iterate X downward
 
 scan_script:
-        // Eviction policy: only scripts with attrs == 0 are evictable.
-        // LDA sets Z=1 iff value==0; BNE branches on Z=0 → non-zero attrs → keep.
+        // Policy gate — must be idle/unpinned to evict:
+        // attr == 0 ⇒ evictable; attr != 0 ⇒ keep.
+        // LDA sets Z=1 when A==0; BNE (Z=0) → non-zero attrs → skip.
         lda script_mem_attrs,x
-        bne advance_script              // not evictable → skip
+        bne advance_script           // in use/locked → not eligible
 
-        // Must be loaded: hi byte of pointer is non-zero when present.
-        // BEQ branches on Z=1 → not loaded → skip.
+        // Residency gate — only loaded scripts can be freed:
+        // pointer.hi != 0 ⇒ in memory; pointer.hi == 0 ⇒ not loaded.
+        // BEQ (Z=1) when hi==0 → skip.
         lda script_ptr_hi_tbl,x
-        beq advance_script              // no resource to release
+        beq advance_script           // not resident → nothing to release
 
-        // Prepare mem_release(X=lo, Y=hi). Preserve loop index across the call.
-        txa
-        pha                          // save script index (X) on stack
+        // Set up for mem_release(X=ptr.lo, Y=ptr.hi) and keep loop index intact.
+        txa                               // A := script index (copy of X)
+        pha                               // push index to stack → restore after free
         lda script_ptr_hi_tbl,x
-        tay                          // Y := ptr.hi (mem_release convention)
+        tay                               // Y := ptr.hi (mem_release calling convention)
         lda script_ptr_lo_tbl,x
-        pha                          // save ptr.lo; will TAX after clearing refs
+        pha                               // stash ptr.lo on stack; will TAX after clearing refs
 
-        // Drop table references before freeing to avoid stale/dangling pointers.
+        // Clear table references *before* freeing to prevent dangling/stale pointers.
         lda #$00
-        sta script_ptr_lo_tbl,x
-        sta script_ptr_hi_tbl,x
+        sta script_ptr_lo_tbl,x           // ptr.lo := 0 (not resident)
+        sta script_ptr_hi_tbl,x           // ptr.hi := 0
 
-        // Restore ptr.lo into X for the free call.
-        pla
-        tax
+        // Restore ptr.lo into X for mem_release (expects X=lo, Y=hi).
+        pla                               // A := saved ptr.lo
+        tax                               // X := ptr.lo
 
-        // Free the block at X:lo, Y:hi (helper may clobber flags/regs).
+        // Free the block at (X=lo, Y=hi). Callee may clobber A/X/Y/flags.
         jsr mem_release
 
-        // Restore loop index and continue scanning.
-        pla
-        tax
+        // Restore loop index (saved before the free) and continue scan.
+        pla                               // A := saved script index
+        tax                               // X := script index
 
 advance_script:
-        dex                         // next candidate (X := X-1)
-        bne scan_script         	// Z=0 → more to scan; Z=1 → finished
+        dex                               // X := X-1 → next candidate
+        bne scan_script                   // more to scan? (Z=0) → loop; else done
         rts
+/*===========================================
+ * room_disk_chain_prepare: set up sector chain for room load
+ *
+ * Summary:
+ *   Ensures the correct disk side is active for the requested room,
+ *   computes the (track, sector) pair for that room, and initializes
+ *   the disk sector chain so the stream is ready for rsrc_load_from_disk.
+ *
+ * Arguments:
+ *   X = room index              Index into per-room disk tables.
+ *
+ * Returns:
+ *   (none)                      Disk stream positioned via disk_init_chain.
+ *   Clobbers                    A, X, Y.
+ *
+ * Description:
+ *   - If the current disk side doesn’t match active_side_id, call
+ *     disk_ensure_side (X is preserved across the call via temp_index).
+ *   - Offset into room_sec_trk_tbl by (room_index * 2)
+ *     to fetch sector (lo) and track (hi).
+ *   - Call disk_init_chain with X=sector, Y=track.
+ *===========================================*/
+* = $3ABD
+room_disk_chain_prepare:
+        // Side OK fast-path: if the drive’s active side matches the room’s required side, skip change.
+        lda room_disk_side_tbl,x          // A := required side ID for room X
+        cmp active_side_id                // compare against currently active side
+        beq side_ready                    // equal → side already correct
+
+        // Side mismatch: preserve X, switch/verify the correct side, then restore X.
+        stx saved_room_idx                // save room index across helper
+        jsr disk_ensure_side              // ensure required side is mounted (may prompt/pause)
+        ldx saved_room_idx                // restore room index
+
+side_ready:
+        // Index into room_sec_trk_tbl: each entry is a 2-byte pair [SECTOR, TRACK].
+        // Double the room index (stride = 2) via TXA/ASL, then TAX to get the byte offset.
+        txa
+        asl                               // A := room_idx * 2  (carry ignored)
+        tax                               // X := byte index into pair table
+
+        // Legacy sanity check: (sector | track) != 0 ?
+        // Control flow is effectively unchanged—the next label is fetch_sector_track
+        // either way. Retained to mirror the original code.
+        lda room_sec_trk_tbl+ROOM_ST_OFF_SECTOR,x   // byte 0: sector
+        ora room_sec_trk_tbl+ROOM_ST_OFF_TRACK,x    // byte 1: track
+        bne fetch_sector_track
+
+fetch_sector_track:
+        // Load the per-room disk location pair [SECTOR, TRACK] from the table.
+        lda room_sec_trk_tbl+ROOM_ST_OFF_SECTOR,x   // sector for room X
+        sta chain_sector                            // stage for API: X := sector
+        lda room_sec_trk_tbl+ROOM_ST_OFF_TRACK,x    // track for room X
+        sta chain_track                             // stage for API: Y := track
+
+        // Initialize the disk chain at (track, sector).
+        // disk_init_chain expects X=sector, Y=track.
+        ldx chain_sector
+        ldy chain_track
+        jsr disk_init_chain                         // stream := T=Y, S=X
+        rts
+/*===========================================
+ * rsrc_ensure_script_resident — ensure a script is resident; load from disk on miss
+ *
+ * Summary:
+ *   Fast path: if the script at index A is already resident (ptr.hi ≠ 0),
+ *   return immediately. Slow path: find the owning room, prepare the disk
+ *   chain for that room, choose the correct sector/offset tables based on
+ *   the script’s scope bit (index bit7), program the stream (read_offset /
+ *   sector_step), set resource_type=SCRIPT, load from disk, and publish the
+ *   returned data pointer into the script pointer tables.
+ *
+ * Arguments:
+ *   A                      Script resource index (bit7 encodes scope: 0=global, 1=room).
+ *   Y                      Caller-provided value (saved/restored only on slow path).
+ *
+ * Returns:
+ *   On slow path:          X:Y = data pointer; tables updated for this script.
+ *   On fast path:          RTS as soon as ptr.hi ≠ 0 (Y is NOT restored).
+ *
+ * Reads:
+ *   room_for_script[X]     Owning room index for script X.
+ *   global_script_disk_loc_tbl[2X] / global_script_sector_index[2X]
+ *   room_script_disk_loc_tbl[2X] / room_script_sector_index[2X]
+ *
+ * Writes:
+ *   script_ptr_lo_tbl[script_index], script_ptr_hi_tbl[script_index]
+ *   rsrc_read_offset, rsrc_sector_step, resource_type
+ *
+ * Clobbers:
+ *   A, X, Y (Y restored on slow path only), flags, temps (script_idx_saved/temp_2/saved_y).
+ *
+ * Notes:
+ *   - The ASL on the script index doubles it for 2-byte tables and also captures
+ *     the original bit7 into C: C=0 ⇒ global script; C=1 ⇒ room script.
+ *   - Fast path does NOT restore Y; callers must not rely on Y preservation when
+ *     the script is already resident.
+ *===========================================*/
+* = $3A29
+rsrc_ensure_script_resident:
+        /*----------------------------------------
+         * Fast path: residency check
+         *  - We consider a script "resident" if its pointer hi-byte ≠ 0.
+         *  - If resident, return immediately (note: Y is NOT restored on this path).
+         *---------------------------------------*/
+        sty saved_y                        // Save caller's Y for the slow path; may not be restored on early return
+        sta resource_index                 // Remember script index for the later publish step after load
+        tax                                // X := script index (for table lookups below)
+        lda script_ptr_hi_tbl,x            // Load hi byte of script data pointer; Z=1 iff value == 0 (not resident)
+        beq script_cache_miss              // Not resident → take slow path
+        rts                                // Already resident → early exit (Y intentionally left as-is)
+
+script_cache_miss:
+        /*----------------------------------------
+         * Resolve owning room and prepare disk chain
+         *  - Room needed to choose correct disk side/chain before streaming the script.
+         *---------------------------------------*/
+        stx script_idx_saved               // Preserve original script index across the room lookup
+        lda script_room_idx_tbl,x          // A := owning room index for this script
+        tax                                // X := room index (parameter for disk-chain prep)
+        jsr room_disk_chain_prepare        // Ensure correct disk side; seed/position sector chain for this room
+
+        /*----------------------------------------
+         * Program stream position (offset + sector) by scope
+         *  - Each table entry is 2 bytes: [offset-within-sector, sector-index].
+         *  - ASL doubles the script index for 2-byte entries and shifts original bit7 into C:
+         *      C=0 ⇒ global-scoped script, C=1 ⇒ room-scoped script.
+         *---------------------------------------*/
+        lda script_idx_saved               // A := script index (bit7 encodes scope)
+        asl                                // A := 2 * index; C := original bit7 (scope flag)
+        tax                                // X := byte index into pair table (offset/sector)
+        bcc scope_global_script            // If C=0 → use GLOBAL tables; else fall through to ROOM tables
+
+        // Room-scoped script — use per-room disk-location table [OFF, SEC]
+        lda room_script_disk_loc_tbl,x     // load OFF (byte 0): read offset within sector
+        sta rsrc_read_offset               // set stream byte offset
+        lda room_script_disk_loc_tbl+1,x   // load SEC (byte 1): sector index in chain
+        sta rsrc_sector_idx                // set sector index
+        jmp load_script_from_disk
+
+scope_global_script:
+        // Global-scoped script — use global disk-location table [OFF, SEC]
+        lda global_script_disk_loc_tbl,x   // load OFF (byte 0): read offset within sector
+        sta rsrc_read_offset               // set stream byte offset
+        lda global_script_disk_loc_tbl+1,x // load SEC (byte 1): sector index in chain
+        sta rsrc_sector_idx                // set sector index
+
+
+load_script_from_disk:
+        /*----------------------------------------
+         * Load & publish the script payload pointer
+         *  - Tell loader the class: resource_type := SCRIPT
+         *  - rsrc_load_from_disk returns X=ptr.lo, Y=ptr.hi
+         *  - Publish that pointer into script_ptr_*_tbl[resource_index]
+         *---------------------------------------*/
+        lda #RSRC_TYPE_SCRIPT              // Select resource class for the loader
+        sta resource_type
+        jsr rsrc_load_from_disk            // → X=payload.lo, Y=payload.hi (A/flags clobbered)
+
+        // Stash returned pointer bytes before reusing Y as an index
+        stx rsrc_ptr_lo_tmp              // save lo
+        sty rsrc_ptr_hi_tmp              // save hi
+        ldy resource_index                 // Y := original script index (table row)
+
+        // Publish pointer to tables[script_index]
+        lda rsrc_ptr_lo_tmp
+        sta script_ptr_lo_tbl,y            // write lo byte
+        lda rsrc_ptr_hi_tmp
+        sta script_ptr_hi_tbl,y            // write hi byte
+
+        // Restore caller’s Y saved on the miss path (fast path never saves/restores Y)
+        ldy saved_y
+        rts
+/*===========================================
+ * rsrc_ensure_sound_resident: ensure a sound resource is resident; load and publish if missing
+ *
+ * Summary:
+ *   Given a sound index in A, returns immediately if the sound is already
+ *   resident (pointer table non-zero). Otherwise, selects the correct disk
+ *   side/chain from the owning room, programs the disk stream position using
+ *   a 2-byte disk-location entry (offset + sector), loads the sound via the
+ *   generic resource loader, and publishes the resulting pointer to the
+ *   sound pointer tables.
+ *
+ * Arguments:
+ *   A                        Sound resource index (0..N).
+ *
+ * Uses / Globals:
+ *   sound_room_idx_tbl[X]        Owning room index for sound X (selects disk side).
+ *   sound_disk_loc_tbl       2 bytes/entry: +0 offset-in-sector, +1 sector index.
+ *   sound_ptr_lo_tbl[Y]      Published with returned ptr.lo.
+ *   sound_ptr_hi_tbl[Y]      Published with returned ptr.hi.
+ *   resource_type            Set to RSRC_TYPE_SOUND prior to load.
+ *   room_disk_chain_prepare  Ensures active disk side; seeds track/sector chain.
+ *   rsrc_load_from_disk      Performs the stream copy; returns X=ptr.lo, Y=ptr.hi.
+ *
+ * Returns:
+ *   Pointer                  Not returned in registers; published to tables instead.
+ *   Registers                A/X clobbered; Y preserved (fast path leaves Y unchanged,
+ *                            slow path restores Y from saved_y). Flags clobbered.
+ *
+ * Description:
+ *   1) Fast path: X := A; if sound_ptr_hi_tbl[X] ≠ 0 → already loaded → RTS.
+ *   2) Miss path:
+ *        - Save sound index; X := sound_room_idx_tbl[index]; jsr room_disk_chain_prepare.
+ *        - X := 2*index; read disk-location pair:
+ *            rsrc_read_offset := disk_loc[+0]; rsrc_sector_idx := disk_loc[+1].
+ *        - resource_type := RSRC_TYPE_SOUND; jsr rsrc_load_from_disk → X:Y pointer.
+ *        - Publish to sound_ptr_{lo,hi}_tbl[resource_index]; restore Y; RTS.
+ *===========================================*/
+* = $39E6
+rsrc_ensure_sound_resident:
+        // Save caller’s Y only for the slow path (publish step below).
+        // NOTE: On the fast path we return without restoring Y by design.
+        sty saved_y
+
+        // Resource index arrives in A:
+        //   - keep a copy for later publishes (resource_index)
+        //   - X := index for table lookups (sound_ptr_*_tbl[])
+        sta resource_index
+        tax
+
+        // Fast-path residency check:
+        //   sound_ptr_hi_tbl[X] != 0  ⇒ already resident (in-memory)
+        //   LDA sets Z=1 iff A==0; BEQ takes the miss path when not loaded.
+        lda sound_ptr_hi_tbl,x
+        beq sound_cache_miss
+        rts                               // hit: nothing to do (Y intentionally not restored)
+
+		/*---------------------------------------
+		 * Cache miss: prepare disk stream
+		 *--------------------------------------*/
+sound_cache_miss:
+        stx sound_idx_saved                         // save sound index (X) for later table writes
+        lda sound_room_idx_tbl,x               // A := owning room index for this sound
+        tax                                // X := room index (for disk-side selection)
+        jsr room_disk_chain_prepare        // ensure correct disk side; seed track/sector chain
+
+        // Re-select the sound’s disk-location entry:
+        //   Each entry is 2 bytes: [offset-within-sector, sector-index].
+        //   Double the original sound index to get the byte offset.
+        lda sound_idx_saved
+        asl                                // A := 2 * sound_index (CARRY unused)
+        tax                                // X := table byte offset (points at offset field)
+
+        // Program the disk stream position from the 2-byte location pair:
+        //   rsrc_read_offset := byte offset within the current sector
+        //   rsrc_sector_idx := sector index within the chain
+        lda sound_disk_loc_tbl,x
+        sta rsrc_read_offset
+        lda sound_disk_loc_tbl + 1,x
+        sta rsrc_sector_idx
+
+        // Identify resource class and perform the load:
+        //   resource_type := 06 (SOUND)
+        //   rsrc_load_from_disk → X=ptr.lo, Y=ptr.hi (payload pointer)
+        lda #RSRC_TYPE_SOUND                          
+        sta resource_type
+        jsr rsrc_load_from_disk
+
+        // Publish the returned pointer into the sound tables at the original index.
+        // Stash X/Y temporarily because we need Y to address by resource_index.
+        stx rsrc_ptr_lo_tmp                         // rsrc_ptr_lo_tmp := ptr.lo
+        sty rsrc_ptr_hi_tmp                         // rsrc_ptr_hi_tmp := ptr.hi
+        ldy resource_index                 // Y := sound index used for tables
+        lda rsrc_ptr_lo_tmp
+        sta sound_ptr_lo_tbl,y             // table[Y].lo := ptr.lo
+        lda rsrc_ptr_hi_tmp
+        sta sound_ptr_hi_tbl,y             // table[Y].hi := ptr.hi
+
+        // Slow-path only: restore caller’s Y (fast path returns earlier by design).
+        ldy saved_y
+        rts
+
+/*===========================================
+ * rsrc_ensure_costume_resident: ensure a costume resource is resident; load and publish if missing
+ *
+ * Summary:
+ *   Given a costume index in X, returns immediately if the costume is already
+ *   resident (pointer table non-zero). Otherwise, selects the correct disk
+ *   side/chain from the owning room, programs the disk stream position using
+ *   a 2-byte disk-location entry (offset + sector), loads the costume via the
+ *   generic resource loader, and publishes the resulting pointer to the
+ *   costume pointer tables.
+ *
+ * Arguments:
+ *   X                        Costume resource index (0..N).
+ *
+ * Returns:
+ *   (none in regs)           Pointer is published to costume_ptr_{lo,hi}_tbl[resource_index].
+ *   Flags/regs               Clobbers A/X/Y and flags (Y ends holding resource_index).
+ *
+ * Description:
+ *   1) Fast path: if costume_ptr_hi_tbl[X] ≠ 0 → already loaded → rts.
+ *   2) Miss path:
+ *        - Save costume index; X := costume_room_idx_tbl[index]; jsr room_disk_chain_prepare.
+ *        - X := 2*index; set rsrc_read_offset (offset-in-sector) and rsrc_sector_step (sector index).
+ *        - resource_type := #$02 (COSTUME); jsr rsrc_load_from_disk → X:Y pointer.
+ *        - Publish pointer into costume tables at resource_index; rts.
+ *===========================================*/
+* = $38A8
+rsrc_ensure_costume_resident:
+        // Stash the incoming costume index (X) so we can publish the pointer later.
+        stx     resource_index
+
+        // Fast-path residency check:
+        //   costume_ptr_hi_tbl[X] != 0  ⇒ already resident in RAM.
+        //   LDA sets Z=1 iff A==0; BEQ branches when not loaded (Z=1).
+        lda     costume_ptr_hi_tbl,x
+        beq     costume_cache_miss     // miss → go load it
+        rts                               // hit  → nothing to do
+
+costume_cache_miss:
+        // Preserve the original costume index across room resolution & chain setup
+        stx     costume_idx_saved
+
+        // Determine owning room for this costume and prepare the disk chain:
+        //   X := room index (selects disk side), seed track/sector chain for that room
+        lda     costume_room_idx_tbl,x
+        tax
+        jsr     room_disk_chain_prepare
+
+        // Re-select the costume’s disk-location pair (2 bytes per entry):
+        //   Each entry = [offset-within-sector, sector-index]
+        //   Double the costume index to convert entry index → byte offset
+        lda     costume_idx_saved
+        asl                               // A := 2 * index (carry ignored)
+        tax                               // X := byte offset into pair table
+
+        // Program stream position for the loader:
+        //   rsrc_read_offset := byte offset within current sector
+        //   rsrc_sector_idx := sector index within the room’s chain
+        lda     costume_disk_loc_tbl,x
+        sta     rsrc_read_offset
+        lda     costume_disk_loc_tbl + 1,x
+        sta     rsrc_sector_idx
+
+        // Identify resource class and perform the load:
+        //   resource_type := COSTUME (#$02)
+        //   rsrc_load_from_disk → returns X=ptr.lo, Y=ptr.hi (payload start)
+        lda     #RSRC_TYPE_COSTUME                    
+        sta     resource_type
+        jsr     rsrc_load_from_disk
+
+        // Publish the returned pointer into the costume tables at the original index.
+        // Stash X/Y temporarily so we can use Y as the table index (resource_index).
+        stx     tmp_ptr_lo                  // tmp_ptr_lo := ptr.lo
+        sty     tmp_ptr_hi                  // tmp_ptr_hi := ptr.hi
+        ldy     resource_index          // Y := costume index for table write
+        lda     tmp_ptr_lo
+        sta     costume_ptr_lo_tbl,y    // table[Y].lo := ptr.lo
+        lda     tmp_ptr_hi
+        sta     costume_ptr_hi_tbl,y    // table[Y].hi := ptr.hi
+        rts
+/*===========================================
+ * rsrc_unlock_or_unassign_costume: unlock one locked costume or unassign one idle, loaded costume
+ *
+ * Summary:
+ *   Two-phase policy. 
+ *	 Phase 1 scans all costumes from highest index down and unlocks at most one by 
+ *   clearing bit7 of its attribute byte. If no locks remain, Phase 2 scans indices 8..1 
+ *   and unassigns an actor for the first eligible costume (not the current actor, loaded, attrs==0). 
+ *   After unassignment, resets default destination coords, and “parks” the costume in a holding room.
+ *   If no candidate exists, the routine raises a diagnostic and hard-halts.
+ *
+ * Arguments:
+ *   (none)                 Computes candidates internally.
+ *
+ * Uses / Globals:
+ *   costume_attr_tbl[X]    Attribute byte; bit7=1 ⇒ locked, bit7=0 ⇒ unlocked.
+ *   costume_ptr_hi_tbl[X]  Non-zero ⇒ resource resident in memory.
+ *   current_actor_idx      Index of active/controlled actor; never evicted.
+ *   costume_dest_x_tbl[X]  Set to COSTUME_DFLT_X_DEST on unassignment.
+ *   costume_dest_y_tbl[X]  Set to COSTUME_DFLT_Y_DEST on unassignment.
+ *   actor_room_idx_tbl[X]  Set to COSTUME_HOLDING_ROOM on unassignment.
+ *
+ * Returns:
+ *   Unlock path:           RTS after unlocking exactly one costume.
+ *   Eviction path:         RTS after freeing one costume and updating tables.
+ *   Failure path:          No return; infinite loop toggling border color.
+ *   Registers:             Clobbers A/X/Y/flags; stack remains balanced.
+ *
+ * Description:
+ *   1) Unlock pass:
+ *        LDX := COSTUME_MAX_INDEX; scan downward.
+ *        If costume_attr_tbl[X].bit7 == 1 → clear with AND #$7F; RTS.
+ *   2) Unassignment pass (only if no locks found):
+ *        LDX := COSTUME_SCAN_FIRST8; scan X = 8..1.
+ *        Skip if X == current_actor_idx, or not resident (ptr.hi==0), or attrs != 0.
+ *        On hit: attrs := 0; JSR unassign_actor_for_costume;
+ *                (dest_x,dest_y) := (COSTUME_DFLT_X_DEST,COSTUME_DFLT_Y_DEST);
+ *                actor_room_idx_tbl[X] := COSTUME_HOLDING_ROOM; RTS.
+ *   3) Failure:
+ *        diag_code := #$05; cpu_port := CPU_PORT_MAP_IO; loop on vic_border_color.
+ *===========================================*/
+* = $567B
+rsrc_unlock_or_unassign_costume:
+        ldx COSTUME_MAX_INDEX            // start at the highest costume index; scan downward one-by-one
+
+scan_locked_costumes:
+        // Read attributes for costume X. Bit7 encodes "locked":
+        //   bit7 = 1 → locked (N=1)  |  bit7 = 0 → unlocked (N=0)
+        lda costume_mem_attrs,x
+        bpl advance_lock_scan                 // BPL (N=0) ⇒ already unlocked → skip this entry
+
+        // Locked path: clear the lock bit (bit7) and exit.
+        // AND #$7f masks off bit7 without touching other attribute bits.
+        and #$7f                         // bit7 := 0 (unlock)
+        sta costume_mem_attrs,x          // commit unlock
+        rts                              // early return: unlock exactly one per call
+
+advance_lock_scan:
+        dex
+        bne scan_locked_costumes                // continue scan while X != 0 (note: index 0 is not checked)
+
+        // No locked costumes found — switch to eviction pass over the first 8 (indices 8..1).
+        ldx #$08
+
+scan_for_evict:
+        // Do not evict the active character:
+        // CPX current_kid sets Z=1 when X == current_kid; BEQ ⇒ skip this entry.
+        cpx current_kid
+        beq advance_costume_evict_scan
+
+        // Candidate must be resident:
+        // costume_ptr_hi_tbl[X] == 0 ⇒ not loaded (Z=1 after LDA) → BEQ skip.
+        lda costume_ptr_hi_tbl,x
+        beq advance_costume_evict_scan
+
+        /*----------------------------------------
+         * Evict this costume (free its resource)
+         *  - Mark attrs = 0 (idle/unpinned) before dropping the pointer.
+         *  - Preserve X across the helper; it may clobber registers/flags.
+         *---------------------------------------*/
+        lda #$00
+        sta costume_mem_attrs,x          // mark costume X as idle (no special attrs)
+
+        // Preserve loop index while freeing the resource for costume X.
+        txa                               // A := X (index snapshot)
+        pha                               // push index; will restore after JSR
+
+        jsr unassign_actor_for_costume               
+
+        // Restore loop index for subsequent bookkeeping (coords/room updates).
+        pla                               // A := saved index
+        tax                               // X := index
+
+
+        // Reset default destination for evicted costume (spawn/parking coords).
+        // Units are engine-specific (pixels/tiles); X and Y set to sane defaults.
+        lda #COSTUME_DFLT_X_DEST                          // default X destination
+        sta costume_x_destination,x
+        lda #COSTUME_DFLT_Y_DEST                          // default Y destination
+        sta costume_y_destination,x
+
+        // Park the costume in the holding room ($2C) and return.
+        // This de-associates it from the active room until explicitly reloaded.
+        lda #COSTUME_HOLDING_ROOM                          // holding room id
+        sta room_for_character,x
+        rts                               // done: one costume evicted and parked
+
+advance_costume_evict_scan:
+        dex
+        bne scan_for_evict            // more candidates (X != 0) → continue first-8 scan
+
+        /*----------------------------------------
+         * No eligible costume among first 8 — fail hard:
+         *   - Write diagnostic flag ($DC := $05)
+         *   - Map I/O at $D000–$DFFF (processor port $01 := $25)
+         *   - Set screen border color for a visible alert
+         *---------------------------------------*/
+        lda #$05
+        sta debug_error_code             // app-specific error/diagnostic code
+
+        ldy #MAP_IO_ON                   // enable I/O region 
+        sty processor_port_register      
+
+costume_evict_hangup:
+        sta vic_border_color      		// set border color
+        jmp costume_evict_hangup        // infinite loop by design
+
 		
