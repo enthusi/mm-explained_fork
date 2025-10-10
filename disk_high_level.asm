@@ -87,6 +87,7 @@
 
 #import "globals.inc"
 #import "constants.inc"
+#import "disk_low_level.asm"
 
 /*
  * ===========================================
@@ -111,10 +112,10 @@
 // --- Static buffers / tables ---
 .const SECTOR_BUFFER               = $0300   // 256-byte sector buffer (page-aligned)
 
-// --- I/O mapping presets for $01 (processor_port_register) ---
-.const MAP_IO_OFF                 	= $24     // Map RAM under I/O/KERNAL as needed by this program
-.const MAP_IO_ON                   = $25     // Map I/O visible at $D000–$DFFF during IEC transfers
-
+//  disk_ensure_side
+.const  SIDE_ID_DIGIT_OFF = $0C        // Byte offset of the '#' placeholder digit within the message
+.const  SIDE_ID_TRACK     = $01        // Location of the on-disk ID byte: Track 1…
+.const  SIDE_ID_SECTOR    = $00        // …Sector 0
 
 /*
  * ===========================================
@@ -150,22 +151,6 @@ max_sector_index_by_track:
  */
 .label processor_port_register     = $0001   // CPU I/O port: map I/O/KERNAL/BASIC (bitfields per standard $01)
 .label vic_border_color_register   = $D020   // VIC-II border color
-
-/*
- * ===========================================
- * External routines
- * ===========================================
- */
-.label msg_to_print_ptr            = $00DA   // (lo/hi) pointer consumed by print routine
-.label print_message_wait_for_button = $3B15 // UI: print message pointed by msg_to_print_ptr, wait for button
-.label iec_send_cmd       			= $46C2   // Low-level: issues command opcode to the drive
-.label iec_sync             		= $46DC   // Low-level: timing/handshake on IEC bus
-.label iec_recv_byte       		= $46F3   // Low-level: receive one byte from serial
-.label iec_send_byte       		= $4723   // Low-level: send one byte over serial
-
-// --- Command argument latches for low-level routines ---
-.label iec_cmd_track               = $4753   // Track number latched before iec_send_cmd/read/write
-.label iec_cmd_sector              = $4754   // Sector index (0-based) latched before iec_send_cmd/read/write
 
 /*
  * ===========================================
@@ -522,7 +507,7 @@ decrement_counter_lo:
  *   3) Loop:
  *        • Map I/O in ($01 ← MAP_IO_ON).
  *        • LDX current_track, LDY current_sector, JSR disk_write_sector.
- *        • On C=1 (error): set msg_to_print_ptr to DISK_ERROR_MSG, print, and retry same sector.
+ *        • On C=1 (error): set print_msg_ptr to DISK_ERROR_MSG, print, and retry same sector.
  *        • On C=0 (success):
  *            – Map I/O out ($01 ← MAP_IO_OFF).
  *            – JSR disk_next_sector_phys (advance geometry).
@@ -569,9 +554,9 @@ try_write:
 
         // Error path: show message and retry the same sector (I/O still mapped)
         lda #<DISK_ERROR_MSG
-        sta msg_to_print_ptr
+        sta print_msg_ptr
         lda #>DISK_ERROR_MSG
-        sta msg_to_print_ptr + 1
+        sta print_msg_ptr + 1
         jsr print_message_wait_for_button
         jmp try_write
 
@@ -779,7 +764,7 @@ exit_1:
  *        • Map I/O in (write MAP_IO_ON to $01).
  *        • Load X=current_track, Y=current_sector; JSR disk_read_sector.
  *        • Map I/O out (write MAP_IO_OFF to $01).
- *        • If C=0, success → break; else point msg_to_print_ptr at DISK_ERROR_MSG,
+ *        • If C=0, success → break; else point print_msg_ptr at DISK_ERROR_MSG,
  *          print message, and retry.
  *   4) On success, copy current_track/current_sector into last_*_loaded.
  *   5) Restore X/Y and RTS.
@@ -819,9 +804,9 @@ attempt_read_sector:
 
         // Failure path: set message pointer → print → retry indefinitely
         lda #<DISK_ERROR_MSG
-        sta msg_to_print_ptr
+        sta print_msg_ptr
         lda #>DISK_ERROR_MSG
-        sta msg_to_print_ptr + 1
+        sta print_msg_ptr + 1
         jsr print_message_wait_for_button
 
         // Retry the entire read (same track/sector, same destination)
@@ -1100,3 +1085,59 @@ hang_loop:
         lda #DISK_FAULT_BORDER
         sta vic_border_color_register
         jmp hang_loop
+
+/*===========================================
+ * disk_ensure_side — ensure the correct disk side is inserted
+ *
+ * Summary:
+ *   Blocks the game loop until the inserted disk’s side ID matches the
+ *   desired side. The caller passes the desired ID as a digit character
+ *   ('1' = $31, '2' = $32). The routine patches that digit into an on-screen
+ *   prompt, reads the ID byte from Track 1 / Sector 0, and loops until equal.
+ *
+ * Arguments:
+ *   A                         Desired side ID as a character code ($31/$32).
+ *
+ * Reads/Writes:
+ *   active_side_id           Stores the desired digit for later compare.
+ *
+ * Returns:
+ *   On success:               RTS after unpausing; A holds the matching ID.
+ *   Clobbers:                 A, X, Y; ZP print_msg_ptr ($DA/$DB).
+ *
+ * Notes:
+ *   - The ID on media is stored as the same digit character used for display.
+ *   - No timeout/cancel path: the user must insert the correct side.
+ *===========================================*/
+* = $3AEB
+disk_ensure_side:
+        // Patch the prompt with the requested digit and remember it for compare.
+        sta SIDE_ID_MSG + SIDE_ID_DIGIT_OFF   // display the desired side in the message
+        sta active_side_id                   // keep for CMP below
+
+        // Suspend gameplay while waiting for user to insert the correct side.
+        jsr pause_game
+
+read_side_id:
+        // Seek and read the very first byte on disk (T=1,S=0) - this is the side ID.
+        ldx #SIDE_ID_SECTOR
+        ldy #SIDE_ID_TRACK
+        jsr disk_init_chain_and_read          // position stream at T1/S0 and prime read
+        jsr disk_stream_next_byte             // A := first byte (side ID from media)
+
+        // Match the desired digit? If yes, resume gameplay and return.
+        cmp active_side_id
+        bne side_id_mismatch
+        jsr unpause_game
+        rts
+
+side_id_mismatch:
+        // Show the prompt (now patched with the digit) and wait for acknowledgment.
+        lda #<SIDE_ID_MSG
+        sta <print_msg_ptr
+        lda #>SIDE_ID_MSG
+        sta >print_msg_ptr
+        jsr print_message_wait_for_button     // user swaps disk side, then presses button
+
+        // Retry reading the side ID until it matches the desired digit.
+        jmp read_side_id
