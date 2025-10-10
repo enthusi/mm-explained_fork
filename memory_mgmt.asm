@@ -84,7 +84,7 @@
  *       (mem_sort_free_ao), coalesces right-adjacent free nodes (mem_coalesce_right),
  *       and compacts by bubbling USED blocks left into the leading FREE region
  *       (mem_bubble_used_left). If still no fit, calls external
- *       release_rsrcs_by_priority and refreshes pointers via update_rsrc_pointers,
+ *       rsrc_evict_one_by_priority and refreshes pointers via rsrc_update_ptr,
  *       then retries best-fit. Loops until allocation succeeds or nothing remains
  *       to release. Returns X/Y = allocated header, Z=0 on success; Z=1 on failure.
  * 
@@ -107,8 +107,10 @@
  * ===========================================
  */
 
+#importonce
 #import "globals.inc"
 #import "constants.inc"
+#import "rsrc_mgmt.asm"
 /*
  * ===============================================================================
  * Variables
@@ -120,9 +122,6 @@
  * External routines / flags / tables
  * ----------------------------------------
  */
-.label update_rsrc_pointers     = $5a89    // subroutine: retarget external pointers for a relocated resource (uses type/index)
-.label release_rsrcs_by_priority = $5ae3   // subroutine: release resources by priority tiers, then retry allocation
-.label release_one_costume = $0
 
 // Invariant: no block headers reside in page $00; null pointers are detected via hi-byte==0
 
@@ -308,8 +307,8 @@ mem_alloc:
         jsr mem_compact_then_release
         bne mem_alloc_ok          // BNE = Z=0 → success → done
 
-        // Recovery step 2: free one low-priority costume and retry original request.
-        jsr release_one_costume
+        // Recovery step 2: unlock or unassign a costume and retry original request.
+        jsr rsrc_unlock_or_unassign_costume
 
         // Restore original request size into X/Y and loop back to first attempt.
         ldx <mem_req_size
@@ -1213,7 +1212,7 @@ free_block_found:
  *                                  ones.
  *   mem_alloc_bestfit                 Attempts to find a free block large enough for
  *                                  ‘mem_req_saved’. Returns with Z=0 (BNE) on success.
- *   release_rsrcs_by_priority      Frees memory by releasing lower-priority resources;
+ *   rsrc_evict_one_by_priority      Frees memory by releasing lower-priority resources;
  *                                  called if allocation failed, then retry loop repeats.
  *
  * Returns:
@@ -1226,7 +1225,7 @@ free_block_found:
  *   size into ‘mem_req_saved’ and “poisons” mem_req_payload ($FFFF) to signal an in-progress
  *   allocation attempt. It then invokes mem_compact_leading_free to compact memory
  *   so that smaller fragments merge into larger contiguous spaces. If mem_alloc_bestfit
- *   fails to find a suitable block, the routine calls release_rsrcs_by_priority to
+ *   fails to find a suitable block, the routine calls rsrc_evict_one_by_priority to
  *   free noncritical assets (e.g., cached sound or graphics data) and loops back to
  *   retry allocation. Once a valid free block is obtained, control exits normally.
  * ===========================================
@@ -1274,10 +1273,10 @@ mem_compact_then_release:
 		/*
 		 * ----------------------------------------
 		 * Phase 3 (fallback): still no block — release resources by priority and retry.
-		 * release_rsrcs_by_priority returns Z=0 when something was released; loop if so.
+		 * rsrc_evict_one_by_priority returns Z=0 when something was released; loop if so.
 		 * ----------------------------------------
 		 */
-		jsr release_rsrcs_by_priority
+		jsr rsrc_evict_one_by_priority
 		bne mem_compact_then_release
 
 free_block_found_2:
@@ -1715,7 +1714,7 @@ next_block_present:
  *     1) Read its size and metadata.
  *     2) Optionally set reload_snd_rsrc_ptrs if a sound block is in-use.
  *     3) Call mem_copy_pages to copy the entire block from ‘mem_src’ → ‘mem_dst’.
- *     4) Call update_rsrc_pointers(metadata) so external references follow the move.
+ *     4) Call rsrc_update_ptr(metadata) so external references follow the move.
  *     5) Advance both pointers (mem_src, mem_dst) by the moved size and loop while more used blocks remain
  *        before ‘mem_next_free’.
  *
@@ -1725,7 +1724,7 @@ next_block_present:
  * Notes:
  *   - Copy direction is forward and safe for overlap because mem_dst < mem_src.
  *   - Sound resources: if in use, set 'reload_snd_rsrc_ptrs' during the move; it is consumed
- *     by 'update_rsrc_pointers' and then cleared before the next iteration.
+ *     by 'rsrc_update_ptr' and then cleared before the next iteration.
  * ===========================================
  */
 * = $59E5
@@ -1833,7 +1832,7 @@ copy_block_data:
 		 */
 		ldx resource_index
 		ldy resource_type
-		jsr update_rsrc_pointers
+		jsr rsrc_update_ptr
 
 		// Clear the “reload sound pointers” request flag (consumed).
 		lda #$00
