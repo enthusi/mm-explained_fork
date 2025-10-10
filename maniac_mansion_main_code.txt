@@ -606,6 +606,7 @@ standard_message_delay = $CD
 text_delay = $CF
 actor = $d8
 irq_handler1_section_entry_count = $d9
+debug_error_code = $dc
 random_1 = $dd
 random_2 = $de
 random_3 = $df
@@ -949,17 +950,17 @@ object_attributes = $7301
 ;
 ; I call the sectors skip "sector_index", and the bytes to skip "offset_in_sector".
 ;-----------------------------------------------------------
-disk_side_for_room = $7401
-disk_track_sector_for_room = $7438
+room_disk_side_tbl = $7401
+room_sec_trk_tbl = $7438
 room_for_costume = $74a6
 costume_offset_in_sector = $74bf
 costume_sector_index = $74c0
-room_for_script = $74f1
-global_script_read_offsets = $7591
-global_script_sector_index = $7592
-room_script_offset_in_sector = $7691
-room_script_sector_index = $7692
-room_for_sound = $76d1
+script_room_idx_tbl = $74f1
+global_script_disk_loc_tbl = $7591
+;global_script_sector_index = $7592
+room_script_disk_loc_tbl = $7691
+;room_script_sector_index = $7692
+sound_room_idx_tbl = $76d1
 sound_offset_in_sector = $7717
 sound_sector_index = $7718
 
@@ -1466,7 +1467,7 @@ current_room_layers_rsrc = $fe98
 character_talking = $fe9a
 message_owner = $fe9b	;#FF means nobody's talking (and thus the msg bar must be cleared)
 						;Otherwise, it has the same value as character_talking
-desired_disk_id = $fe9c ;This represents the desired Disk ID (the ID that identifies each of the game's disk sides)
+active_side_id = $fe9c ;This represents the desired Disk ID (the ID that identifies each of the game's disk sides)
 						;Once check_disk_id is called, this parameter is set and execution will not resume until the proper disk side is inserted
 ;Possible mouth state values
 ;---------------------------
@@ -1898,7 +1899,7 @@ start_game:
 .C:044f  20 1A 5D    JSR clear_engine_state
 ;Ensure disk side 1 is in the drive
 .C:0452  A9 31       LDA #$31		
-.C:0454  20 EB 3A    JSR check_disk_side
+.C:0454  20 EB 3A    JSR disk_ensure_side
 ;Setup disk read from track 1 sector 0, starting from byte offset #02
 .C:0457  A2 00       LDX #$00
 .C:0459  A0 01       LDY #$01
@@ -4281,7 +4282,7 @@ next_sentence_index:
 ;Invalid sentence part index - hang execution
 ;---------------------------------------------
 .C:0f0c  A9 2D       LDA #$2D
-.C:0f0e  85 DC       STA $DC
+.C:0f0e  85 DC       STA debug_error_code
 ;map_in_io
 .C:0f10  A0 25       LDY #$25
 .C:0f12  84 01       STY processor_port_register
@@ -7907,7 +7908,7 @@ blit_and_mask_limb:
 ; Assertion failed - hangup
 ;--------------------------------------------
 .C:1eb6  A9 04       LDA #$04
-.C:1eb8  85 DC       STA $DC
+.C:1eb8  85 DC       STA debug_error_code
 ;map_in_io
 .C:1eba  A0 25       LDY #$25
 .C:1ebc  84 01       STY processor_port_register
@@ -9622,7 +9623,7 @@ move_actor:
 .C:26de  A9 80       LDA #$80
 .C:26e0  99 EB FD    STA path_direction_for_actor,Y
 ;Release it (assuming that it's not in the current room)
-.C:26e3  20 E4 38    JSR release_costume
+.C:26e3  20 E4 38    JSR unassign_actor_for_costume
 check_current_room:
 ;Is the destination rooom the current room? If not, exit
 .C:26e6  AD EA FD    LDA room_destination
@@ -12619,7 +12620,7 @@ release_costume_in_use:
 .C:3476  30 07       BMI next_costume
 .C:3478  8A          TXA
 .C:3479  48          PHA
-.C:347a  20 E4 38    JSR release_costume
+.C:347a  20 E4 38    JSR unassign_actor_for_costume
 .C:347d  68          PLA
 .C:347e  AA          TAX
 next_costume:
@@ -12910,7 +12911,7 @@ load_room_sounds_and_scripts:
 ;Load sounds
 .C:35f3  A0 00       LDY #$00
 .C:35f5  A5 17       LDA sound_counter
-.C:35f7  F0 0D       BEQ load_scripts
+.C:35f7  F0 0D       BEQ rsrc_ensure_script_residents
 next_sound:
 ;Even though the room subresource pointer is recomputed on every loop iteration,
 ;it's actually the same base pointer. The only thing that changes is the .Y index
@@ -12924,7 +12925,7 @@ next_sound:
 .C:3602  C6 17       DEC sound_counter
 .C:3604  D0 F3       BNE next_sound
 ;-------------------------------
-load_scripts:
+rsrc_ensure_script_residents:
 .C:3606  A5 18       LDA script_counter
 .C:3608  F0 0D       BEQ exit
 next_script:
@@ -12932,7 +12933,7 @@ next_script:
 ;Read script index
 .C:360d  B1 15       LDA (room_subresources_ptr),Y
 ;Load the script by index
-.C:360f  20 29 3A    JSR load_script
+.C:360f  20 29 3A    JSR rsrc_ensure_script_resident
 ;Move to the next byte, update counter, continue if needed
 .C:3612  C8          INY
 .C:3613  C6 18       DEC script_counter
@@ -13366,7 +13367,7 @@ load_room_resource:
 ;Set up disk load parameters
 .C:3838  8E 76 56    STX resource_index
 .C:383b  8E 7D 38    STX room_index
-.C:383e  20 BD 3A    JSR prepare_disk_load_for_room
+.C:383e  20 BD 3A    JSR room_disk_chain_prepare
 ;Set read offset to #00
 .C:3841  A9 00       LDA #$00
 .C:3843  8D 78 56    STA rsrc_read_offset
@@ -13461,7 +13462,7 @@ costume_not_in_memory:
 .C:38b3  BD A6 74    LDA room_for_costume,X
 ;Prepare disk load for the room resource
 .C:38b6  AA          TAX
-.C:38b7  20 BD 3A    JSR prepare_disk_load_for_room
+.C:38b7  20 BD 3A    JSR room_disk_chain_prepare
 ;Recover costume index
 .C:38ba  A5 15       LDA temp_costume_index
 .C:38bc  0A          ASL A
@@ -13491,7 +13492,7 @@ costume_not_in_memory:
 ; 
 ; Arguments:		.X		costume index
 ;===========================================
-release_costume:
+unassign_actor_for_costume:	;Should be renamed to "assign_actor", unassign, release actor?
 ;Set actor index into .Y
 .C:38e4  BD 57 FE    LDA actor_for_costume,X
 .C:38e7  A8          TAY
@@ -13685,10 +13686,10 @@ sound_not_in_memory:
 ;Save resource index in .X into temp_1
 .C:39f3  86 19       STX temp_1
 ;Get the parent room for the sound
-.C:39f5  BD D1 76    LDA room_for_sound,X	
+.C:39f5  BD D1 76    LDA sound_room_idx_tbl,X	
 .C:39f8  AA          TAX
 ;Setup the room loading
-.C:39f9  20 BD 3A    JSR prepare_disk_load_for_room
+.C:39f9  20 BD 3A    JSR room_disk_chain_prepare
 ;Get the resource index again, multiply by 2 to get the offset into the sector tables
 .C:39fc  A5 19       LDA temp_1
 .C:39fe  0A          ASL A
@@ -13728,7 +13729,7 @@ temp_1 = $19
 temp_2 = $1A
 temp_y = $3bdc
 
-load_script:
+rsrc_ensure_script_resident:
 ;Save .Y in a local variable
 .C:3a29  8C DC 3B    STY temp_y
 ;.A = resource index
@@ -13742,10 +13743,10 @@ script_not_in_memory:
 ;Save resource index in .X into temp_1
 .C:3a36  86 19       STX temp_1
 ;Get the parent room for the script
-.C:3a38  BD F1 74    LDA room_for_script,X
+.C:3a38  BD F1 74    LDA script_room_idx_tbl,X
 .C:3a3b  AA          TAX
 ;Setup the room loading
-.C:3a3c  20 BD 3A    JSR prepare_disk_load_for_room
+.C:3a3c  20 BD 3A    JSR room_disk_chain_prepare
 ;Get the resource index again, multiply by 2 to get the offset into the sector tables
 ;Bit 7 of script index will go to carry
 .C:3a3f  A5 19       LDA temp_1
@@ -13754,18 +13755,18 @@ script_not_in_memory:
 ;Check carry - if clear, it's a global script
 .C:3a43  90 0F       BCC global_script
 ;Room script - fetch offset and sector index 
-.C:3a45  BD 91 76    LDA room_script_offset_in_sector,X
+.C:3a45  BD 91 76    LDA room_script_disk_loc_tbl,X
 .C:3a48  8D 78 56    STA rsrc_read_offset
-.C:3a4b  BD 92 76    LDA room_script_sector_index,X
+.C:3a4b  BD 92 76    LDA room_script_disk_loc_tbl + 1,X
 .C:3a4e  8D 79 56    STA rsrc_sector_step
-.C:3a51  4C 60 3A    JMP load_script_from_disk
+.C:3a51  4C 60 3A    JMP rsrc_ensure_script_resident_from_disk
 global_script:
 ;Global script
-.C:3a54  BD 91 75    LDA global_script_read_offsets,X
+.C:3a54  BD 91 75    LDA global_script_disk_loc_tbl,X
 .C:3a57  8D 78 56    STA rsrc_read_offset
-.C:3a5a  BD 92 75    LDA global_script_sector_index,X
+.C:3a5a  BD 92 75    LDA global_script_disk_loc_tbl + 1,X
 .C:3a5d  8D 79 56    STA rsrc_sector_step
-load_script_from_disk:
+rsrc_ensure_script_resident_from_disk:
 ;Set resource type = #05 - script
 .C:3a60  A9 05       LDA #$05
 .C:3a62  8D 77 56    STA resource_type
@@ -13840,12 +13841,12 @@ temp_sector = $1d
 temp_track = $1e
 temp_index = $3bdd
 
-prepare_disk_load_for_room:
-.C:3abd  BD 01 74    LDA disk_side_for_room,X
-.C:3ac0  CD 9C FE    CMP desired_disk_id		
+room_disk_chain_prepare:
+.C:3abd  BD 01 74    LDA room_disk_side_tbl,X
+.C:3ac0  CD 9C FE    CMP active_side_id		
 .C:3ac3  F0 09       BEQ disk_id_correct
 .C:3ac5  8E DD 3B    STX temp_index
-.C:3ac8  20 EB 3A    JSR check_disk_side		
+.C:3ac8  20 EB 3A    JSR disk_ensure_side		
 .C:3acb  AE DD 3B    LDX temp_index
 disk_id_correct:
 ;.X = room index - Multiply by 2 to get the offset into the track/sector array
@@ -13853,13 +13854,13 @@ disk_id_correct:
 .C:3acf  0A          ASL A
 .C:3ad0  AA          TAX
 ;This zero-check is irrelevant as execution will continue regardless in dummy_label
-.C:3ad1  BD 38 74    LDA disk_track_sector_for_room,X
-.C:3ad4  1D 39 74    ORA disk_track_sector_for_room+1,X
+.C:3ad1  BD 38 74    LDA room_sec_trk_tbl,X
+.C:3ad4  1D 39 74    ORA room_sec_trk_tbl+1,X
 .C:3ad7  D0 00       BNE dummy_label
 dummy_label:
-.C:3ad9  BD 38 74    LDA disk_track_sector_for_room,X
+.C:3ad9  BD 38 74    LDA room_sec_trk_tbl,X
 .C:3adc  85 1D       STA temp_sector
-.C:3ade  BD 39 74    LDA disk_track_sector_for_room+1,X
+.C:3ade  BD 39 74    LDA room_sec_trk_tbl+1,X
 .C:3ae1  85 1E       STA temp_track
 ;.X = sector, .Y = track
 .C:3ae3  A6 1D       LDX temp_sector
@@ -13869,11 +13870,11 @@ dummy_label:
 ;===========================================
 ;Arguments: desired disk side ID on .A
 ;===========================================
-check_disk_side:
+disk_ensure_side:
 .C:3aeb  8D 65 3B    STA $3B65		;3B65 is the disk side number inlined in the message printed "Put in side # and push joystick button."
 									;As the value is stored directly in the string, this means that disk side 1 has the character code for "1" (#31)
 									; and side 2 uses #32 ("2")
-.C:3aee  8D 9C FE    STA desired_disk_id		
+.C:3aee  8D 9C FE    STA active_side_id		
 ;Pause game
 .C:3af1  20 D1 18    JSR pause_game
 read_disk_id:
@@ -13884,7 +13885,7 @@ read_disk_id:
 .C:3af8  20 EE 44    JSR disk_init_chain_and_read
 .C:3afb  20 8E 45    JSR disk_stream_next_byte
 ;Check if it's the desired Disk ID
-.C:3afe  CD 9C FE    CMP desired_disk_id		
+.C:3afe  CD 9C FE    CMP active_side_id		
 .C:3b01  D0 04       BNE disk_id_not_equal
 ;It's the desired one, unpause game and return
 .C:3b03  20 DF 18    JSR unpause_game
@@ -14721,7 +14722,7 @@ assign_sprite_to_visible_actor:
 ;We ran out of sprites to use - hang execution
 ;----------------------------------------------------------------
 .C:3f36  A9 0B       LDA #$0B
-.C:3f38  85 DC       STA $DC
+.C:3f38  85 DC       STA debug_error_code
 ;map_in_io
 .C:3f3a  A0 25       LDY #$25
 .C:3f3c  84 01       STY processor_port_register
@@ -16137,7 +16138,7 @@ equality_check:
 ;-------------------------------------------------
 ;Hang execution
 .C:44a5  A9 01       LDA #$01
-.C:44a7  85 DC       STA $DC
+.C:44a7  85 DC       STA debug_error_code
 ;map_in_io
 .C:44a9  A0 25       LDY #$25
 .C:44ab  84 01       STY processor_port_register
@@ -19373,7 +19374,7 @@ mem_alloc:
 .C:54ef  20 D5 58    JSR mem_compact_then_release
 .C:54f2  D0 0C       BNE block_found
 ;Release one costume and try again
-.C:54f4  20 7B 56    JSR rsrc_release_one_evictable_costume
+.C:54f4  20 7B 56    JSR rsrc_unlock_or_unassign_costume
 .C:54f7  AE 01 55    LDX temp_x
 .C:54fa  AC 02 55    LDY temp_y
 .C:54fd  4C E4 54    JMP mem_alloc
@@ -19633,13 +19634,13 @@ disk_id_check:
 .C:5646  A9 00       LDA #$00
 .C:5648  8D 3D 46    STA disk_copy_count_hi
 .C:564b  20 1F 45    JSR disk_stream_copy
-;Compare Disk ID with desired_disk_id
-.C:564e  AD 9C FE    LDA desired_disk_id
+;Compare Disk ID with active_side_id
+.C:564e  AD 9C FE    LDA active_side_id
 .C:5651  CD 7A 56    CMP disk_id_in_sector
 .C:5654  D0 11       BNE disk_id_mismatch
 ;----------------
 .C:5656  A9 2F       LDA #$2F
-.C:5658  85 DC       STA $DC
+.C:5658  85 DC       STA debug_error_code
 ;map_in_io
 .C:565a  A0 25       LDY #$25		
 .C:565c  84 01       STY processor_port_register
@@ -19651,8 +19652,8 @@ infinite_loop:
 ;----------------
 ;Disk ID doesn't match
 disk_id_mismatch:
-.C:5667  AD 9C FE    LDA desired_disk_id
-.C:566a  20 EB 3A    JSR check_disk_side
+.C:5667  AD 9C FE    LDA active_side_id
+.C:566a  20 EB 3A    JSR disk_ensure_side
 .C:566d  68          PLA
 .C:566e  8D 34 46    STA track_desired
 .C:5671  68          PLA
@@ -19661,7 +19662,7 @@ disk_id_mismatch:
 ;===========================================
 MAX_costume_index = #$18
 
-rsrc_release_one_evictable_costume:
+rsrc_unlock_or_unassign_costume:
 .C:567b  A2 18       LDX MAX_costume_index
 check_costume:
 ;Check memory attribute of costume
@@ -19695,7 +19696,7 @@ check_eligibility:
 .C:569c  8A          TXA
 .C:569d  48          PHA
 ;
-.C:569e  20 E4 38    JSR release_costume
+.C:569e  20 E4 38    JSR unassign_actor_for_costume
 ;Restore costume index
 .C:56a1  68          PLA
 .C:56a2  AA          TAX
@@ -19715,7 +19716,7 @@ next_costume_2:
 ;We exhausted the first 8 costumes and we couldn't release any of them
 ;Hang up
 .C:56b6  A9 05       LDA #$05
-.C:56b8  85 DC       STA $DC
+.C:56b8  85 DC       STA debug_error_code
 ;map_in_io
 .C:56ba  A0 25       LDY #$25
 .C:56bc  84 01       STY processor_port_register
@@ -20752,7 +20753,7 @@ release_room:
 ;===========================================
 MAX_costume_index = #$18
 
-release_costume:
+rsrc_release_one_evictable_costume:
 .C:5b84  A2 18       LDX MAX_costume_index
 check_eligibility:
 ;Check if the costume is loaded into memory - if not, continue
@@ -21447,7 +21448,7 @@ start_global_script:
 .C:5e94  D0 07       BNE script_in_memory
 ;It's not in memory, load it
 .C:5e96  8A          TXA
-.C:5e97  20 29 3A    JSR load_script
+.C:5e97  20 29 3A    JSR rsrc_ensure_script_resident
 .C:5e9a  20 B4 5D    JSR handle_script_relocation
 script_in_memory:
 ;Increment script's memory refcount
@@ -23451,7 +23452,7 @@ sound_code_ptr_hi = $6622
 .C:65d4  D0 0F       BNE play_music
 ;Musics 1 and 2 are not loaded
 ;Convert disk side ID to side # (31, 32 -> 1, 2)
-.C:65d6  AD 9C FE    LDA desired_disk_id
+.C:65d6  AD 9C FE    LDA active_side_id
 .C:65d9  38          SEC
 .C:65da  E9 30       SBC #$30
 ;Load the music matching the disk side number
@@ -24320,7 +24321,7 @@ destination_variable = $d0
 .C:6a04  20 E0 33    JSR init_sprites_sound
 ;Side 0? Save game disk?
 .C:6a07  A9 30       LDA #$30
-.C:6a09  8D 9C FE    STA desired_disk_id
+.C:6a09  8D 9C FE    STA active_side_id
 ;Read variable index
 .C:6a0c  20 14 5E    JSR script_read_byte
 .C:6a0f  85 D0       STA destination_variable
@@ -24369,7 +24370,7 @@ set_variable:
 ;Read script index into .X
 .C:6a43  20 98 5F    JSR script_load_operand_bit7
 ;Load script resource
-.C:6a46  20 29 3A    JSR load_script
+.C:6a46  20 29 3A    JSR rsrc_ensure_script_resident
 .C:6a49  20 B4 5D    JSR handle_script_relocation
 .C:6a4c  60          RTS
 ;===========================================
@@ -24511,7 +24512,7 @@ restart_game:
 
 ;52 rooms in total
 ;32 means disk side 2, 31 means disk side 1
-disk_side_for_room:
+room_disk_side_tbl:
 >C:7401  
 00 32 32 32 32 32 32 32 32 32 
 32 32 32 32 32 32 31 32 32 32 
@@ -24523,7 +24524,7 @@ disk_side_for_room:
 ;Track and sector for each room
 ;Given a room index, multiply by 2 to get the offset in the table
 ;The first byte pointed will be the track, the second one the sector
-disk_track_sector_for_room:
+room_sec_trk_tbl:
 >C:7438  
 00 00 01 01 01 0f 06 03 10 06 
 02 04 08 0e 04 09 11 05 08 19 
@@ -24548,7 +24549,7 @@ costume_offset_in_sector:
 >C:74f0  18 
 
 ;74f1
-room_for_script:
+script_room_idx_tbl:
 09 2d 32  12 12 12 08  08 10 16 1b  07 18 18 11
 >C:7500  03 1c 1c 0a  12 12 12 12  19 05 05 05  05 05 05 13
 >C:7510  13 13 13 13  15 15 15 2b  09 04 08 08  08 1b 0c 1b
@@ -24561,7 +24562,7 @@ room_for_script:
 >C:7580  01 0a 07 1a  13 13 08 01  01 09 09 1f  1f 14 1f 0c
 >C:7590  09 
 ;7591
-global_script_read_offsets:
+global_script_disk_loc_tbl:
 73 06 d1  0a 12 05 20  11 d9 11 e4  11 70 0d ae   .s..... .....p..
 >C:75a0  0d d2 10 ec  0b 66 0c 98  10 3c 0e 5b  0e 2b 0d 43   .....f...<.[.+.C
 >C:75b0  0e 4e 09 6e  09 62 0c ef  11 4d 12 90  12 ca 12 af   .N.n.b...M......
@@ -24584,7 +24585,7 @@ global_script_read_offsets:
 >C:76c0  1f 33 09 de  09 16 0c 43  0d 51 12 65  0d 8d 0d e6   .3.....C.Q.e....
 >C:76d0  09 
 ;76D1
-room_for_sound:
+sound_room_idx_tbl:
 1e 21 11  18 24 01 2c  18 2c 2c 24  04 04 04 07   ..!..$.,.,,$....
 >C:76e0  07 07 07 18  2b 15 05 05  05 05 11 03  0f 0a 15 19   ....+...........
 >C:76f0  19 08 08 18  12 08 15 2c  01 10 17 04  1d 11 1b 05   .......,........
@@ -25418,7 +25419,7 @@ init_game_engine:
 .C:85a8  8D AB FE    STA lights_status
 ;Set desired disk ID = game disk side 2
 .C:85ab  A9 32       LDA #$32		;Side 2 Disk ID
-.C:85ad  8D 9C FE    STA desired_disk_id		;Desired disk ID
+.C:85ad  8D 9C FE    STA active_side_id		;Desired disk ID
 ;Init camera position
 .C:85b0  A9 C8       LDA #$C8
 .C:85b2  8D 67 06    STA camera_current_position
