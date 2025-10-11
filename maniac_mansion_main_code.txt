@@ -467,9 +467,9 @@ ACTOR_IS_FROZEN = #$40
 ;Offsets within memory block (type 4 A) - 2 bytes per offset
 ;Offsets are calculated by adding room_byte_0 to each previous offset
 ;
-;#64-6B		4 offsets for compressed data at room_tile_matrix_offset
-;#6C-73		4 offsets for compressed data at room_color_layer_offset
-;#74-7B		4 offsets for compressed data at room_mask_layer_offset
+;#64-6B		4 offsets for compressed data at tile_matrix_ofs
+;#6C-73		4 offsets for compressed data at color_layer_ofs
+;#74-7B		4 offsets for compressed data at mask_layer_ofs
 
 ;========================================================
 ;Resource type 4 A
@@ -587,8 +587,8 @@ mask_layer_value_to_repeat = $7a
 
 sprite_shape_data_ptr = $8c
 video_update_signal = $8e			;A synchronization flag - NOT to be confused with vsync
-room_bkg_color_copy_0 = $8f
-room_bkg_color_copy_1 = $90
+room_bg0_shadow = $8f
+room_bg1_shadow = $90
 rebuild_action_sentence = $95
 raster_setup_needed = $96
 voice_read_ptr = $ba
@@ -866,19 +866,19 @@ resource_index_for_script_slot = $7129
 room_data = $7139
 room_width = $7139
 room_height = $713a
-room_bkg_color_0 = $713b
-room_bkg_colors = $713b
+room_bg0 = $713b
+room_bg_colors = $713b
 room_tile_definitions_offset = $713f
-room_tile_matrix_offset = $7141
-room_color_layer_offset = $7143
-room_mask_layer_offset = $7145
-room_mask_indexes_offset = $7147
+tile_matrix_ofs = $7141
+color_layer_ofs = $7143
+mask_layer_ofs = $7145
+mask_indexes_ofs = $7147
 current_room = $7149
-symbol_dictionary_for_tile_matrix = $714a
-symbol_dictionary_for_color_layer = $714e
-symbol_dictionary_for_mask_layer = $7152
-room_exit_script = $7156
-room_entry_script = $7158
+tile_dict = $714a
+color_dict = $714e
+mask_dict = $7152
+room_exit_script_ptr = $7156
+room_entry_script_ptr = $7158
 current_room_rsrc = $715A
 total_objects_in_room = $715c
 
@@ -895,10 +895,10 @@ object_destination_active = $7205
 room_object_index_hi = $7221
 room_object_index_lo = $723d
 parent_object = $7259
-parent_object_possible = $7275
-compressed_object_data_offsets = $7291
-room_object_offsets_lo = $72c9		;Offsets of objects in a room resource
-room_object_offsets_hi = $72ca
+parent_linkable = $7275
+obj_gfx_ptr_tbl = $7291
+room_obj_ofs_tbl = $72c9		;Offsets of objects in a room resource
+room_obj_ofs_tbl + 1 = $72ca
 object_attributes = $7301		
 ;-------------------------------------------------
 ; Object attributes
@@ -952,7 +952,7 @@ object_attributes = $7301
 ;-----------------------------------------------------------
 room_disk_side_tbl = $7401
 room_sec_trk_tbl = $7438
-room_for_costume = $74a6
+costume_room_idx_tbl = $74a6
 costume_offset_in_sector = $74bf
 costume_sector_index = $74c0
 script_room_idx_tbl = $74f1
@@ -1007,10 +1007,6 @@ script_ptr_hi_tbl = $7997		;Total scripts: 160
 script_ptr_lo_tbl = $7a37
 script_mem_attrs = $7ad7
 script_2_mem_attr = $7ad9
-room_layers_ptr_hi_tbl = $7b77		;Total type 4 resources: 2	- room scene graphic layers
-room_layers_ptr_lo_tbl = $7b79
-mask_bit_patterns_rsrc_hi = $7b78		
-mask_bit_patterns_rsrc_lo = $7b7a
 ;The room layers and the mask bit patterns resources don't have memory attributes - they are tied to the current room's lifetime
 
 
@@ -1510,7 +1506,7 @@ engine_vars = $feac
 ;Bit 0 - is strong (after doing exercise with the Hunk-o-matic)
 actor_vars = $fee3
 ;The current room for each costume
-room_for_character = $fefc
+costume_room_idx = $fefc		;The CURRENT room for a costume (not to be confused with costume_room_idx_tbl, which stores the parent room resource for a costume)
 costume_y_destination = $ff15
 costume_x_destination = $ff2e
 animation_set_for_costume = $ff47		;The animation set for a costume, limited to the standing range of sets (#04-#07)
@@ -3242,9 +3238,9 @@ object_found:
 .C:0a5b  0A          ASL A
 .C:0a5c  AA          TAX
 ;Copy the room object offsets
-.C:0a5d  BD C9 72    LDA room_object_offsets_lo,X
+.C:0a5d  BD C9 72    LDA room_obj_ofs_tbl,X
 .C:0a60  85 17       STA <object_offset_in_room_rsrc
-.C:0a62  BD CA 72    LDA room_object_offsets_hi,X
+.C:0a62  BD CA 72    LDA room_obj_ofs_tbl + 1,X
 .C:0a65  85 18       STA >object_offset_in_room_rsrc
 ;object_ptr = room_rsrc_ptrs + object_offset_in_room_rsrc
 .C:0a67  AE 49 71    LDX current_room
@@ -5790,7 +5786,7 @@ case_02:
 ;--------------------------------------------------
 video_memory_layout_complete:
 ;Copy the room's bkg color - not sure why this is done
-.C:1790  A5 8F       LDA room_bkg_color_copy_0
+.C:1790  A5 8F       LDA room_bg0_shadow
 .C:1792  85 90       STA room_bkg_color_copy_1
 ;Reset video_memory_mode to #00
 .C:1794  A9 00       LDA #$00
@@ -6439,7 +6435,7 @@ adjust_actor_destination:
 .C:1a73  8D 73 FE    STA box_check_y
 ;Get the current actor's room, set it as the walkbox room
 .C:1a76  AE 30 FC    LDX active_costume
-.C:1a79  BD FC FE    LDA room_for_character,X
+.C:1a79  BD FC FE    LDA costume_room_idx,X
 .C:1a7c  8D 74 FE    STA walkbox_room
 ;Adjust coordinates as needed
 .C:1a7f  20 9B 1A    JSR adjust_coords_by_walkbox
@@ -9591,7 +9587,7 @@ put_actor_at_destination:
 ;Copy the room for this costume
 .C:269c  AE 30 FC    LDX active_costume
 .C:269f  AD EA FD    LDA room_destination
-.C:26a2  9D FC FE    STA room_for_character,X
+.C:26a2  9D FC FE    STA costume_room_idx,X
 ;Copy the destination coordinates
 .C:26a5  AD E6 FD    LDA x_destination
 .C:26a8  9D 2E FF    STA costume_x_destination,X
@@ -11128,7 +11124,7 @@ get_walkboxes_for_costume:
 ;Get character in action
 .C:2db1  AC 30 FC    LDY active_costume
 ;Get room for character
-.C:2db4  B9 FC FE    LDA room_for_character,Y
+.C:2db4  B9 FC FE    LDA costume_room_idx,Y
 ;Get room resource pointer
 .C:2db7  A8          TAY
 .C:2db8  B9 F3 77    LDA room_ptr_hi_tbl,Y
@@ -12071,10 +12067,10 @@ compute_global_mask_index_ptrs:
 compute_first_mask_pointer:
 ;Add offset to base (mask_bit_patterns resource) to compute the first bit pattern pointer
 .C:31bb  18          CLC
-.C:31bc  6D 7A 7B    ADC mask_bit_patterns_rsrc_lo
+.C:31bc  6D 7A 7B    ADC mask_bit_patterns_lo
 .C:31bf  85 43       STA <global_mask_index_ptr_1
 .C:31c1  8A          TXA
-.C:31c2  6D 78 7B    ADC mask_bit_patterns_rsrc_hi
+.C:31c2  6D 78 7B    ADC mask_bit_patterns_hi
 .C:31c5  85 44       STA >global_mask_index_ptr_1
 ;--------------------------------------------------
 ;Repeat the same logic for the second pointer
@@ -12110,10 +12106,10 @@ compute_first_mask_pointer:
 compute_second_mask_pointer:
 ;Add offset to base and store result
 .C:31e9  18          CLC
-.C:31ea  6D 7A 7B    ADC mask_bit_patterns_rsrc_lo
+.C:31ea  6D 7A 7B    ADC mask_bit_patterns_lo
 .C:31ed  85 45       STA <global_mask_index_ptr_2
 .C:31ef  8A          TXA
-.C:31f0  6D 78 7B    ADC mask_bit_patterns_rsrc_hi
+.C:31f0  6D 78 7B    ADC mask_bit_patterns_hi
 .C:31f3  85 46       STA >global_mask_index_ptr_2
 ;--------------------------------------------------
 ;Repeat the same logic for the third pointer
@@ -12149,10 +12145,10 @@ compute_second_mask_pointer:
 compute_third_mask_pointer:
 ;Add offset to base and store result
 .C:3217  18          CLC
-.C:3218  6D 7A 7B    ADC mask_bit_patterns_rsrc_lo
+.C:3218  6D 7A 7B    ADC mask_bit_patterns_lo
 .C:321b  85 47       STA <global_mask_index_ptr_3
 .C:321d  8A          TXA
-.C:321e  6D 78 7B    ADC mask_bit_patterns_rsrc_hi
+.C:321e  6D 78 7B    ADC mask_bit_patterns_hi
 .C:3221  85 48       STA >global_mask_index_ptr_3
 .C:3223  60          RTS
 ;===========================================
@@ -12637,12 +12633,12 @@ next_costume:
 .C:3489  8D 66 06    STA camera_desired_position
 ;Initialize sprites and sound
 .C:348c  20 E0 33    JSR init_sprites_sound
-;Load new room's graphics
-.C:348f  20 A4 34    JSR setup_rsrcs_for_gfx_and_objects
+;Load new room's assets
+.C:348f  20 A4 34    JSR room_switch_load_assets
 ;Execute the room's entry script
 .C:3492  20 7D 3A    JSR execute_room_entry_script
 ;Load the room's sounds and scripts
-.C:3495  20 D5 35    JSR load_room_sounds_and_scripts
+.C:3495  20 D5 35    JSR room_load_sounds_and_scripts
 ;Load actors in the room
 .C:3498  20 81 38    JSR load_actors_in_room
 ;As we just loaded a new room, signal that we need to do the "open shutter" effect
@@ -12654,7 +12650,7 @@ next_costume:
 ;===========================================
 ; Set up resources for loading a room's graphics and objects
 ;===========================================
-setup_rsrcs_for_gfx_and_objects:
+room_switch_load_assets:
 .C:34a4  AC 49 71    LDY current_room
 .C:34a7  F0 0C       BEQ set_result
 ;----------------------------------------------
@@ -12677,32 +12673,32 @@ set_result:
 .C:34be  8D 6B FF    STA var_current_room
 ;----------------------------------------------
 ;Release room layers resource if needed
-.C:34c1  AE 79 7B    LDX room_layers_ptr_lo_tbl
-.C:34c4  AC 77 7B    LDY room_layers_ptr_hi_tbl
+.C:34c1  AE 79 7B    LDX room_layer_ptr_lo
+.C:34c4  AC 77 7B    LDY room_layer_ptr_hi
 .C:34c7  F0 03       BEQ clear_foreground_mask_layer_rsrc
 .C:34c9  20 03 55    JSR mem_release
 clear_foreground_mask_layer_rsrc:
 .C:34cc  A9 00       LDA #$00
-.C:34ce  8D 77 7B    STA room_layers_ptr_hi_tbl
+.C:34ce  8D 77 7B    STA room_layer_ptr_hi
 ;----------------------------------------------
 ;Release mask bit patterns resource, if needed
-.C:34d1  AE 7A 7B    LDX mask_bit_patterns_rsrc_lo
-.C:34d4  AC 78 7B    LDY mask_bit_patterns_rsrc_hi
+.C:34d1  AE 7A 7B    LDX mask_bit_patterns_lo
+.C:34d4  AC 78 7B    LDY mask_bit_patterns_hi
 .C:34d7  F0 03       BEQ clear_mask_bit_patterns_rsrc
 .C:34d9  20 03 55    JSR mem_release
 clear_mask_bit_patterns_rsrc:
 .C:34dc  A9 00       LDA #$00
-.C:34de  8D 78 7B    STA mask_bit_patterns_rsrc_hi
+.C:34de  8D 78 7B    STA mask_bit_patterns_hi
 ;----------------------------------------------
 ;Do we have a valid room? If so, load its graphics and objects
 .C:34e1  AE 49 71    LDX current_room
 .C:34e4  D0 11       BNE load_room_gfx_and_objects
 ;Otherwise, clear the exit and entry script pointers
 .C:34e6  A9 00       LDA #$00
-.C:34e8  8D 56 71    STA <room_exit_script
-.C:34eb  8D 57 71    STA >room_exit_script
-.C:34ee  8D 58 71    STA <room_entry_script
-.C:34f1  8D 59 71    STA >room_entry_script
+.C:34e8  8D 56 71    STA <room_exit_script_ptr
+.C:34eb  8D 57 71    STA >room_exit_script_ptr
+.C:34ee  8D 58 71    STA <room_entry_script_ptr
+.C:34f1  8D 59 71    STA >room_entry_script_ptr
 .C:34f4  68          PLA
 .C:34f5  68          PLA
 .C:34f6  60          RTS
@@ -12727,7 +12723,7 @@ set_result:
 .C:3509  9D BC 77    STA room_mem_attrs,X
 ;---------------------------
 .C:350c  20 32 35    JSR read_room_misc_data		
-.C:350f  20 31 36    JSR read_room_objects		
+.C:350f  20 31 36    JSR room_read_objects		
 .C:3512  20 10 37    JSR read_room_graphics
 .C:3515  20 12 43    JSR setup_room_scene_rsrc
 ;----------------------------------------------
@@ -12810,65 +12806,65 @@ copy_loop_2:
 ;Copy room entry and exit script offsets
 .C:3570  A0 14       LDY #$14
 .C:3572  B1 15       LDA (read_ptr_lo),Y
-.C:3574  8D 56 71    STA <room_exit_script
+.C:3574  8D 56 71    STA <room_exit_script_ptr
 .C:3577  C8          INY
 .C:3578  B1 15       LDA (read_ptr_lo),Y
-.C:357a  8D 57 71    STA >room_exit_script
+.C:357a  8D 57 71    STA >room_exit_script_ptr
 .C:357d  C8          INY
 .C:357e  B1 15       LDA (read_ptr_lo),Y
-.C:3580  8D 58 71    STA <room_entry_script
+.C:3580  8D 58 71    STA <room_entry_script_ptr
 .C:3583  C8          INY
 .C:3584  B1 15       LDA (read_ptr_lo),Y
-.C:3586  8D 59 71    STA >room_entry_script
+.C:3586  8D 59 71    STA >room_entry_script_ptr
 ;----------------------------------------------
-;Compute new read_ptr by doing room_block_ptr + room_tile_matrix_offset
+;Compute new read_ptr by doing room_block_ptr + tile_matrix_ofs
 .C:3589  18          CLC
 .C:358a  A5 C3       LDA room_block_ptr_lo_copy
-.C:358c  6D 41 71    ADC <room_tile_matrix_offset
+.C:358c  6D 41 71    ADC <tile_matrix_ofs
 .C:358f  85 15       STA read_ptr_lo
 .C:3591  A5 C4       LDA room_block_ptr_hi_copy
-.C:3593  6D 42 71    ADC >room_tile_matrix_offset
+.C:3593  6D 42 71    ADC >tile_matrix_ofs
 .C:3596  85 16       STA read_ptr_hi
 ;----------------------------------------------
 ;Copy symbol dictionary for tile matrix
 .C:3598  A0 03       LDY #$03
 copy_loop_3:
 .C:359a  B1 15       LDA (read_ptr_lo),Y
-.C:359c  99 4A 71    STA symbol_dictionary_for_tile_matrix,Y
+.C:359c  99 4A 71    STA tile_dict,Y
 .C:359f  88          DEY
 .C:35a0  10 F8       BPL copy_loop_3
 ;----------------------------------------------
-;Compute new read_ptr by doing room_block_ptr + room_color_layer_offset
+;Compute new read_ptr by doing room_block_ptr + color_layer_ofs
 .C:35a2  18          CLC
 .C:35a3  A5 C3       LDA room_block_ptr_lo_copy
-.C:35a5  6D 43 71    ADC <room_color_layer_offset
+.C:35a5  6D 43 71    ADC <color_layer_ofs
 .C:35a8  85 15       STA read_ptr_lo
 .C:35aa  A5 C4       LDA room_block_ptr_hi_copy
-.C:35ac  6D 44 71    ADC >room_color_layer_offset
+.C:35ac  6D 44 71    ADC >color_layer_ofs
 .C:35af  85 16       STA read_ptr_hi
 ;----------------------------------------------
 ;Copy symbol dictionary for color layer
 .C:35b1  A0 03       LDY #$03
 copy_loop_4:
 .C:35b3  B1 15       LDA (read_ptr_lo),Y
-.C:35b5  99 4E 71    STA symbol_dictionary_for_color_layer,Y
+.C:35b5  99 4E 71    STA color_dict,Y
 .C:35b8  88          DEY
 .C:35b9  10 F8       BPL copy_loop_4
 ;----------------------------------------------
-;Compute new read_ptr by doing room_block_ptr + room_mask_layer_offset
+;Compute new read_ptr by doing room_block_ptr + mask_layer_ofs
 .C:35bb  18          CLC
 .C:35bc  A5 C3       LDA room_block_ptr_lo_copy
-.C:35be  6D 45 71    ADC <room_mask_layer_offset
+.C:35be  6D 45 71    ADC <mask_layer_ofs
 .C:35c1  85 15       STA read_ptr_lo
 .C:35c3  A5 C4       LDA room_block_ptr_hi_copy
-.C:35c5  6D 46 71    ADC >room_mask_layer_offset
+.C:35c5  6D 46 71    ADC >mask_layer_ofs
 .C:35c8  85 16       STA read_ptr_hi
 ;----------------------------------------------
 ;Copy symbol dictionary for mask layer
 .C:35ca  A0 03       LDY #$03
 copy_loop_5:
 .C:35cc  B1 15       LDA (read_ptr_lo),Y
-.C:35ce  99 52 71    STA symbol_dictionary_for_mask_layer,Y
+.C:35ce  99 52 71    STA mask_dict,Y
 .C:35d1  88          DEY
 .C:35d2  10 F8       BPL copy_loop_5
 .C:35d4  60          RTS
@@ -12890,7 +12886,7 @@ sound_counter = $17
 script_counter = $18
 data_start = $19
 
-load_room_sounds_and_scripts:
+room_load_sounds_and_scripts:
 ;Compute the actual data start address (skip the header - 4 bytes)
 .C:35d5  AE 49 71    LDX current_room
 .C:35d8  BD 2A 78    LDA room_ptr_lo_tbl,X
@@ -12982,7 +12978,7 @@ read_ptr_hi = $16
 total_objects_copy = $1d
 object_counter = $1b
 
-read_room_objects:
+room_read_objects:
 ;Get pointer to current room's resource
 .C:3631  AE 49 71    LDX current_room
 .C:3634  BD F3 77    LDA room_ptr_hi_tbl,X
@@ -13016,11 +13012,11 @@ objects_to_copy:
 ;Copy compressed data offsets
 copy_compressed_data_offsets:
 .C:365f  B1 15       LDA (read_ptr_lo),Y
-.C:3661  9D 91 72    STA compressed_object_data_offsets,X
+.C:3661  9D 91 72    STA obj_gfx_ptr_tbl,X
 .C:3664  C8          INY
 .C:3665  E8          INX
 .C:3666  B1 15       LDA (read_ptr_lo),Y
-.C:3668  9D 91 72    STA compressed_object_data_offsets,X
+.C:3668  9D 91 72    STA obj_gfx_ptr_tbl,X
 .C:366b  C8          INY
 .C:366c  E8          INX
 .C:366d  C6 1B       DEC object_counter
@@ -13034,11 +13030,11 @@ copy_compressed_data_offsets:
 copy_object_offsets:
 ;Copy the object's offset in the room resource
 .C:367b  B1 15       LDA (read_ptr_lo),Y
-.C:367d  9D C9 72    STA room_object_offsets_lo,X
+.C:367d  9D C9 72    STA room_obj_ofs_tbl,X
 .C:3680  C8          INY
 .C:3681  E8          INX
 .C:3682  B1 15       LDA (read_ptr_lo),Y
-.C:3684  9D C9 72    STA room_object_offsets_lo,X
+.C:3684  9D C9 72    STA room_obj_ofs_tbl,X
 .C:3687  C8          INY
 .C:3688  E8          INX
 .C:3689  C6 1B       DEC object_counter
@@ -13052,9 +13048,9 @@ load_object_data:
 .C:3693  0A          ASL A
 .C:3694  AA          TAX
 ;Get the object offset
-.C:3695  BD C9 72    LDA room_object_offsets_lo,X
+.C:3695  BD C9 72    LDA room_obj_ofs_tbl,X
 .C:3698  85 15       STA read_ptr_lo
-.C:369a  BD CA 72    LDA room_object_offsets_hi,X
+.C:369a  BD CA 72    LDA room_obj_ofs_tbl + 1,X
 .C:369d  85 16       STA read_ptr_hi
 ;Add the base address to point to the object's data in the room resource
 .C:369f  18          CLC
@@ -13090,7 +13086,7 @@ load_object_data:
 set_00:
 .C:36d5  A9 00       LDA #$00
 set_result:
-.C:36d7  9D 75 72    STA parent_object_possible,X
+.C:36d7  9D 75 72    STA parent_linkable,X
 ;Copy object's Y top coordinate from bits 6-0 of offset #07
 .C:36da  B1 15       LDA (read_ptr_lo),Y
 .C:36dc  29 7F       AND #$7F
@@ -13168,13 +13164,13 @@ read_room_graphics:
 ;Copy and set room's BKG colors
 .C:372d  A2 03       LDX #$03
 bkg_color_set_loop:
-.C:372f  BD 3B 71    LDA room_bkg_colors,X
+.C:372f  BD 3B 71    LDA room_bg_colors,X
 .C:3732  9D 21 D0    STA vic_bkg_color0_register,X
 .C:3735  CA          DEX
 .C:3736  D0 F7       BNE bkg_color_set_loop
 ;------------------------------------------------------
-.C:3738  AD 3B 71    LDA room_bkg_color_0	
-.C:373b  85 8F       STA room_bkg_color_copy_0
+.C:3738  AD 3B 71    LDA room_bg0	
+.C:373b  85 8F       STA room_bg0_shadow
 ;map_out_io
 .C:373d  A0 24       LDY #$24
 .C:373f  84 01       STY processor_port_register
@@ -13226,8 +13222,8 @@ decrement_lo_counter:
 .C:377c  D0 E7       BNE loop_1
 ;------------------------------------------------------
 ;Release previous mask bit patterns resource, if any
-.C:377e  AE 7A 7B    LDX mask_bit_patterns_rsrc_lo
-.C:3781  AC 78 7B    LDY mask_bit_patterns_rsrc_hi
+.C:377e  AE 7A 7B    LDX mask_bit_patterns_lo
+.C:3781  AC 78 7B    LDY mask_bit_patterns_hi
 .C:3784  F0 03       BEQ setup_mask_data_load
 .C:3786  20 03 55    JSR mem_release
 ;--------------------
@@ -13235,10 +13231,10 @@ decrement_lo_counter:
 setup_mask_data_load:
 .C:3789  18          CLC
 .C:378a  A5 C3       LDA room_data_lo
-.C:378c  6D 47 71    ADC <room_mask_indexes_offset
+.C:378c  6D 47 71    ADC <mask_indexes_ofs
 .C:378f  85 27       STA read_ptr_lo
 .C:3791  A5 C4       LDA room_data_hi
-.C:3793  6D 48 71    ADC >room_mask_indexes_offset
+.C:3793  6D 48 71    ADC >mask_indexes_ofs
 .C:3796  85 28       STA read_ptr_hi
 ;--------------------
 ;Read 16-bit data size from read_ptr into raw_data_size
@@ -13274,8 +13270,8 @@ setup_mask_data_load:
 ;Save this block as the mask bit patterns for the room
 .C:37c8  A6 4F       LDX memory_range_lo
 .C:37ca  A4 50       LDY memory_range_hi
-.C:37cc  8E 7A 7B    STX mask_bit_patterns_rsrc_lo
-.C:37cf  8C 78 7B    STY mask_bit_patterns_rsrc_hi
+.C:37cc  8E 7A 7B    STX mask_bit_patterns_lo
+.C:37cf  8C 78 7B    STY mask_bit_patterns_hi
 ;--------------------
 ;Setup write pointer to the new block 
 .C:37d2  86 19       STX write_ptr_lo
@@ -13302,13 +13298,13 @@ setup_mask_data_load:
 .C:37f3  BD F3 77    LDA room_ptr_hi_tbl,X
 .C:37f6  85 C4       STA room_data_hi
 ;--------------------
-;Add room_mask_indexes_offset to set the read pointer to the start of room_mask_indexes
+;Add mask_indexes_ofs to set the read pointer to the start of room_mask_indexes
 .C:37f8  18          CLC
 .C:37f9  A5 C3       LDA room_data_lo
-.C:37fb  6D 47 71    ADC <room_mask_indexes_offset
+.C:37fb  6D 47 71    ADC <mask_indexes_ofs
 .C:37fe  85 27       STA read_ptr_lo
 .C:3800  A5 C4       LDA room_data_hi
-.C:3802  6D 48 71    ADC >room_mask_indexes_offset
+.C:3802  6D 48 71    ADC >mask_indexes_ofs
 .C:3805  85 28       STA read_ptr_hi
 ;--------------------
 ;Add #02 to read pointer to skip the data size
@@ -13422,7 +13418,7 @@ check_character_in_room:
 .C:3886  BD 57 FE    LDA actor_for_costume,X
 .C:3889  10 17       BPL next_character
 ;Is the character in the current room?
-.C:388b  BD FC FE    LDA room_for_character,X
+.C:388b  BD FC FE    LDA costume_room_idx,X
 .C:388e  CD 49 71    CMP current_room
 .C:3891  F0 03       BEQ actor_in_current_room
 ;If not, continue
@@ -13459,7 +13455,7 @@ costume_not_in_memory:
 ;Save costume index
 .C:38b1  86 15       STX temp_costume_index
 ;Get room parent resource for costume
-.C:38b3  BD A6 74    LDA room_for_costume,X
+.C:38b3  BD A6 74    LDA costume_room_idx_tbl,X
 ;Prepare disk load for the room resource
 .C:38b6  AA          TAX
 .C:38b7  20 BD 3A    JSR room_disk_chain_prepare
@@ -13789,8 +13785,8 @@ rsrc_ensure_script_resident_from_disk:
 ;===========================================
 execute_room_entry_script:
 ;Is there an entry script for the room?
-.C:3a7d  AD 58 71    LDA <room_entry_script
-.C:3a80  0D 59 71    ORA >room_entry_script
+.C:3a7d  AD 58 71    LDA <room_entry_script_ptr
+.C:3a80  0D 59 71    ORA >room_entry_script_ptr
 .C:3a83  D0 01       BNE entry_script_present
 ;If not, exit
 .C:3a85  60          RTS
@@ -13799,9 +13795,9 @@ entry_script_present:
 .C:3a86  A9 01       LDA #$01
 .C:3a88  8D 19 71    STA script_type_for_script_slot
 ;Load the script in the first slot
-.C:3a8b  AD 58 71    LDA <room_entry_script
+.C:3a8b  AD 58 71    LDA <room_entry_script_ptr
 .C:3a8e  8D C9 70    STA script_offsets_lo
-.C:3a91  AD 59 71    LDA >room_entry_script
+.C:3a91  AD 59 71    LDA >room_entry_script_ptr
 .C:3a94  8D B9 70    STA script_offsets_hi
 ;Launch the script
 .C:3a97  A2 00       LDX #$00
@@ -13812,8 +13808,8 @@ entry_script_present:
 ;===========================================
 execute_room_exit_script:
 ;Is there an exit script for the room?
-.C:3a9d  AD 56 71    LDA <room_exit_script
-.C:3aa0  0D 57 71    ORA >room_exit_script
+.C:3a9d  AD 56 71    LDA <room_exit_script_ptr
+.C:3aa0  0D 57 71    ORA >room_exit_script_ptr
 .C:3aa3  D0 01       BNE exit_script_present
 ;If not, exit
 .C:3aa5  60          RTS
@@ -13822,9 +13818,9 @@ exit_script_present:
 .C:3aa6  A9 01       LDA #$01
 .C:3aa8  8D 19 71    STA script_type_for_script_slot
 ;Load the script in the first slot
-.C:3aab  AD 56 71    LDA <room_exit_script
+.C:3aab  AD 56 71    LDA <room_exit_script_ptr
 .C:3aae  8D C9 70    STA script_offsets_lo
-.C:3ab1  AD 57 71    LDA >room_exit_script
+.C:3ab1  AD 57 71    LDA >room_exit_script_ptr
 .C:3ab4  8D B9 70    STA script_offsets_hi
 ;Launch the script
 .C:3ab7  A2 00       LDX #$00
@@ -14122,13 +14118,13 @@ set_object_as_candidate:
 .C:3c58  8E A0 3E    STX candidate_object
 check_object_parent:
 ;Check if the object can have a parent object and, if so, if it's inside the parent object right now
-.C:3c5b  BD 75 72    LDA parent_object_possible,X
+.C:3c5b  BD 75 72    LDA parent_linkable,X
 .C:3c5e  85 15       STA current_parent_possible
 .C:3c60  BD 59 72    LDA parent_object,X
-.C:3c63  D0 03       BNE parent_object_possible
+.C:3c63  D0 03       BNE parent_linkable
 ;Otherwise, skip straight to the boundary checks
 .C:3c65  4C 81 3C    JMP check_boundary
-parent_object_possible:
+parent_linkable:
 .C:3c68  A8          TAY
 .C:3c69  B9 3D 72    LDA room_object_index_lo,Y
 .C:3c6c  AA          TAX
@@ -14189,13 +14185,13 @@ decompress_object_gfx_loop:
 .C:3cb5  8E A0 3E    STX candidate_object
 check_object_parent:
 ;Is there a parent object?
-.C:3cb8  BD 75 72    LDA parent_object_possible,X
+.C:3cb8  BD 75 72    LDA parent_linkable,X
 .C:3cbb  85 15       STA current_parent_possible
 .C:3cbd  BD 59 72    LDA parent_object,X
-.C:3cc0  D0 03       BNE parent_object_possible
+.C:3cc0  D0 03       BNE parent_linkable
 ;If not, go straight to decompress the object graphics
 .C:3cc2  4C DE 3C    JMP decompress
-parent_object_possible:
+parent_linkable:
 ;There _might_ be a parent object - check if that's the current case
 .C:3cc5  A8          TAY
 .C:3cc6  B9 3D 72    LDA room_object_index_lo,Y
@@ -14417,10 +14413,10 @@ decompress_object_gfx:
 .C:3da1  A8          TAY
 .C:3da2  18          CLC
 .C:3da3  A5 C3       LDA <room_resource
-.C:3da5  79 91 72    ADC compressed_object_data_offsets,Y
+.C:3da5  79 91 72    ADC obj_gfx_ptr_tbl,Y
 .C:3da8  85 27       STA <decomp_src_ptr
 .C:3daa  A5 C4       LDA >room_resource
-.C:3dac  79 92 72    ADC compressed_object_data_offsets+1,Y
+.C:3dac  79 92 72    ADC obj_gfx_ptr_tbl+1,Y
 .C:3daf  85 28       STA >decomp_src_ptr
 ;------------------------------------------
 ;Check how much to trim is needed on the left side by comparing 
@@ -15002,10 +14998,10 @@ draw_room_scene:
 .C:405e  D0 13       BNE room_scene_data_not_in_memory
 ;Does the current room layers resource pointer match the one for "current_room?"?
 ;If yes, continue checking if there's scroll
-.C:4060  AD 79 7B    LDA room_layers_ptr_lo_tbl
+.C:4060  AD 79 7B    LDA room_layer_ptr_lo
 .C:4063  CD 98 FE    CMP <current_room_layers_rsrc
 .C:4066  D0 0B       BNE room_scene_data_not_in_memory
-.C:4068  AD 77 7B    LDA room_layers_ptr_hi_tbl
+.C:4068  AD 77 7B    LDA room_layer_ptr_hi
 .C:406b  CD 99 FE    CMP >current_room_layers_rsrc
 .C:406e  D0 03       BNE room_scene_data_not_in_memory
 .C:4070  4C 82 40    JMP check_scroll_right
@@ -15153,10 +15149,10 @@ decompress_visible_columns:
 .C:411b  85 15       STA <decompressed_data_ptr
 .C:411d  A5 18       LDA >tile_matrix_ptr
 .C:411f  85 16       STA >decompressed_data_ptr
-;Setup symbol dictionary for room_tile_matrix_offset
-.C:4121  A9 4A       LDA #<symbol_dictionary_for_tile_matrix
+;Setup symbol dictionary for tile_matrix_ofs
+.C:4121  A9 4A       LDA #<tile_dict
 .C:4123  8D 9F 41    STA <inlined_run_length_dict_base
-.C:4126  A9 71       LDA #>symbol_dictionary_for_tile_matrix
+.C:4126  A9 71       LDA #>tile_dict
 .C:4128  8D A0 41    STA >inlined_run_length_dict_base
 ;Load the decompression input pointer for this column
 .C:412b  B1 64       LDA (tile_matrix_compressed_lo),Y
@@ -15177,10 +15173,10 @@ decompress_visible_columns:
 .C:413e  85 15       STA <decompressed_data_ptr
 .C:4140  A5 1A       LDA >color_layer_ptr
 .C:4142  85 16       STA >decompressed_data_ptr
-;Setup symbol dictionary for room_color_layer_offset
-.C:4144  A9 4E       LDA #<symbol_dictionary_for_color_layer
+;Setup symbol dictionary for color_layer_ofs
+.C:4144  A9 4E       LDA #<color_dict
 .C:4146  8D 9F 41    STA <inlined_run_length_dict_base
-.C:4149  A9 71       LDA #>symbol_dictionary_for_color_layer
+.C:4149  A9 71       LDA #>color_dict
 .C:414b  8D A0 41    STA >inlined_run_length_dict_base
 ;Load the decompression input pointer for this column
 .C:414e  B1 6C       LDA (color_layer_compressed_lo),Y
@@ -15201,10 +15197,10 @@ decompress_visible_columns:
 .C:4161  85 15       STA <decompressed_data_ptr
 .C:4163  A5 1C       LDA >mask_layer_ptr
 .C:4165  85 16       STA >decompressed_data_ptr
-;Setup symbol dictionary for room_mask_layer_offset
-.C:4167  A9 52       LDA #<symbol_dictionary_for_mask_layer
+;Setup symbol dictionary for mask_layer_ofs
+.C:4167  A9 52       LDA #<mask_dict
 .C:4169  8D 9F 41    STA <inlined_run_length_dict_base
-.C:416c  A9 71       LDA #>symbol_dictionary_for_mask_layer
+.C:416c  A9 71       LDA #>mask_dict
 .C:416e  8D A0 41    STA >inlined_run_length_dict_base
 ;Load the decompression input pointer for this column
 .C:4171  B1 74       LDA (mask_layer_compressed_lo),Y
@@ -15693,8 +15689,8 @@ rsrc_ptr_local = $17
 
 setup_room_scene_rsrc:
 ;Is there a resource in memory right now?
-.C:4312  AE 79 7B    LDX room_layers_ptr_lo_tbl
-.C:4315  AC 77 7B    LDY room_layers_ptr_hi_tbl
+.C:4312  AE 79 7B    LDX room_layer_ptr_lo
+.C:4315  AC 77 7B    LDY room_layer_ptr_hi
 ;If so, release it - otherwise continue
 .C:4318  F0 03       BEQ calculate_rsrc_size
 .C:431a  20 03 55    JSR mem_release
@@ -15796,8 +15792,8 @@ calculate_rsrc_size:
 ;Copy the resource pointer to room_layers_rsrc
 .C:4368  A6 4F       LDX <block_ptr
 .C:436a  A4 50       LDY >block_ptr
-.C:436c  8E 79 7B    STX room_layers_ptr_lo_tbl
-.C:436f  8C 77 7B    STY room_layers_ptr_hi_tbl
+.C:436c  8E 79 7B    STX room_layer_ptr_lo
+.C:436f  8C 77 7B    STY room_layer_ptr_hi
 ;Also copy it to current_room_layers_rsrc
 ;This is used later to check if the type4 resource has changed and needs to be released
 .C:4372  8E 98 FE    STX <current_room_layers_rsrc
@@ -15945,10 +15941,10 @@ precomputed_pointer_array = $64
 ;Point to the start of the compressed data for the tile layer
 .C:43c6  18          CLC
 .C:43c7  AD B9 44    LDA <room_data_ptr
-.C:43ca  6D 41 71    ADC <room_tile_matrix_offset
+.C:43ca  6D 41 71    ADC <tile_matrix_ofs
 .C:43cd  85 27       STA <compressed_data
 .C:43cf  AD BA 44    LDA >room_data_ptr
-.C:43d2  6D 42 71    ADC >room_tile_matrix_offset
+.C:43d2  6D 42 71    ADC >tile_matrix_ofs
 .C:43d5  85 28       STA >compressed_data
 ;Set up the initial 8 column pointers for the tile layer precomputed data
 .C:43d7  A5 64       LDA precomputed_pointer_array
@@ -15974,10 +15970,10 @@ precomputed_pointer_array = $64
 ;Point to the start of the compressed data for the color layer
 .C:43fa  18          CLC
 .C:43fb  AD B9 44    LDA <room_data_ptr
-.C:43fe  6D 43 71    ADC <room_color_layer_offset
+.C:43fe  6D 43 71    ADC <color_layer_ofs
 .C:4401  85 27       STA <compressed_data
 .C:4403  AD BA 44    LDA >room_data_ptr
-.C:4406  6D 44 71    ADC >room_color_layer_offset
+.C:4406  6D 44 71    ADC >color_layer_ofs
 .C:4409  85 28       STA >compressed_data
 ;Set up the initial 8 column pointers for the color layer precomputed data
 .C:440b  A5 6C       LDA precomputed_pointer_array + 8
@@ -16003,10 +15999,10 @@ precomputed_pointer_array = $64
 ;Point to the start of the compressed data for the mask layer
 .C:442e  18          CLC
 .C:442f  AD B9 44    LDA <room_data_ptr
-.C:4432  6D 45 71    ADC <room_mask_layer_offset
+.C:4432  6D 45 71    ADC <mask_layer_ofs
 .C:4435  85 27       STA <compressed_data
 .C:4437  AD BA 44    LDA >room_data_ptr
-.C:443a  6D 46 71    ADC >room_mask_layer_offset
+.C:443a  6D 46 71    ADC >mask_layer_ofs
 .C:443d  85 28       STA >compressed_data
 ;Set up the initial 8 column pointers for the mask layer precomputed data
 .C:443f  A5 74       LDA precomputed_pointer_array + 16
@@ -19707,7 +19703,7 @@ check_eligibility:
 .C:56aa  9D 15 FF    STA costume_y_destination,X
 ;Set costume's room to #2C and exit
 .C:56ad  A9 2C       LDA #$2C
-.C:56af  9D FC FE    STA room_for_character,X
+.C:56af  9D FC FE    STA costume_room_idx,X
 .C:56b2  60          RTS
 ;------------------------------------------------
 next_costume_2:
@@ -20545,9 +20541,9 @@ check_type_4:
 ;------------------
 ;Case 4 (room scene graphics layers)
 .C:5a9c  A5 4F       LDA <resource_ptr
-.C:5a9e  9D 79 7B    STA room_layers_ptr_lo_tbl,X
+.C:5a9e  9D 79 7B    STA room_layer_ptr_lo,X
 .C:5aa1  A5 50       LDA >resource_ptr
-.C:5aa3  9D 77 7B    STA room_layers_ptr_hi_tbl,X
+.C:5aa3  9D 77 7B    STA room_layer_ptr_hi,X
 .C:5aa6  60          RTS
 ;------------------
 check_type_2:
@@ -20760,7 +20756,7 @@ check_eligibility:
 .C:5b86  BD 61 78    LDA costume_ptr_hi_tbl,X
 .C:5b89  F0 26       BEQ next_costume
 ;Check if the costume is in the current room - if not, continue
-.C:5b8b  BD FC FE    LDA room_for_character,X
+.C:5b8b  BD FC FE    LDA costume_room_idx,X
 .C:5b8e  CD 49 71    CMP current_room
 .C:5b91  F0 1E       BEQ next_costume
 ;Check if the memory attributes are zero - if not, continue
@@ -21836,10 +21832,10 @@ actor2_y = $1e
 compute_actors_distance:
 ;Load rooms for both actors
 .C:5fdc  A6 17       LDX reference_actor
-.C:5fde  BD FC FE    LDA room_for_character,X
+.C:5fde  BD FC FE    LDA costume_room_idx,X
 .C:5fe1  A6 19       LDX current_actor
 ;Are they in the same room?
-.C:5fe3  DD FC FE    CMP room_for_character,X
+.C:5fe3  DD FC FE    CMP costume_room_idx,X
 .C:5fe6  F0 03       BEQ valid_room_check
 ;Not in the same room - return #FF
 .C:5fe8  A9 FF       LDA #$FF
@@ -22847,7 +22843,7 @@ entry:
 .C:6344  20 14 5E    JSR script_read_byte
 ;Set room for current kid
 .C:6347  AE 67 FF    LDX current_kid
-.C:634a  9D FC FE    STA room_for_character,X
+.C:634a  9D FC FE    STA costume_room_idx,X
 ;Load the room
 .C:634d  AA          TAX
 .C:634e  20 66 34    JSR load_room
@@ -23594,7 +23590,7 @@ default_destination:
 move_actor:
 ;Set room destination as current room
 .C:669c  AE 30 FC    LDX active_costume
-.C:669f  BD FC FE    LDA room_for_character,X
+.C:669f  BD FC FE    LDA costume_room_idx,X
 .C:66a2  8D EA FD    STA room_destination
 ;Move actor to destination
 .C:66a5  20 9C 26    JSR put_actor_at_destination
@@ -23667,7 +23663,7 @@ both_actors_assigned:
 .C:6703  8D E7 FD    STA y_destination
 ;Set room destination as current room
 .C:6706  AE 30 FC    LDX active_costume
-.C:6709  BD FC FE    LDA room_for_character,X
+.C:6709  BD FC FE    LDA costume_room_idx,X
 .C:670c  8D EA FD    STA room_destination
 ;Move actor to destination
 .C:670f  20 9C 26    JSR put_actor_at_destination
@@ -23684,7 +23680,7 @@ character = $d0
 .C:671b  20 90 5F    JSR script_load_operand_bit6
 ;Put character in room
 .C:671e  A6 D0       LDX character
-.C:6720  9D FC FE    STA room_for_character,X
+.C:6720  9D FC FE    STA costume_room_idx,X
 .C:6723  60          RTS
 ;===========================================
 ;Opcode #03, #43, #83, #C3 - do sentence
@@ -23889,7 +23885,7 @@ fix_camera_on_actor:
 .C:6828  8D 6A 06    STA camera_mode
 ;Fetch the room for the actor
 .C:682b  AE 6B 06    LDX camera_costume_to_follow
-.C:682e  BD FC FE    LDA room_for_character,X
+.C:682e  BD FC FE    LDA costume_room_idx,X
 ;Is it the current room?
 .C:6831  CD 49 71    CMP current_room
 .C:6834  D0 03       BNE not_in_current_room
@@ -24065,7 +24061,7 @@ destination_variable = $d0
 .C:68f0  20 98 5F    JSR script_load_operand_bit7
 .C:68f3  AA          TAX
 ;Fetch room for actor
-.C:68f4  BD FC FE    LDA room_for_character,X
+.C:68f4  BD FC FE    LDA costume_room_idx,X
 ;Set result in variable
 .C:68f7  A6 D0       LDX destination_variable
 .C:68f9  9D 67 FF    STA game_vars,X
