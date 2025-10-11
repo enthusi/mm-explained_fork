@@ -17,8 +17,8 @@
  *   sync requests, and error signaling. Writes stream an exact 256-byte payload.
  *
  * Hardware / Memory Map:
- *   • processor_port_register ($0001): maps I/O in/out around IEC calls.
- *   • vic_border_color_register ($D020): set green on fatal protocol error (debug).
+ *   • cpu_port ($0001): maps I/O in/out around IEC calls.
+ *   • vic_border_color ($D020): set green on fatal protocol error (debug).
  *   • SECTOR_BUFFER ($0300..$03FF): fixed 256-byte read buffer (page-aligned).
  *   • Must execute from RAM: routines rely on self-modifying code (patch abs operands).
  *
@@ -145,14 +145,6 @@ max_sector_index_by_track:
         .byte $12,$12,$12,$12,$11,$11,$11,$11,$11,$11  // 21–30: 19 (21–24), then 18 (25–30)
         .byte $10,$10,$10,$10,$10                      // 31–35: 17 sectors/track (max idx 16)
 		
-/*
- * ===========================================
- * Hardware registers (C64 side)
- * ===========================================
- */
-.label processor_port_register     = $0001   // CPU I/O port: map I/O/KERNAL/BASIC (bitfields per standard $01)
-.label vic_border_color_register   = $D020   // VIC-II border color
-
 /*
  * ===========================================
  * Public variables
@@ -542,7 +534,7 @@ disk_write_linear:
 try_write:
         // Map I/O visible (CIA/IEC at $D000–$DFFF) for the low-level write
         ldy #MAP_IO_ON
-        sty processor_port_register
+        sty cpu_port
 
         /*
          * Write one sector from disk_src_ptr .. disk_src_ptr+$00FF to (current_track,current_sector)
@@ -564,7 +556,7 @@ try_write:
 write_succeeded:
         // Restore memory map (hide I/O window) before bookkeeping
         ldy #MAP_IO_OFF
-        sty processor_port_register
+        sty cpu_port
 
         // Advance geometry cursor to the next valid sector (wraps across tracks)
         jsr disk_next_sector_phys
@@ -786,7 +778,7 @@ disk_read_sector_into_buffer:
 attempt_read_sector:
         // Map I/O space in (make CIA/VIC etc. visible at $D000–$DFFF)
         ldy #MAP_IO_ON
-        sty processor_port_register
+        sty cpu_port
 
         /*
          * Kick off a sector read with current track/sector
@@ -798,7 +790,7 @@ attempt_read_sector:
 
         // Hide I/O space again (restore RAM under I/O)
         ldy #MAP_IO_OFF
-        sty processor_port_register
+        sty cpu_port
 
         // Success? (Carry clear means the sector was received into disk_dest_ptr)
         bcc read_succeeded
@@ -1084,7 +1076,7 @@ command_success:
 hang_loop:
         // Fatal/unknown sequence: mark screen border, spin forever
         lda #DISK_FAULT_BORDER
-        sta vic_border_color_register
+        sta vic_border_color
         jmp hang_loop
 
 /*===========================================
