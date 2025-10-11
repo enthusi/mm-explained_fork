@@ -42,3 +42,10 @@
 .const COSTUME_DFLT_X_DEST = $14
 .const COSTUME_DFLT_Y_DEST = $3C
 .const COSTUME_HOLDING_ROOM = $2C
+.const COMP_DICT_MAX_OFS = $03		// Max offset of a compression dictionary
+
+
+.const CAM_DEFAULT_POS = $C8
+
+.const TILE_DEFS_ADDR = $D800
+.const TILE_DEFS_SIZE = $0800
