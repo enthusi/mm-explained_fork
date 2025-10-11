@@ -1,6 +1,9 @@
 #importonce
 
+.label cpu_port = $0001		// CPU I/O port: map I/O/KERNAL/BASIC
+
 .label vic_border_color  = $D020
+.label vic_bg0_reg = $D021
 
 .label cia1_pra        	= $DC00   	// PRA — CIA1 Port A data register
                                 /*
