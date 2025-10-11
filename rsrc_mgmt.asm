@@ -53,8 +53,6 @@
 .label rsrc_data_ptr                = $553f // 16-bit pointer → resource base in RAM (header at +0, payload at +RSRC_*HDR_BYTES).
 
 .label rsrc_raw_size                = $FD9C // 16-bit raw payload size (bytes); written into memory header size fields.
-.label rsrc_resource_index          = $5676 // Resource index within its type (byte).
-.label rsrc_resource_type           = $5677 // Resource type identifier (byte).
 
 .label rsrc_ptr            = $4F    // Zero-page pointer to the resource base in RAM (lo/hi).
                                     // Used for indexed indirection: (rsrc_ptr),Y and via <rsrc_ptr/>rsrc_ptr.
@@ -1287,7 +1285,7 @@ sound_cache_miss:
  * Description:
  *   1) Fast path: if costume_ptr_hi_tbl[X] ≠ 0 → already loaded → rts.
  *   2) Miss path:
- *        - Save costume index; X := costume_room_idx_tbl[index]; jsr room_disk_chain_prepare.
+ *        - Save costume index; X := costume_room_res_idx[index]; jsr room_disk_chain_prepare.
  *        - X := 2*index; set rsrc_read_offset (offset-in-sector) and rsrc_sector_step (sector index).
  *        - resource_type := #$02 (COSTUME); jsr rsrc_load_from_disk → X:Y pointer.
  *        - Publish pointer into costume tables at resource_index; rts.
@@ -1310,7 +1308,7 @@ costume_cache_miss:
 
         // Determine owning room for this costume and prepare the disk chain:
         //   X := room index (selects disk side), seed track/sector chain for that room
-        lda     costume_room_idx_tbl,x
+        lda     costume_room_res_idx,x
         tax
         jsr     room_disk_chain_prepare
 
@@ -1467,7 +1465,7 @@ advance_costume_evict_scan:
         sta debug_error_code             // app-specific error/diagnostic code
 
         ldy #MAP_IO_ON                   // enable I/O region 
-        sty processor_port_register      
+        sty cpu_port      
 
 costume_evict_hangup:
         sta vic_border_color      		// set border color
