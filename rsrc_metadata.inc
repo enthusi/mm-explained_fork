@@ -1,9 +1,10 @@
 
 #importonce
 
-/*-------------------------------------------*/
-/*;52 rooms in total
-;32 means disk side 2, 31 means disk side 1*/
+/*
+Disk side ID for each room
+32 means disk side 2, 31 means disk side 1 (PETSCII characters for the digits)
+*/
 * = $7401
 room_disk_side_tbl:
 .byte $00,$32,$32,$32,$32,$32,$32,$32,$32,$32
@@ -13,9 +14,10 @@ room_disk_side_tbl:
 .byte $31,$31,$31,$32,$32,$31,$31,$31,$31,$31
 .byte $32,$31,$31,$00
 
-/*;Track and sector for each room
-;Given a room index, multiply by 2 to get the offset in the table
-;The first byte pointed will be the track, the second one the sector*/
+/*
+Disk location for each room (sector/track)
+Each location is 2 bytes: <0: sector, 1: track>
+*/
 * = $7438
 room_sec_trk_tbl:
 .byte $00,$00,$01,$01,$01,$0f,$06,$03,$10,$06
@@ -33,8 +35,9 @@ room_sec_trk_tbl:
 .const ROOM_ST_OFF_SECTOR = $00
 .const ROOM_ST_OFF_TRACK  = $01
 
-/*-------------------------------------------*/
 * = $74f1
+// The parent room resource index for each script
+// Each index is 1 byte
 script_room_idx_tbl:
 .byte $09,$2d,$32,$12,$12,$12,$08,$08,$10,$16,$1b,$07,$18,$18,$11
 .byte $03,$1c,$1c,$0a,$12,$12,$12,$12,$19,$05,$05,$05,$05,$05,$05,$13
@@ -48,7 +51,27 @@ script_room_idx_tbl:
 .byte $01,$0a,$07,$1a,$13,$13,$08,$01,$01,$09,$09,$1f,$1f,$14,$1f,$0c
 .byte $09
 
+* = $76D1
+// The parent room resource index for each sound
+// Each index is 1 byte
+sound_room_idx_tbl:
+.byte $1E, $21, $11, $18, $24, $01, $2C, $18, $2C, $2C, $24, $04, $04, $04, $07
+.byte $07, $07, $07, $18, $2B, $15, $05, $05, $05, $05, $11, $03, $0F, $0A, $15, $19
+.byte $19, $08, $08, $18, $12, $08, $15, $2C, $01, $10, $17, $04, $1D, $11, $1B, $05
+.byte $29, $29, $29, $11, $29, $11, $29, $2D, $1E, $21, $21, $21, $1E, $1E, $33, $33
+.byte $0C, $10, $2E, $33, $33, $10, $2F
+
+* = $74A6
+// The parent room resource index for each costume
+// Each index is 1 byte
+costume_room_res_idx:
+.byte $2E, $2C, $2C, $2C, $2C, $2C, $2C, $2C, $1E, $1F
+.byte $13, $1A, $18, $1F, $0C, $20, $33, $28, $2A, $1B, $33, $2E, $21, $1E, $1F
+
+
 * = $7591
+// Disk location (byte offset/sector index) relative to the parent room's start sector, for each global script
+// Each location is 2 bytes: <0: byte offset in sector, 1: sector index>
 global_script_disk_loc_tbl:
 .byte $73,$06,$d1,$0a,$12,$05,$20,$11,$d9,$11,$e4,$11,$70,$0d,$ae
 .byte $0d,$d2,$10,$ec,$0b,$66,$0c,$98,$10,$3c,$0e,$5b,$0e,$2b,$0d,$43
@@ -69,6 +92,8 @@ global_script_disk_loc_tbl:
 .byte $1b
 
 * = $7691
+// Disk location (byte offset/sector index) relative to the parent room's start sector, for each room script
+// Each location is 2 bytes: <0: byte offset in sector, 1: sector index>
 room_script_disk_loc_tbl:
 .byte $7b,$05,$4a,$0b,$5b,$0c,$ad,$0e,$e4,$0e,$e5,$0b,$00,$0c,$48
 .byte $0c,$f2,$0d,$32,$0e,$db,$0f,$fe,$0f,$36,$10,$f9,$0e,$bc,$0b,$17
@@ -78,6 +103,8 @@ room_script_disk_loc_tbl:
 
 
 * = $7717
+// Disk location (byte offset/sector index) relative to the parent room's start sector, for each sound
+// Each location is 2 bytes: <0: byte offset in sector, 1: sector index>
 sound_disk_loc_tbl:
 .byte $67, $0F, $C0, $1B, $F1, $0D, $25, $0F, $9A
 .byte $07, $2A, $1C, $05, $07, $91, $0E, $74, $07, $94, $07, $6F, $07, $2A, $0F, $14
@@ -86,20 +113,9 @@ sound_disk_loc_tbl:
 .byte $0C, $BE, $0E, $17, $0C, $2D, $0C, $71, $12, $90, $12, $35, $0F
 
 
-* = $76D1
-sound_room_idx_tbl:
-.byte $1E, $21, $11, $18, $24, $01, $2C, $18, $2C, $2C, $24, $04, $04, $04, $07
-.byte $07, $07, $07, $18, $2B, $15, $05, $05, $05, $05, $11, $03, $0F, $0A, $15, $19
-.byte $19, $08, $08, $18, $12, $08, $15, $2C, $01, $10, $17, $04, $1D, $11, $1B, $05
-.byte $29, $29, $29, $11, $29, $11, $29, $2D, $1E, $21, $21, $21, $1E, $1E, $33, $33
-.byte $0C, $10, $2E, $33, $33, $10, $2F
-
-* = $74A6
-costume_room_idx_tbl:
-.byte $2E, $2C, $2C, $2C, $2C, $2C, $2C, $2C, $1E, $1F
-.byte $13, $1A, $18, $1F, $0C, $20, $33, $28, $2A, $1B, $33, $2E, $21, $1E, $1F
-
 * = $74BF
+// Disk location (byte offset/sector index) relative to the parent room's start sector, for each costume
+// Each location is 2 bytes: <0: byte offset in sector, 1: sector index>
 costume_disk_loc_tbl:
 .byte $CD, $07, $B1, $07, $E3, $0E, $B4, $24, $01, $2C, $6D, $16, $B8, $1D, $42, $33, $98
 .byte $1A, $9A, $11, $1B, $0F, $08, $18, $4A, $0F, $9E, $0D, $08, $0E, $96, $0A, $90
