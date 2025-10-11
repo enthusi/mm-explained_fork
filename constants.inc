@@ -46,6 +46,10 @@
 
 
 .const CAM_DEFAULT_POS = $C8
+.const CAM_PAN_THRESHOLD = $14
+.const VIEW_HALF_SPAN = $14
+.const VIEW_FULL_SPAN_MINUS1 = $27
 
 .const TILE_DEFS_ADDR = $D800
 .const TILE_DEFS_SIZE = $0800
+

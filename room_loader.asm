@@ -201,7 +201,7 @@ next_costume:
 
 		// Seed camera with a sane starting goal so the first frame has a stable scroll target.
 		lda     #CAM_DEFAULT_POS
-		sta     camera_desired_position       
+		sta     cam_target_pos       
 
 		// Re-init sprites/sound engine before loading room assets
 		jsr     init_sprites_sound

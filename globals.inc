@@ -13,11 +13,11 @@
 
 .label room_scene_left_edge = $0664	 //Left column for the visible room scene
 .label room_scene_right_edge = $0665 //Right column for the visible room scene
-.label camera_desired_position = $0666
-.label camera_current_position = $0667
-.label camera_mode = $066a				//02 = follow costume, #03 = pan to position
-.label camera_costume_to_follow = $066b	//Index of costume to follow
-.label pan_camera_to = $066c				//Position to pan camera to
+.label cam_target_pos = $0666
+.label cam_current_pos = $0667
+.label cam_mode = $066a				//02 = follow costume, #03 = pan to position
+.label cam_follow_costume_id = $066b	//Index of costume to follow
+.label cam_pan_goal = $066c				//Position to pan camera to
 .label actor_follow_needs_pan = $066d		
 
 // --- Copy/write byte-count accumulator ---
@@ -91,6 +91,28 @@
 
 .label current_room_rsrc = $715B	//Used by draw_room_scene to ensure residence of the room resources
 
+/*
+===========================================================
+ Actor sprites, waypoint and position variables
+===========================================================
+*/
+.label sprite_buffer = $fd14		//;Sprite buffer index (#00 or #01)
+//;#03 = actor might be obscured by a foreground object
+.label layer_depth_for_actor = $fd18
+.label character_sprite_x_lo = $fd1c
+.label character_sprite_x_hi = $fd39
+.label active_waypoint_x_for_actor = $fd25
+.label active_waypoint_y_for_actor = $fd2d
+.label desired_waypoint_x_for_actor = $fd29
+.label desired_waypoint_y_for_actor = $fd31
+.label position_y_for_actor = $fd3d
+.label position_x_for_actor = $fd41
+.label position_to_waypoint_x_for_actor = $fd45
+.label position_to_waypoint_y_for_actor = $fd49
+.label actor_sprite_x_hi = $fd58
+.label actor_sprite_x_lo = $fd60
+.label animation_state_for_actor = $FD97
+
 .label costume_for_actor = $fe53		//#FF = actor not in use
 .label actor_for_costume = $fe57		//Bit 7 set - actor moving, clear - not moving
 
@@ -136,5 +158,7 @@ They were definitely intended as debugging aids.
 .label raster_setup = $0
 .label assign_available_actor = $0
 .label setup_room_scene_rsrc = $0
+.label prepare_video_for_new_room = $0
 
-
+//room_scene_left_edge -> view_left_x
+//room_scene_right_edge -> view_right_x
