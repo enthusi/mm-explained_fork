@@ -403,9 +403,10 @@ ACTOR_IS_FROZEN = #$40
 ; The simple algorithm used is:
 ;
 ;	-draw the background fully
+;       -draw the actor's graphics fully into the invisible buffer
 ;	-get masking information for the actor's position
-;	-mask out the actor's graphics as needed
-;	-copy the masked actor's graphics to the room scene
+;	-mask out the actor's graphics in the buffer as needed
+;	-toggle the invisible sprite buffer to the current active sprite
 ;
 ; If an actor's pixel is masked, then it's not drawn to the scene, and the background pixel remains visible.
 ; Otherwise, the actor's pixel is drawn on the scene, obstructing the background pixel.
@@ -427,38 +428,8 @@ ACTOR_IS_FROZEN = #$40
 ; A whole "mask tile layer" is defined, with dimensions = room_width * room height.
 ; One mask tile index is stored per byte.
 ; Each tile index defines the tile pattern to be used as mask.
-;
-; For example:
-;
-;	Mask layer positions			Mask layer values
-;
-; 	M00 M01 M02 M03 M04 M05			3	3	3	3   6   3
-;	M10	M11 M12 M13 M14 M15			3	3	5	7   6   5
-;
-;
-; Instead of a tile index referring directly to a pattern definition, there's one extra level of indirection.
-; The game engine uses 256 hardcoded mask bit patterns (see the mask_bit_patterns comment for details).
-; I call these "global mask bit patterns", as they are shared across all rooms.
-;
-; Each room will have its own set of "mask tile definitions". But instead of the definitions specifying patterns directly,
-; each byte is an index into the global patterns table.
-;
-; So the example above will use the room's mask definition 3 for tiles at positions M00-M04, then the mask definition 6 for M04, etc.
-;
-; For example, a room's mask tile definitions looks like this:
-;
-; 00 00 00 00 00 00 00 00		Mask definition 0
-; 55 55 55 55 55 55 55 55		Mask definition 1
-; AA AA AA AA AA AA AA AA		Mask definition 2
-; FF FF FF FF FF FF FF FF		Mask definition 3
-; 01 02 03 AA 03 04 05 05		Mask definition 4
-;
-; The first mask definition takes up 8 bytes, which are all #00. #00 doesn't mean that the patterns have value 00000000.
-; It means that the global pattern number #00 is to be used (which _coincidentally_ defines a bit pattern of #00).
-; So all rows of mask definition 0 use global pattern #00.
-; All rows of mask definition 1 use global pattern #55, and so on.
-;
-;
+; 
+; The mask tiles are stored in the same format as the background tiles.
 
 
 ;0064-007B section - precomputed decompression values for each room's scene row
