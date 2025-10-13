@@ -979,10 +979,10 @@ mem_alloc_bestfit:
 		 */
 		clc
 		lda mem_req_payload
-		adc #MEM_HDR_LEN
+		adc #<MEM_HDR_LEN
 		sta mem_req_total
 		lda mem_req_payload + 1
-		adc #$00
+		adc #>MEM_HDR_LEN
 		sta mem_req_total + 1
 
 		// Initialize the scan at the head of the free list.
@@ -1390,9 +1390,9 @@ mem_alloc_from_free:
 		 */
 		sec
 		lda mem_split_rem
-		sbc #MEM_HDR_LEN                      // subtract header size (low)
+		sbc #<MEM_HDR_LEN                      // subtract header size (low)
 		lda mem_split_rem + 1
-		sbc #$00                      // subtract header size (high)
+		sbc #>MEM_HDR_LEN                      // subtract header size (high)
 		bcc consume_whole_block     // C=0 → mem_split_rem < 4
 
 		/*
