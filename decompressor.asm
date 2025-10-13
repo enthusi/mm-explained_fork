@@ -146,7 +146,7 @@
  *   decoding can be paused/resumed seamlessly (including after skips).
  * ===============================================================================
  */
-
+#importonce
 #import "globals.inc"
 
 /*
@@ -154,12 +154,9 @@
  * Zero-page variables and constants
  * ===========================================
  */
-.label decomp_emit_mode    = $29    // current mode flag ($00 = direct, $FF = run). Only bit 7 is tested
-.label decomp_emit_rem     = $2A    // remaining outputs for the current operation (stores L, meaning L+1 total outputs)
-.label decomp_run_symbol   = $2B    // byte value to output while in run mode
 .label decomp_y_save       = $2D    // temporary storage for Y register within decomp_stream_next
 .label decomp_skip_rem     = $2E    // decompressed-byte skip counter (low at $2e, high at $2f) for skip helpers
-.label decomp_dict4   		= $0100	 // dictionary of symbols (4 symbols: $0100-0103)
+.label decomp_dict4   	= $0100	 // dictionary of symbols (4 symbols: $0100-0103)
 
 .const DIRECT_MODE         = $00   // constant: direct mode selector
 .const RUN_MODE            = $FF   // constant: run mode selector
