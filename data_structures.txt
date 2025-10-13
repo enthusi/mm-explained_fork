@@ -1,0 +1,70 @@
+/*========================================================
+ * Room resource layout
+;========================================================
+ * Offsets below are relative to (room_base + 4).
+ *
+ * +$00  width                      	width of the room, expressed in tiles
+ * +$01  height                     	height of the room, expressed in tiles (always $11)
+ * +$02  video_flag                 	(observed $00)
+ * +$03  bg0                        	background color 0
+ * +$04  bg1                        	background color 1
+ * +$05  bg2                        	background color 2
+ * +$06..+$07  tile_definitions_ofs     offset to compressed tile definitions
+ * +$08..+$09  tile_matrix_ofs          offset to compressed tile matrix
+ * +$0A..+$0B  color_layer_ofs          offset to compressed color layer
+ * +$0C..+$0D  mask_layer_ofs           offset to compressed mask layer
+ * +$0E..+$0F  mask_indexes_ofs         offset to compressed mask index table
+ * +$10        object_count				total # of objects in this resource
+ * +$11        bbox_start_ofs           start of boundary boxes
+ * +$12        sound_count				total # of sounds in this resource
+ * +$13        script_count				total # of scripts in this resource
+ * +$14..+$15  exit_script_ofs          offset to exit script
+ * +$16..+$17  entry_script_ofs         offset to entry script
+ * Variable-length sections follow:
+ * 		- obj_gfx_layers_ofs → offsets for objects’ compressed gfx layers (1 per object)
+ *		- room_obj_ofs → offsets for each object resource (1 per object)
+ *      - sounds section
+ *      - scripts section
+ *
+ * Decompression note:
+ *   At the start of each compressed data section, the first 4 bytes (+$00..+$03
+ *   relative to that section) form the symbol dictionary required by the decoder.
+ *========================================================*/
+/* ---------------------------------------------------------
+ * Object resource layout (offsets from object base), bytes
+ *
+ * +$00..+$01  resource_size		16-bit total size of this object resource, in bytes.
+ * +$02  resource_type				expected value: $01 (object).
+ * +$03  inventory_index			index into the inventory table when this object resides in inventory.
+ * +$04  id_lo                     	object identifier (low byte)
+ * +$05  id_hi                     	object identifier (high byte) + mutability (see below)
+ * +$06  x_start                   	coordinate of left edge
+ * +$07  y_start_flags             	packed:
+ *       - bit7      : parent_linkable (1 = may have parent link; 0 = none)
+ *       - bits0..6  : coordinate of top edge (0..127)
+ * +$08  width                     	object width (game units)
+ * +$09  parent_index              	index of parent object (if any)
+ * +$0A  x_destination             	target X coordinate
+ * +$0B  ydest_prep                	packed:
+ *       - bits7..5  : prep_index (“Use” preposition)
+ *       - bits4..0  : y_destination (0..31) / 4
+ * +$0C  height_active             	packed:
+ *       - bits7..3  : height (store/read as A >> 3)
+ *       - bits2..0  : destination_active (3-bit flag; nonzero ⇒ active)
+ * +$0D  name_ofs                  	offset to object name string
+ * +$0E  verb_handlers_ofs         	start of verb-handler offsets
+ * 
+ * Mutability semantics
+ *
+ *  - $00 = mutable:
+ *      The object can be removed or swapped to an alternate state/variant.
+ *      Typically has an associated replacement graphic:
+ *        e.g., a door switches to an “opened” sprite; a pickup switches to a
+ *        “removed”/empty graphic after collection.
+ *
+ *  - $01 = immutable:
+ *      The object is static; it cannot be removed or swapped into another state.
+ *      No replacement graphic is provided—the object is already baked into the
+ *      room’s scene graphics.
+ *
+ * --------------------------------------------------------- */
