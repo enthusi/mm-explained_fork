@@ -28,6 +28,9 @@
 .const RSRC_TYPE_ROOM_LAYERS = $04
 .const RSRC_TYPE_SCRIPT      = $05
 .const RSRC_TYPE_SOUND       = $06
+.const RSRC_INDEX_GFX_LAYERS = $00
+.const RSRC_INDEX_MASK_LAYER = $01
+
 
 .const ROOM_MAX_INDEX      = $36       // Highest valid room index.
 .const COSTUME_MAX_INDEX   = $18       // Highest valid costume index.
@@ -42,6 +45,7 @@
 .const COSTUME_DFLT_X_DEST = $14
 .const COSTUME_DFLT_Y_DEST = $3C
 .const COSTUME_HOLDING_ROOM = $2C
+
 .const COMP_DICT_MAX_OFS = $03		// Max offset of a compression dictionary
 
 
