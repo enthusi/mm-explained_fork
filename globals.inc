@@ -1,6 +1,10 @@
 #importonce
 
 .label decomp_src_ptr 		= $27    // 16-bit pointer to compressed input stream 
+.label decomp_emit_mode    = $29    // current mode flag ($00 = direct, $FF = run). Only bit 7 is tested
+.label decomp_emit_rem     = $2A    // remaining outputs for the current operation (stores L, meaning L+1 total outputs)
+.label decomp_run_symbol   = $2B    // byte value to output while in run mode
+
 .label kbd_keycode         = $30    // ZP: published keycode when ready
 .label joy_state     	   = $33    // ZP: snapshot of joystick mask (bits 0–4)
 .label print_msg_ptr	   = $DA	// ZP: 16-bit pointer to message to be printed (print_message_wait_for_button)
@@ -25,10 +29,10 @@
 .label disk_copy_count_hi 			= $463D // 16-bit count of bytes to copy/write: high byte
                                       // (write path rounds up to whole sectors: hi += (lo != 0))
 									  
+.label rsrc_resource_index          = $5676 // Resource index within its type (byte).
+.label rsrc_resource_type           = $5677 // Resource type identifier (byte).
 .label rsrc_read_offset             = $5678 // Byte offset into resource stream (passed in X to disk_seek_read).
 .label rsrc_sector_idx             = $5679 // Sector index in physical chain (passed in Y to disk_seek_read).  
-
-.label saved_script_index  = $FEA6    	// external flag controlling delay init
 
 .label total_objects_in_room = $715c
 .label obj_gfx_ptr_tbl = $7291
@@ -45,6 +49,13 @@
 .label parent_object = $7259
 .label parent_linkable = $7275
 
+.label tile_matrix_ofs   = $7141	// 16-bit offset to tile matrix section
+.label color_layer_ofs   = $7143	// 16-bit offset to color layer section
+.label mask_layer_ofs    = $7145	// 16-bit offset to mask layer section 
+.label mask_indexes_ofs  = $7147	// 16-bit offset to mask indexes section
+.label room_exit_script_ptr   = $7156	// 16-bit offset to exit script within room block
+.label room_entry_script_ptr  = $7158	// 16-bit offset to entry script within room block
+
 
 .label object_ptr_lo_tbl = $705E
 .label object_ptr_hi_tbl = $708B
@@ -56,15 +67,17 @@
 .label sound_ptr_lo_tbl = $790B
 .label script_ptr_hi_tbl = $7997		//Total scripts: 160
 .label script_ptr_lo_tbl = $7A37
-.label room_layers_ptr_hi_tbl = $7B77		//Total type 4 resources: 2	- room scene graphic layers
-.label room_layers_ptr_lo_tbl = $7B79
-.label mask_bit_patterns_hi = $7b78		
-.label mask_bit_patterns_lo = $7b7a
+.label room_gfx_layers_hi = $7B77		//Total type 4 resources: 2	- room scene graphic layers
+.label room_gfx_layers_lo = $7B79
+.label mask_bit_patterns_hi = $7B78		
+.label mask_bit_patterns_lo = $7B7A
 .label room_width = $7139
 .label room_height = $713a
 .label room_bg0 = $713b
 .label room_bg_colors = $713b
 .label room_tile_definitions_offset = $713f
+.label current_room = $7149
+
 
 .label room_mem_attrs = $77BC
 .label costume_mem_attrs = $77A3
@@ -73,13 +86,10 @@
 
 .label reload_snd_rsrc_ptrs     = $FE70    // flag: non-zero => refresh sound resource pointers after relocation
 .label rsrc_released_flag = $FE4A
+.label saved_script_index  = $FEA6    	// external flag controlling delay init
 
 .label room_for_character = $FEFC
-.label current_room = $7149
 
-
-.label rsrc_resource_index          = $5676 // Resource index within its type (byte).
-.label rsrc_resource_type           = $5677 // Resource type identifier (byte).
 
 .label active_side_id = $fe9c //This represents the desired Side ID (the ID that identifies each of the game's disk sides)
 						//Once disk_ensure_side is called, this parameter is set and execution will not resume until the proper disk side is inserted
@@ -115,6 +125,8 @@
 
 .label costume_for_actor = $fe53		//#FF = actor not in use
 .label actor_for_costume = $fe57		//Bit 7 set - actor moving, clear - not moving
+
+.label room_gfx_layers_active_ptr = $FE98
 
 /*
 ===========================================================
@@ -157,7 +169,6 @@ They were definitely intended as debugging aids.
 .label init_sprites_sound = $0
 .label raster_setup = $0
 .label assign_available_actor = $0
-.label setup_room_scene_rsrc = $0
 .label prepare_video_for_new_room = $0
 
 //room_scene_left_edge -> view_left_x
