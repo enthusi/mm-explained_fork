@@ -259,7 +259,7 @@ next_costume:
  *        - Mark active room MRU (age=0) while preserving lock (write $80 if locked,
  *          else $00).
  *        - room_read_metadata, room_read_objects, read_room_graphics,
- *          setup_room_scene_rsrc.
+ *          setup_room_columns_with_decode_snapshots.
  *   6) LRU upkeep: for all resident rooms (room_ptr_hi_tbl[x]≠0), if age!=0 then
  *      INC room_mem_attrs[x]. 
  *   7) Restore X := current_room and RTS.
@@ -381,12 +381,12 @@ commit_room_age:
          *  - room_read_metadata   : room metadata/params (scripts, flags, bounds…)
          *  - room_read_objects     : object table (IDs, states, positions)
          *  - read_room_graphics    : visual assets (tiles/bitmaps/sprites)
-         *  - setup_room_scene_rsrc : scene-layer/mask pointers & final wiring
+         *  - setup_room_columns_with_decode_snapshots : scene-layer/mask pointers & final wiring
          *--------------------------------------*/
         jsr     room_read_metadata
         jsr     room_read_objects
         jsr     read_room_graphics
-        jsr     setup_room_scene_rsrc
+        jsr     setup_room_columns_with_decode_snapshots
 
         /*---------------------------------------
          * LRU upkeep: increment age for resident, non-zero-age rooms
