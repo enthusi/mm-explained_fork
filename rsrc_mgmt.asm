@@ -420,7 +420,7 @@ rsrc_hdr_init:
  *   object_ptr_lo_tbl[X],  object_ptr_hi_tbl[X]
  *   costume_ptr_lo_tbl[X], costume_ptr_hi_tbl[X]
  *   room_ptr_lo_tbl[X],    room_ptr_hi_tbl[X]
- *   room_layers_ptr_lo_tbl[X], room_layers_ptr_hi_tbl[X]
+ *   room_gfx_layers_lo[X], room_gfx_layers_hi[X]
  *   script_ptr_lo_tbl[X],  script_ptr_hi_tbl[X]
  *   sound_ptr_lo_tbl[X],   sound_ptr_hi_tbl[X]
  *   (Each receives <rsrc_ptr / >rsrc_ptr respectively.)
@@ -457,9 +457,9 @@ test_type_room_layers:
 
         // type 4: room scene layers — publish pointer for layer set X
         lda <rsrc_ptr
-        sta room_layers_ptr_lo_tbl,x
+        sta room_gfx_layers_lo,x
         lda >rsrc_ptr
-        sta room_layers_ptr_hi_tbl,x
+        sta room_gfx_layers_hi,x
         rts
 
 test_type_costume:
