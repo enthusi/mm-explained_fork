@@ -1,8 +1,10 @@
+#importonce
 
 #import "constants.inc"
 #import "globals.inc"
 #import "rsrc_mgmt.asm"
 #import "decompressor.asm"
+#import "room_gfx_rsrc.asm"
 
 
 
@@ -91,19 +93,12 @@
 .label color_dict        = $714E
 .label mask_dict         = $7152
 
-.label tile_matrix_ofs   = $7141	// 16-bit offset to tile matrix section
-.label color_layer_ofs   = $7143	// 16-bit offset to color layer section
-.label mask_layer_ofs    = $7145	// 16-bit offset to mask layer section 
-.label mask_indexes_ofs  = $7147	// 16-bit offset to mask indexes section
-.label room_exit_script_ptr   = $7156	// 16-bit offset to exit script within room block
-.label room_entry_script_ptr  = $7158	// 16-bit offset to entry script within room block
-
 // room_read_metadata vars
 .label room_base = $c3
 .label read_ptr = $15
 
 // room_ensure_resident vars
-.label room_data_ptr = $387b
+.label room_data_ptr_local = $387b
 .label room_index = $387d
 
 // room_read_objects vars
@@ -125,7 +120,7 @@
 .label payload_len		    = $1d   // payload size read from stream (16-bit)
 .label gfx_read_ptr 		= $27 	// generic read pointer / decomp source (16-bit pointer)
 .label gfx_write_ptr 		= $19 	// generic write pointer (16-bit pointer)
-.label alloc_base      		= $4f   // mem_alloc return (16-bit pointer)
+.label gfx_alloc_base      		= $4f   // mem_alloc return (16-bit pointer)
 .label dbg_room_width    	= $fd91 // debug mirror: room width
 .label dbg_room_height   	= $fd92 // debug mirror: room height
 
@@ -245,7 +240,7 @@ next_costume:
  *   A, Y                  Clobbered.
  *   Globals               current_room, var_current_room,
  *                         room_mem_attrs[old], room_mem_attrs[new],
- *                         room_layers_ptr_hi_tbl := 0, mask_bit_patterns_hi := 0,
+ *                         room_gfx_layers_hi := 0, mask_bit_patterns_hi := 0,
  *                         (if X=0) room_entry_script_ptr := 0, room_exit_script_ptr := 0.
  *   Flags                 Not preserved / undefined for callers.
  *
@@ -310,14 +305,14 @@ write_room_attr_age:
          *  - mem_release(X=lo, Y=hi)
          *  - Clear only the hi byte afterward to mark “not loaded”
          *--------------------------------------*/
-        ldx     room_layers_ptr_lo_tbl           // X := ptr.lo (call arg)
-        ldy     room_layers_ptr_hi_tbl           // Y := ptr.hi (call arg)
-        beq     clear_room_layers_ptr_hi_tbl     // hi==0 → nothing to free
+        ldx     room_gfx_layers_lo           // X := ptr.lo (call arg)
+        ldy     room_gfx_layers_hi           // Y := ptr.hi (call arg)
+        beq     clear_room_gfx_layers_hi     // hi==0 → nothing to free
         jsr     mem_release
 
-clear_room_layers_ptr_hi_tbl:
+clear_room_gfx_layers_hi:
         lda     #$00
-        sta     room_layers_ptr_hi_tbl           // mark unloaded (hi=0; lo left stale by convention)
+        sta     room_gfx_layers_hi           // mark unloaded (hi=0; lo left stale by convention)
 
         /*---------------------------------------
          * Release mask-bit-patterns resource, if present
@@ -426,7 +421,7 @@ age_scan_next:
  * Summary:
  *   Uses current_room to find the loaded room’s base, skips the 4-byte header
  *   (header +0..+3), copies the fixed 8-bit meta block (+$00..+$05) and the
- *   16-bit offset block (+$06..+$0F) into room_data_ptr, installs exit/entry
+ *   16-bit offset block (+$06..+$0F) into room_data_ptr_local, installs exit/entry
  *   script pointers (+$14..+$17), then reads the 4-byte symbol dictionaries
  *   for the tile, color, and mask streams by seeking to
  *   (room_base + tile_matrix_ofs/color_layer_ofs/mask_layer_ofs).
@@ -446,9 +441,9 @@ age_scan_next:
  *   1) Load room_base from room_ptr_*_tbl[current_room] and mirror to
  *      current_room_rsrc for other subsystems.
  *   2) Set read_ptr := room_base + MEM_HDR_LEN, so reads begin at meta +$00.
- *   3) Copy the six 8-bit meta fields (+$00..+$05) to room_data_ptr[0..5]
+ *   3) Copy the six 8-bit meta fields (+$00..+$05) to room_data_ptr_local[0..5]
  *      (e.g., width, height, video flag, bg0..bg2).
- *   4) Copy the five 16-bit offsets (+$06..+$0F) to room_data_ptr[6..$0F]
+ *   4) Copy the five 16-bit offsets (+$06..+$0F) to room_data_ptr_local[6..$0F]
  *      (tile definitions, tile matrix, color layer, mask layer, mask indexes).
  *   5) Read script pointers at +$14..+$17 and store to
  *      room_exit_script_ptr and room_entry_script_ptr.
@@ -481,17 +476,17 @@ room_read_metadata:
 		// so subsequent reads start at the first metadata field. 
 		clc
 		lda     <room_base
-		adc     #MEM_HDR_LEN
+		adc     #<MEM_HDR_LEN
 		sta     <read_ptr
 		lda     >room_base
-		adc     #$00            
+		adc     #>MEM_HDR_LEN
 		sta     >read_ptr
 
 		// Copy the six 8-bit fields following the header
 		ldy     #ROOM_META_8_START_OFS
 copy_meta_loop:
 		lda     (read_ptr),y
-		sta     room_data_ptr,y
+		sta     room_data_ptr_local,y
 		iny
 		cpy     #ROOM_META_8_END_EXCL            
 		bne     copy_meta_loop
@@ -505,10 +500,10 @@ copy_meta_loop:
 		ldy     #ROOM_META_16_START_OFS
 copy_gfx_ofs_loop:
 		lda     (read_ptr),y
-		sta     room_data_ptr,y
+		sta     room_data_ptr_local,y
 		iny
 		lda     (read_ptr),y
-		sta     room_data_ptr,y
+		sta     room_data_ptr_local,y
 		iny
 		cpy     #ROOM_META_16_END_EXCL
 		bne     copy_gfx_ofs_loop
@@ -630,10 +625,10 @@ room_load_sounds_and_scripts:
 		ldx     current_room
 		lda     room_ptr_lo_tbl,x
 		clc
-		adc     #MEM_HDR_LEN
+		adc     #<MEM_HDR_LEN
 		sta     <meta_ptr
 		lda     room_ptr_hi_tbl,x
-		adc     #$00
+		adc     #>MEM_HDR_LEN
 		sta     >meta_ptr
 
 		// Fetch subresource counts from metadata:
@@ -792,10 +787,10 @@ room_read_objects:
 		// Start parsing at the metadata region: read_ptr = room_base + header.
 		clc
 		lda     <room_base
-		adc     #MEM_HDR_LEN
+		adc     #<MEM_HDR_LEN
 		sta     <read_ptr
 		lda     >room_base
-		adc     #$00
+		adc     #>MEM_HDR_LEN
 		sta     >read_ptr
 
 		// Fetch object_count from metadata.
@@ -982,7 +977,7 @@ room_read_objects_exit:
     $D800..$DFFF                  Filled with decompressed tile definitions ($0800 bytes).
     mask_bit_patterns_lo/hi       Updated to newly allocated block base (or left zero if none).
     rsrc_resource_type/index      Set to tag the allocated mask-index block as ROOM_LAYERS/1.
-    CPU/ZP temporaries            bytes_left, payload_len, src_ptr/dst_ptr, alloc_base updated.
+    CPU/ZP temporaries            bytes_left, payload_len, src_ptr/dst_ptr, gfx_alloc_base updated.
 
   Description:
 	-assumes the active room is already resident
@@ -1135,10 +1130,10 @@ setup_mask_patterns_load:
          *--------------------------------------*/
         clc
         lda     <payload_len
-        adc     #MEM_HDR_LEN
+        adc     #<MEM_HDR_LEN
         sta     <bytes_left
         lda     >payload_len
-        adc     #$00
+        adc     #>MEM_HDR_LEN
         sta     >bytes_left
 
         /*---------------------------------------
@@ -1150,14 +1145,14 @@ setup_mask_patterns_load:
         jsr     mem_alloc
 
         // Record the allocated block base for later writes and publishing
-        stx     <alloc_base
-        sty     >alloc_base
+        stx     <gfx_alloc_base
+        sty     >gfx_alloc_base
 
         /*---------------------------------------
          Initialize the resource header for this block:
 		 
            rsrc_type := ROOM_LAYERS, rsrc_index := 1
-           rsrc_hdr_init writes the standard 4-byte header at alloc_base
+           rsrc_hdr_init writes the standard 4-byte header at gfx_alloc_base
          *--------------------------------------*/
         lda     #RSRC_TYPE_ROOM_LAYERS
         sta     rsrc_resource_type
@@ -1168,23 +1163,23 @@ setup_mask_patterns_load:
         /*---------------------------------------
          Publish the newly allocated block as the room’s mask bit-patterns buffer
          *--------------------------------------*/
-        ldx     <alloc_base
-        ldy     >alloc_base
+        ldx     <gfx_alloc_base
+        ldy     >gfx_alloc_base
         stx     mask_bit_patterns_lo          // record base.lo
         sty     mask_bit_patterns_hi          // record base.hi (hi==0 would mean “none”)
 
         /*---------------------------------------
          Point destination at start of payload within the new block:
-         dst_ptr := alloc_base + MEM_HDR_LEN  (skip 4-byte resource header)
+         dst_ptr := gfx_alloc_base + MEM_HDR_LEN  (skip 4-byte resource header)
          *--------------------------------------*/
         stx     <gfx_write_ptr
         sty     >gfx_write_ptr
         clc
         lda     <gfx_write_ptr
-        adc     #MEM_HDR_LEN          // add header size (bytes) to lo
+        adc     #<MEM_HDR_LEN          // add header size (bytes) to lo
         sta     <gfx_write_ptr
         lda     >gfx_write_ptr
-        adc     #$00                  // propagate carry into hi
+        adc     #>MEM_HDR_LEN          // propagate carry into hi
         sta     >gfx_write_ptr
 
         /*---------------------------------------
@@ -1285,7 +1280,7 @@ mask_dec_lo_byte:
  * 				-call room_disk_chain_prepare
  *   			-initialize rsrc_read_offset=0 (bytes) and rsrc_sector_idx=0 (sectors/pages)
  *   			-set rsrc_resource_type=RSRC_TYPE_ROOM
- *				-call rsrc_load_from_disk which returns a pointer in X/Y and save it into room_data_ptr
+ *				-call rsrc_load_from_disk which returns a pointer in X/Y and save it into room_data_ptr_local
  *  			-publish to room_ptr_lo_tbl/hi_tbl[y=room_index]
  *
  *   Finally, select Y := rsrc_resource_index and set room_mem_attrs[y] to:
@@ -1322,15 +1317,15 @@ room_ensure_resident:
 
 		// Fetch room from disk
 		jsr     rsrc_load_from_disk
-		stx     <room_data_ptr              // save ptr.lo
-		sty     >room_data_ptr              // save ptr.hi
+		stx     <room_data_ptr_local              // save ptr.lo
+		sty     >room_data_ptr_local              // save ptr.hi
 
 		// Publish the pointer into the residency tables (Y = room_index):
 		//   lo -> room_ptr_lo_tbl[y], hi -> room_ptr_hi_tbl[y].
 		ldy     room_index
-		lda     <room_data_ptr
+		lda     <room_data_ptr_local
 		sta     room_ptr_lo_tbl,y
-		lda     >room_data_ptr
+		lda     >room_data_ptr_local
 		sta     room_ptr_hi_tbl,y
 
 		// Choose which room’s attribute to update (index lives in rsrc_resource_index here).
