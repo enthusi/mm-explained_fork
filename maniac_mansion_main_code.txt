@@ -12213,8 +12213,8 @@ destination = $17
 source = $19
 
 update_flashlight_area:
-.C:328b  85 1B       STA mode
 ;Beam Y coordinate is the actual vertical line divided by 2 (cursor_y_pixel_half)
+.C:328b  85 1B       STA mode
 ;Y = (Y * 4) - 3
 .C:328d  98          TYA
 .C:328e  4A          LSR A
@@ -12696,7 +12696,7 @@ set_result:
 .C:350c  20 32 35    JSR read_room_misc_data		
 .C:350f  20 31 36    JSR room_read_objects		
 .C:3512  20 10 37    JSR read_room_graphics
-.C:3515  20 12 43    JSR setup_room_scene_rsrc
+.C:3515  20 12 43    JSR setup_room_columns_with_decode_snapshots
 ;----------------------------------------------
 ; Room age updates for LRU algorithm
 ;----------------------------------------------
@@ -13236,7 +13236,7 @@ setup_mask_data_load:
 .C:37bd  8D 77 56    STA resource_type
 .C:37c0  A9 01       LDA #$01
 .C:37c2  8D 76 56    STA resource_index
-.C:37c5  20 04 56    JSR setup_block_metadata
+.C:37c5  20 04 56    JSR rsrc_hdr_init
 ;--------------------
 ;Save this block as the mask bit patterns for the room
 .C:37c8  A6 4F       LDX memory_range_lo
@@ -14983,7 +14983,7 @@ room_scene_data_not_in_memory:
 .C:4076  8D 5A 71    STA <current_room_rsrc
 .C:4079  BD F3 77    LDA room_ptr_hi_tbl,X
 .C:407c  8D 5B 71    STA >current_room_rsrc
-.C:407f  20 12 43    JSR setup_room_scene_rsrc
+.C:407f  20 12 43    JSR setup_room_columns_with_decode_snapshots
 ;---------------------------------------------
 check_scroll_right:
 ;Is the camera's target position = actual position + 1?
@@ -15658,7 +15658,7 @@ room_width_16bit = $15
 room_data_ptr = $17
 rsrc_ptr_local = $17
 
-setup_room_scene_rsrc:
+setup_room_columns_with_decode_snapshots:
 ;Is there a resource in memory right now?
 .C:4312  AE 79 7B    LDX room_layer_ptr_lo
 .C:4315  AC 77 7B    LDY room_layer_ptr_hi
@@ -15758,7 +15758,7 @@ calculate_rsrc_size:
 .C:435d  8D 77 56    STA resource_type
 .C:4360  A9 00       LDA #$00
 .C:4362  8D 76 56    STA resource_index
-.C:4365  20 04 56    JSR setup_block_metadata
+.C:4365  20 04 56    JSR rsrc_hdr_init
 ;-------------------------------------
 ;Copy the resource pointer to room_layers_rsrc
 .C:4368  A6 4F       LDX <block_ptr
@@ -19521,7 +19521,7 @@ dec_lo_count:
 .C:55e8  A5 E8       LDA running_checksum
 .C:55ea  C5 E9       CMP expected_checksum
 ;If checksum matches, proceed with the metadata
-.C:55ec  F0 16       BEQ setup_block_metadata
+.C:55ec  F0 16       BEQ rsrc_hdr_init
 ;Checksum not validated - retry 
 .C:55ee  C6 EA       DEC retry_counter
 .C:55f0  D0 0F       BNE reload_room
@@ -19555,7 +19555,7 @@ block = $4f
 resource_type = $5677
 resource_index = $5676
 
-setup_block_metadata:
+rsrc_hdr_init:
 ;Store raw data size
 .C:5604  A0 00       LDY #$00
 .C:5606  AD 9C FD    LDA <raw_data_size
