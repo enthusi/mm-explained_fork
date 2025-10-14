@@ -619,6 +619,7 @@ copy_mask_dict_loop:
  *     • Caller must ensure the room is resident (room_ptr_hi_tbl[current_room] ≠ 0).
  *     • The subresource index table base must correspond to (room_base + $1C + 4*object_count).
  *===========================================*/
+ * = $35D5
 room_load_sounds_and_scripts:
 		// Position cursor at the room’s metadata: meta_ptr = room_ptr[x] + MEM_HDR_LEN.
 		// (skip the fixed header so subsequent reads index fields directly)
