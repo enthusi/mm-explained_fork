@@ -20975,7 +20975,8 @@ SAVED_GAME_DISK_ID = #$33
 
 load_state_from_disk:
 ;Check if the disk ID is valid - if it's the game disk, return directly
-.C:5ca5  20 FC 5C    JSR load_and_validate_disk_id;Not the game disk, check if it's a savegame disk by comparing the Disk ID
+.C:5ca5  20 FC 5C    JSR load_and_validate_disk_id
+;Not the game disk, check if it's a savegame disk by comparing the Disk ID
 .C:5ca8  A5 15       LDA disk_id
 .C:5caa  C9 33       CMP SAVED_GAME_DISK_ID
 .C:5cac  F0 03       BEQ load_state_from_sectors
@@ -21055,7 +21056,9 @@ load_and_validate_disk_id:
 .C:5d14  60          RTS
 valid_disk_id:
 .C:5d15  68          PLA
-.C:5d16  68          PLA;Valid Disk ID - return #01 on .A, skip caller on return (return to the caller's caller).C:5d17  A9 01       LDA #$01
+.C:5d16  68          PLA
+;Valid Disk ID - return #01 on .A, skip caller on return (return to the caller's caller)
+.C:5d17  A9 01       LDA #$01
 .C:5d19  60          RTS
 ;===========================================
 ; Clear the game engine variables (not the script variables)
