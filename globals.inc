@@ -1,5 +1,11 @@
 #importonce
 
+.label fill_dest_ptr            = $19   // 16-bit destination pointer (lo at $19, hi at $1A); advanced after each store
+.label fill_byte_cnt            = $1b   // 16-bit remaining byte count (lo at $1B, hi at $1C); decremented to zero
+
+.label frame_buffer = $23
+.label frame_buffer_base = $24		//Base address of frame buffer
+
 .label decomp_src_ptr 		= $27    // 16-bit pointer to compressed input stream 
 .label decomp_emit_mode    = $29    // current mode flag ($00 = direct, $FF = run). Only bit 7 is tested
 .label decomp_emit_rem     = $2A    // remaining outputs for the current operation (stores L, meaning L+1 total outputs)
@@ -7,6 +13,14 @@
 
 .label kbd_keycode         = $30    // ZP: published keycode when ready
 .label joy_state     	   = $33    // ZP: snapshot of joystick mask (bits 0–4)
+
+/*;Values observed
+;#00	Scroll right
+;#FF	Scroll left
+;#C8	No scroll
+;#01	Room scene rendering starts (by opening the "lens" outwards)*/
+.label screen_scroll_flag = $4e
+
 .label print_msg_ptr	   = $DA	// ZP: 16-bit pointer to message to be printed (print_message_wait_for_button)
 .label debug_error_code = $DC
 .label room_bg0_shadow = $8f
@@ -15,8 +29,8 @@
 
 .label kbd_key_ready       = $2061    // flag: 1 when kbd_keycode is valid
 
-.label room_scene_left_edge = $0664	 //Left column for the visible room scene
-.label room_scene_right_edge = $0665 //Right column for the visible room scene
+.label view_left_x = $0664	 //Left column for the visible room scene
+.label view_right_x = $0665 //Right column for the visible room scene
 .label cam_target_pos = $0666
 .label cam_current_pos = $0667
 .label cam_mode = $066a				//02 = follow costume, #03 = pan to position
@@ -87,6 +101,12 @@
 .label reload_snd_rsrc_ptrs     = $FE70    // flag: non-zero => refresh sound resource pointers after relocation
 .label rsrc_released_flag = $FE4A
 .label saved_script_index  = $FEA6    	// external flag controlling delay init
+
+/*;Lights_status values
+;#00	environment lights off, flashlights off
+;#01	environment lights off, flashlight on
+;#02	environment lights on*/
+.label lights_status = $FEAB
 
 .label room_for_character = $FEFC
 
@@ -170,6 +190,5 @@ They were definitely intended as debugging aids.
 .label raster_setup = $0
 .label assign_available_actor = $0
 .label prepare_video_for_new_room = $0
+.label draw_objects_in_room = $0
 
-//room_scene_left_edge -> view_left_x
-//room_scene_right_edge -> view_right_x
