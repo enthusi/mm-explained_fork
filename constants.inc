@@ -37,6 +37,12 @@
 .const SCRIPT_MAX_INDEX    = $9F       // Highest valid script index
 .const SOUND_MAX_INDEX     = $45       // Highest valid sound index.
 
+.const VIEW_ROWS = $11
+.const VIEW_COLS = $28
+
+.const SCROLL_RIGHT_FLAG    = $00   // screen_scroll_flag: right scroll
+.const SCROLL_LEFT_FLAG     = $FF   // screen_scroll_flag: left scroll
+.const SCROLL_INIT_FLAG     = $01   // screen_scroll_flag: initial full draw
 
 // --- I/O mapping presets for $01 (processor_port_register) ---
 .const MAP_IO_OFF                 	= $24     // Map RAM under I/O/KERNAL as needed by this program
