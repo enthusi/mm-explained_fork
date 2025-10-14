@@ -1813,7 +1813,7 @@ reset_game_engine:
 .C:0429  A9 4C       LDA #$4C
 .C:042b  85 1C       STA $1C
 .C:042d  A2 00       LDX #$00
-.C:042f  20 35 04    JSR fill_memory_with_value
+.C:042f  20 35 04    JSR mem_fill_x_1
 .C:0432  4C 4F 04    JMP start_game
 ;===========================================
 ; Fills memory with a specific value
@@ -1825,7 +1825,7 @@ reset_game_engine:
 dest_pointer = $19
 byte_counter = $1B
 
-fill_memory_with_value:
+mem_fill_x_1:
 ;We'll move the base pointer instead of Y, which will stay set at #00
 .C:0435  A0 00       LDY #$00
 .C:0437  8A          TXA
@@ -1844,7 +1844,7 @@ counter_lo_decrement:
 ;OR'ing both counter bytes will yield zero if both are zero
 .C:0448  A5 1B       LDA <byte_counter
 .C:044a  05 1C       ORA >byte_counter
-.C:044c  D0 E7       BNE fill_memory_with_value
+.C:044c  D0 E7       BNE mem_fill_x_1
 .C:044e  60          RTS
 ;===========================================
 ; Starts a game
@@ -2101,7 +2101,7 @@ next_actor:
 .C:0590  EC 67 06    CPX camera_current_position
 .C:0593  F0 26       BEQ update_actors
 ;Draw the updated room scene
-.C:0595  20 4D 40    JSR draw_room_scene
+.C:0595  20 4D 40    JSR render_room_view
 ;Has the room scene rendering just started? If not, skip to advance animation
 .C:0598  A5 4E       LDA screen_scroll_flag
 .C:059a  C9 01       CMP #$01
@@ -14957,7 +14957,7 @@ tile_matrix_ptr = $17
 color_layer_ptr = $19
 mask_layer_ptr = $1b
 
-draw_room_scene:
+render_room_view:
 .C:404d  AE 49 71    LDX current_room
 ;Does the current room resource pointer match the one for "current_room"?
 ;If yes, continue
@@ -14999,7 +14999,7 @@ check_scroll_right:
 ;Set scroll flag to "scroll right" (#00)
 .C:408b  A9 00       LDA #$00
 .C:408d  85 4E       STA screen_scroll_flag
-.C:408f  20 5E 42    JSR scroll_scene_right
+.C:408f  20 5E 42    JSR scroll_view_right
 ;------------------------------
 ;Set tile_matrix_ptr = frame_buffer_base + #27 (the last column)
 .C:4092  18          CLC
@@ -15031,7 +15031,7 @@ check_scroll_right:
 .C:40b9  AD 64 06    LDA room_scene_left_edge
 .C:40bc  18          CLC
 .C:40bd  69 27       ADC #$27
-.C:40bf  4C 18 41    JMP decompress_visible_columns
+.C:40bf  4C 18 41    JMP decode_visible_window
 ;---------------------------------------------
 check_scroll_left:
 ;Is the camera's target position = actual position - 1?
@@ -15049,7 +15049,7 @@ check_scroll_left:
 .C:40cd  85 4E       STA screen_scroll_flag
 .C:40cf  A9 00       LDA #$00
 .C:40d1  85 4F       STA $4F
-.C:40d3  20 FE 41    JSR scroll_scene_left
+.C:40d3  20 FE 41    JSR scroll_view_left
 ;------------------------------
 ;Set tile_matrix_ptr = frame_buffer_base
 .C:40d6  A5 24       LDA <frame_buffer_base
@@ -15070,7 +15070,7 @@ check_scroll_left:
 .C:40ec  85 1C       STA >mask_layer_ptr
 ;------------------------------
 .C:40ee  AD 64 06    LDA room_scene_left_edge
-.C:40f1  4C 18 41    JMP decompress_visible_columns
+.C:40f1  4C 18 41    JMP decode_visible_window
 ;---------------------------------------------
 ; No scroll 
 ; 
@@ -15109,7 +15109,7 @@ decomp_src_ptr = $27
 value_to_repeat = $2b
 inlined_run_length_dict_base = $419f
 
-decompress_visible_columns:
+decode_visible_window:
 ;Use .Y as the column index (start at the left edge)
 .C:4118  A8          TAY
 ;---------------------------------------------
@@ -15135,7 +15135,7 @@ decompress_visible_columns:
 .C:4135  85 2B       STA value_to_repeat
 ;Load the mode_counter for this column
 .C:4137  B1 68       LDA (tile_matrix_mode_counter),Y
-.C:4139  20 8B 41    JSR decompress_room_gfx
+.C:4139  20 8B 41    JSR decode_room_gfx
 ;---------------------------------------------
 ; Decompress color layer data
 ;---------------------------------------------
@@ -15159,7 +15159,7 @@ decompress_visible_columns:
 .C:4158  85 2B       STA value_to_repeat
 ;Load the mode_counter for this column
 .C:415a  B1 70       LDA (color_layer_mode_counter),Y
-.C:415c  20 8B 41    JSR decompress_room_gfx
+.C:415c  20 8B 41    JSR decode_room_gfx
 ;---------------------------------------------
 ; Decompress mask layer data
 ;---------------------------------------------
@@ -15183,7 +15183,7 @@ decompress_visible_columns:
 .C:417b  85 2B       STA value_to_repeat
 ;Load the mode_counter for this column
 .C:417d  B1 78       LDA (mask_layer_mode_counter),Y
-.C:417f  20 8B 41    JSR decompress_room_gfx
+.C:417f  20 8B 41    JSR decode_room_gfx
 ;---------------------------------------------
 ;Set decompression region mode to one column (#00) from now on
 ; as in the future, if we scroll, we only need to decompress a single column
@@ -15215,7 +15215,7 @@ RUN_MODE = #$FF
 DECOMPRESS_ONE_COL = #$00
 DECOMPRESS_WHOLE_ROOM = #$01
 
-decompress_room_gfx:
+decode_room_gfx:
 ;Set initial mode and parameters
 .C:418b  10 09       BPL direct_mode
 ;------------------------------------------------
@@ -15245,8 +15245,8 @@ inlined_run_length_dict_base = $419f
 ;------------------------------------------------
 ;Decompress according to mode
 .C:41a7  AD FD 41    LDA decompression_region_mode
-.C:41aa  F0 03       BEQ decompress_room_gfx_column
-.C:41ac  4C D4 41    JMP decompress_room_gfx_full
+.C:41aa  F0 03       BEQ decode_room_column
+.C:41ac  4C D4 41    JMP decode_room_all_columns
 ;===========================================
 ; Decompress a room's graphic column
 ;
@@ -15263,7 +15263,7 @@ temp_x = $41f9
 temp_y = $41fb
 ROW_LENGTH = #$28
 
-decompress_room_gfx_column:
+decode_room_column:
 .C:41af  8E F9 41    STX temp_x
 .C:41b2  8C FB 41    STY temp_y
 ;Decompress exactly #10 vertical elements of a column
@@ -15296,14 +15296,14 @@ counter_update:
 ; Decompress a full room's visible scene (#28 columns)
 ;
 ; This will simply decompress all visible columns 
-; using decompress_room_gfx_column.
+; using decode_room_column.
 ; 
 ;===========================================
 dest_ptr = $15
 column_ptr = $17
 temp_y = $41fc
 
-decompress_room_gfx_full:
+decode_room_all_columns:
 .C:41d4  8C FC 41    STY temp_y
 ;Save the initial dest_ptr as the first column_ptr
 .C:41d7  A5 15       LDA <dest_ptr
@@ -15313,7 +15313,7 @@ decompress_room_gfx_full:
 ;Do the column decompression a total of #28 times (#27-#00)
 .C:41df  A0 27       LDY #$27
 decompress_column:
-.C:41e1  20 AF 41    JSR decompress_room_gfx_column
+.C:41e1  20 AF 41    JSR decode_room_column
 ;Move column pointer to the next position (do a 16-bit addition of #01)
 ;This will be the next column to the right
 .C:41e4  E6 17       INC <column_ptr
@@ -15353,7 +15353,7 @@ set_next_column:
 source = $17
 dest = $19
 
-scroll_scene_left:
+scroll_view_left:
 ;Which frame buffer are we using?
 .C:41fe  A5 23       LDA frame_buffer
 .C:4200  C9 01       CMP #$01
@@ -15445,7 +15445,7 @@ do_scroll_copy:
 source = $17
 dest = $19
 
-scroll_scene_right:
+scroll_view_right:
 ;Which frame buffer are we using?
 .C:425e  A5 23       LDA frame_buffer
 .C:4260  C9 01       CMP #$01
@@ -15607,6 +15607,7 @@ next_column:
 .C:430e  CA          DEX
 .C:430f  10 D8       BPL next_row
 .C:4311  60          RTS
+
 ;===========================================
 ; Setup room scene data
 ;
@@ -21071,7 +21072,7 @@ clear_engine_state:
 .C:5d26  A9 0B       LDA #$0B
 .C:5d28  85 1C       STA $1C
 .C:5d2a  A2 00       LDX #$00
-.C:5d2c  20 32 5D    JSR fill_memory_with_value_2
+.C:5d2c  20 32 5D    JSR mem_fill_x
 .C:5d2f  4C 4C 5D    JMP init_free_block
 ;===========================================
 ; Fills memory with a specific value
@@ -21080,12 +21081,12 @@ clear_engine_state:
 ;				dest_pointer		pointer to destination
 ;				byte_counter	total number of bytes to write
 ;
-; This is an exact clone of "fill_memory_with_value"
+; This is an exact clone of "mem_fill_x_1"
 ;===========================================
 dest_pointer = $19
 byte_counter = $1B
 
-fill_memory_with_value_2:
+mem_fill_x:
 ;We'll move the base pointer instead of Y, which will stay set at #00
 .C:5d32  A0 00       LDY #$00
 .C:5d34  8A          TXA
@@ -21104,7 +21105,7 @@ counter_lo_decrement_2:
 ;OR'ing both counter bytes will yield zero if both are zero
 .C:5d45  A5 1B       LDA <byte_counter
 .C:5d47  05 1C       ORA >byte_counter
-.C:5d49  D0 E7       BNE fill_memory_with_value_2
+.C:5d49  D0 E7       BNE mem_fill_x
 .C:5d4b  60          RTS
 ;===========================================
 ; Initialize the single free block that exists when the game engine starts
@@ -21589,7 +21590,7 @@ exit:
 ; If it's CC00, then CC28-CED0 cover the scene area.
 ;
 ;===========================================
-clear_scene_area:
+clear_view_buffers:
 ;Fill memory in C828-CAD0 with #00
 .C:5f4b  A9 28       LDA #$28
 .C:5f4d  85 19       STA $19
@@ -21600,7 +21601,7 @@ clear_scene_area:
 .C:5f57  A9 02       LDA #$02
 .C:5f59  85 1C       STA $1C
 .C:5f5b  A2 00       LDX #$00
-.C:5f5d  20 32 5D    JSR fill_memory_with_value_2
+.C:5f5d  20 32 5D    JSR mem_fill_x
 ;Fill memory in CC28-CED0 with #00
 .C:5f60  A9 28       LDA #$28
 .C:5f62  85 19       STA $19
@@ -21611,7 +21612,7 @@ clear_scene_area:
 .C:5f6c  A9 02       LDA #$02
 .C:5f6e  85 1C       STA $1C
 .C:5f70  A2 00       LDX #$00
-.C:5f72  20 32 5D    JSR fill_memory_with_value_2
+.C:5f72  20 32 5D    JSR mem_fill_x
 .C:5f75  60          RTS
 ;===========================================
 .C:5f76  00          BRK
@@ -23963,7 +23964,7 @@ setup_cutscene:
 .C:68a1  A9 01       LDA #$01
 .C:68a3  85 1C       STA $1C
 .C:68a5  A2 20       LDX #$20
-.C:68a7  20 32 5D    JSR fill_memory_with_value_2
+.C:68a7  20 32 5D    JSR mem_fill_x
 ;Set control mode to #00 (cutscene)
 .C:68aa  A9 00       LDA #$00
 .C:68ac  8D A8 FE    STA control_mode
@@ -24213,7 +24214,7 @@ exit:
 ;-----------------------------------
 ; Environment lights off
 ; Clear scene area
-.C:69bc  20 4B 5F    JSR clear_scene_area
+.C:69bc  20 4B 5F    JSR clear_view_buffers
 ; Use #00 and #0B as colors (black and light gray)
 .C:69bf  A0 00       LDY #$00
 .C:69c1  A2 0B       LDX #$0B
@@ -25179,7 +25180,7 @@ clear_game_and_engine_vars:
 .C:847e  A9 03       LDA #$03
 .C:8480  85 1C       STA >byte_counter
 .C:8482  A2 00       LDX #$00
-.C:8484  20 8A 84    JSR fill_memory_with_value_3
+.C:8484  20 8A 84    JSR mem_fill_x_3
 .C:8487  4C A4 84    JMP clear_cad0_cb90
 ;===========================================
 ;Fills memory with a specific value
@@ -25188,12 +25189,12 @@ clear_game_and_engine_vars:
 ;				dest_pointer		pointer to destination
 ;				byte_counter	total number of bytes to write
 ;
-; This is an exact clone of "fill_memory_with_value"
+; This is an exact clone of "mem_fill_x_1"
 ;===========================================
 dest_pointer = $19
 byte_counter = $1B
 
-fill_memory_with_value_3:
+mem_fill_x_3:
 ;We'll move the base pointer instead of Y, which will stay set at #00
 .C:848a  A0 00       LDY #$00
 .C:848c  8A          TXA
@@ -25212,7 +25213,7 @@ counter_lo_decrement_3:
 ;OR'ing both counter bytes will yield zero if both are zero
 .C:849d  A5 1B       LDA <byte_counter
 .C:849f  05 1C       ORA >byte_counter
-.C:84a1  D0 E7       BNE fill_memory_with_value_3
+.C:84a1  D0 E7       BNE mem_fill_x_3
 .C:84a3  60          RTS
 ;===========================================
 clear_cad0_cb90:
@@ -25226,7 +25227,7 @@ clear_cad0_cb90:
 .C:84b0  A9 00       LDA #$00
 .C:84b2  85 1C       STA byte_counter_hi
 .C:84b4  A2 00       LDX #$00
-.C:84b6  20 8A 84    JSR fill_memory_with_value_3
+.C:84b6  20 8A 84    JSR mem_fill_x_3
 .C:84b9  60          RTS
 ;===========================================
 setup_border_and_sprite_colors:
@@ -25279,7 +25280,7 @@ clear_sprite_regs_and_sprite_memory:
 .C:8504  A9 10       LDA #$10
 .C:8506  85 1C       STA byte_counter_hi
 .C:8508  A2 00       LDX #$00
-.C:850a  20 8A 84    JSR fill_memory_with_value_3
+.C:850a  20 8A 84    JSR mem_fill_x_3
 .C:850d  60          RTS
 ;===========================================
 ; video_memory_mode = #00, room_scene_clicked = #01
@@ -25307,7 +25308,7 @@ clear_gfx_memory:
 .C:8524  A9 03       LDA #$03
 .C:8526  85 1C       STA byte_counter_hi
 .C:8528  A2 00       LDX #$00
-.C:852a  20 8A 84    JSR fill_memory_with_value_3
+.C:852a  20 8A 84    JSR mem_fill_x_3
 ;Clear frame buffer 2 (CC00) with #00
 .C:852d  A9 00       LDA #$00
 .C:852f  85 19       STA base_ptr_lo
@@ -25318,7 +25319,7 @@ clear_gfx_memory:
 .C:8539  A9 03       LDA #$03
 .C:853b  85 1C       STA byte_counter_hi
 .C:853d  A2 00       LDX #$00
-.C:853f  20 8A 84    JSR fill_memory_with_value_3
+.C:853f  20 8A 84    JSR mem_fill_x_3
 ;Clear dot-data (D800-E000) with #00
 .C:8542  A9 00       LDA #$00
 .C:8544  85 19       STA base_ptr_lo
@@ -25329,7 +25330,7 @@ clear_gfx_memory:
 .C:854e  A9 08       LDA #$08
 .C:8550  85 1C       STA byte_counter_hi
 .C:8552  A2 00       LDX #$00
-.C:8554  20 8A 84    JSR fill_memory_with_value_3
+.C:8554  20 8A 84    JSR mem_fill_x_3
 ;map_in_io
 .C:8557  A0 25       LDY #$25
 .C:8559  84 01       STY processor_port_register
@@ -25855,7 +25856,7 @@ prepare_video_for_new_room:
 .C:d6b0  A9 00       LDA #$00
 .C:d6b2  A2 00       LDX #$00
 .C:d6b4  20 34 D7    JSR do_shutter_effect		
-.C:d6b7  20 4B 5F    JSR clear_scene_area
+.C:d6b7  20 4B 5F    JSR clear_view_buffers
 .C:d6ba  20 5B 07    JSR switch_to_frame_buffer_2
 ;Set synchronization signal and wait for it to be cleared (in irq_handler1)
 .C:d6bd  A9 01       LDA #$01
