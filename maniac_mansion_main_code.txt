@@ -25844,6 +25844,22 @@ actor_text_color:
 
 d68a:
 07 00 00 27 10 01 01 ff ff 09 08 08 1f 08 ff ff 01 01 09 
+
+shutter_delta_table:	;d68b
+;sequence for shutter closing
+.byte 00 00 27 10 01 01 ff ff 09
+; 00
+; 00
+; 27
+; 10
+; 01 +1
+; 01 +1
+; ff -1
+; ff -1
+;sequence for shutter opening
+.byte 08 08 1f 08 ff ff 01 01 09 
+
+shutter_direction_flag = $b7 
 ;===========================================
 prepare_video_for_new_room:
 ;Hide cursor
@@ -25870,59 +25886,67 @@ wait_for_signal_clear:
 .C:d6c5  60          RTS
 ;===========================================
 open_shutter:
-.C:d6c6  A9 01       LDA #$01
-.C:d6c8  A2 09       LDX #$09
+.C:d6c6  A9 01       LDA #$01		;fill in data from the other buffer
+.C:d6c8  A2 09       LDX #$09		;offset into the second half of the shutter_delta_table
 .C:d6ca  20 34 D7    JSR do_shutter_effect
 ;Show cursor
 .C:d6cd  A9 00       LDA #$00
 .C:d6cf  8D 6C 16    STA hide_cursor
 .C:d6d2  60          RTS
 ;===========================================
-.C:d6d3  A5 B7       LDA $B7
-.C:d6d5  D0 1C       BNE $D6F3
+setup_buffer_and_color_for_shutter_effect:
+.C:d6d3  A5 B7       LDA shutter_direction_flag	;$B7
+.C:d6d5  D0 1C       BNE prepare_shutter_open	;$D6F3
 .C:d6d7  A5 23       LDA frame_buffer
 .C:d6d9  C9 01       CMP #$01
-.C:d6db  D0 0B       BNE $D6E8
+.C:d6db  D0 0B       BNE setup_buffer1; $D6E8
 ;---------------------------------------
-.C:d6dd  A9 28       LDA #$28
+setup_buffer2:
+.C:d6dd  A9 28       LDA #$28 ;to frame_buffer_2 c828
 .C:d6df  85 A0       STA $A0
 .C:d6e1  A9 C8       LDA #$C8
 .C:d6e3  85 A1       STA $A1
-.C:d6e5  4C 23 D7    JMP $D723
+.C:d6e5  4C 23 D7    JMP no_color_ram_changes;$D723
 ;---------------------------------------
-.C:d6e8  A9 28       LDA #$28
+setup_buffer1:
+.C:d6e8  A9 28       LDA #$28 ;to frame_buffer_1 cc28 
 .C:d6ea  85 A0       STA $A0
 .C:d6ec  A9 CC       LDA #$CC
 .C:d6ee  85 A1       STA $A1
-.C:d6f0  4C 23 D7    JMP $D723
+.C:d6f0  4C 23 D7    JMP no_color_ram_changes;$D723
 ;---------------------------------------
+prepare_shutter_open:
 .C:d6f3  A5 23       LDA frame_buffer
 .C:d6f5  C9 01       CMP #$01
-.C:d6f7  D0 13       BNE $D70C
-.C:d6f9  A9 28       LDA #$28
+.C:d6f7  D0 13       BNE setup_buffer1_open;$D70C
+setup_buffer2_open:
+.C:d6f9  A9 28       LDA #$28 ;to frame_buffer_1 cc28
 .C:d6fb  85 A0       STA $A0
 .C:d6fd  A9 CC       LDA #$CC
 .C:d6ff  85 A1       STA $A1
-.C:d701  A9 28       LDA #$28
+.C:d701  A9 28       LDA #$28 ;from frame_buffer_2 c828
 .C:d703  85 9E       STA $9E
 .C:d705  A9 C8       LDA #$C8
 .C:d707  85 9F       STA $9F
-.C:d709  4C 1C D7    JMP $D71C
+.C:d709  4C 1C D7    JMP prepare_color_ram_for_shutter;$D71C
 ;---------------------------------------
-.C:d70c  A9 28       LDA #$28
+setup_buffer1_open:
+.C:d70c  A9 28       LDA #$28 ;to frame_buffer_2 c828
 .C:d70e  85 A0       STA $A0
 .C:d710  A9 C8       LDA #$C8
 .C:d712  85 A1       STA $A1
-.C:d714  A9 28       LDA #$28
+.C:d714  A9 28       LDA #$28 ;from frame_buffer_1 cc28
 .C:d716  85 9E       STA $9E
 .C:d718  A9 CC       LDA #$CC
 .C:d71a  85 9F       STA $9F
 ;---------------------------------------
+prepare_color_ram_for_shutter:
 .C:d71c  8A          TXA
 .C:d71d  48          PHA
-.C:d71e  20 54 18    JSR copy_color_ram_wrapper
+.C:d71e  20 54 18    JSR copy_color_ram_wrapper ;set up d800, the data on screen is all black still
 .C:d721  68          PLA
 .C:d722  AA          TAX
+no_color_ram_changes:
 .C:d723  A9 89       LDA #$89
 .C:d725  85 A2       STA $A2
 .C:d727  A9 6D       LDA #$6D
@@ -25935,89 +25959,98 @@ open_shutter:
 ;===========================================
 ; Possible "shutter opening" effect routine
 do_shutter_effect:
-.C:d734  85 B7       STA $B7
-.C:d736  20 D3 D6    JSR $D6D3
+.C:d734  85 B7       STA shutter_direction_flag;$B7
+.C:d736  20 D3 D6    JSR setup_buffer_and_color_for_shutter_effect;$D6D3
 .C:d739  A0 00       LDY #$00
 loop1:
-.C:d73b  BD 8B D6    LDA $D68B,X
+.C:d73b  BD 8B D6    LDA shutter_delta_table,X; $D68B,X
+;00 00 27 10 01 01 ff ff 09
+;ae af b0 b1 b2 b3 b4 b5 b6
 .C:d73e  99 AE 00    STA $00AE,Y
 .C:d741  E8          INX
 .C:d742  C8          INY
 .C:d743  C0 09       CPY #$09
 .C:d745  D0 F4       BNE loop1
 big_loop:
-.C:d747  20 BA D7    JSR $D7BA
-.C:d74a  A6 AE       LDX $AE
-.C:d74c  A4 AF       LDY $AF
-.C:d74e  20 8E D7    JSR $D78E
+.C:d747  20 BA D7    JSR raster_setup_check; $D7BA
+.C:d74a  A6 AE       LDX $AE ;at x=0 for shutter close
+.C:d74c  A4 AF       LDY $AF ;at y=0 for shutter close
+.C:d74e  20 8E D7    JSR plot_one_tile_of_shutter_effect;$D78E
 loop2:
-.C:d751  E4 B0       CPX $B0
+.C:d751  E4 B0       CPX $B0 ;reached right side yet? ($27=39)
 .C:d753  F0 07       BEQ $D75C
-.C:d755  20 8E D7    JSR $D78E
+.C:d755  20 8E D7    JSR plot_one_tile_of_shutter_effect;$D78E
 .C:d758  E8          INX
-.C:d759  4C 51 D7    JMP loop2
+.C:d759  4C 51 D7    JMP loop2 ;draw horizontal tile line (source is black or buffer)
 loop3:
-.C:d75c  C4 B1       CPY $B1
+.C:d75c  C4 B1       CPY $B1 ;reached bottom yet? ($10=16)
 .C:d75e  F0 07       BEQ $D767
-.C:d760  20 8E D7    JSR $D78E
+.C:d760  20 8E D7    JSR plot_one_tile_of_shutter_effect;$D78E
 .C:d763  C8          INY
-.C:d764  4C 5C D7    JMP loop3
+.C:d764  4C 5C D7    JMP loop3 ;draw vertical tile line (source is black or buffer)
 loop4:
-.C:d767  E4 AE       CPX $AE
+.C:d767  E4 AE       CPX $AE ;reach left end yet?
 .C:d769  F0 07       BEQ $D772
-.C:d76b  20 8E D7    JSR $D78E
+.C:d76b  20 8E D7    JSR plot_one_tile_of_shutter_effect;$D78E
 .C:d76e  CA          DEX
-.C:d76f  4C 67 D7    JMP loop4
+.C:d76f  4C 67 D7    JMP loop4 ;draw horizontal line from right to left
 loop5:
-.C:d772  C4 AF       CPY $AF
+.C:d772  C4 AF       CPY $AF ;reach top end yet?
 .C:d774  F0 07       BEQ $D77D
-.C:d776  20 8E D7    JSR $D78E
+.C:d776  20 8E D7    JSR plot_one_tile_of_shutter_effect;$D78E
 .C:d779  88          DEY
-.C:d77a  4C 72 D7    JMP loop5
+.C:d77a  4C 72 D7    JMP loop5 ;draw vertical line from bottom to top
 .C:d77d  A2 03       LDX #$03
 loop6:
 .C:d77f  18          CLC
 .C:d780  B5 AE       LDA $AE,X
-.C:d782  75 B2       ADC $B2,X
+.C:d782  75 B2       ADC $B2,X ;add the delta values to the start+end points (+1 or -1)
 .C:d784  95 AE       STA $AE,X
 .C:d786  CA          DEX
 .C:d787  10 F6       BPL loop6
-.C:d789  C6 B6       DEC $B6
+.C:d789  C6 B6       DEC $B6 ;number of steps (loops) for the shutter from the table (9)
 .C:d78b  D0 BA       BNE big_loop
 .C:d78d  60          RTS
 ;===========================================
+plot_one_tile_of_shutter_effect:
 .C:d78e  98          TYA
 .C:d78f  48          PHA
 .C:d790  8A          TXA
 .C:d791  48          PHA
 .C:d792  A2 02       LDX #$02
 loop1:
-.C:d794  B5 9E       LDA $9E,X
+.C:d794  B5 9E       LDA $9E,X ;-> $a0 = target for data LSB 
 .C:d796  18          CLC
-.C:d797  79 BA 3E    ADC screen_row_offsets_lo,Y
+.C:d797  79 BA 3E    ADC screen_row_offsets_lo,Y ; Y is Y position in screen, add Y*40 via table
 .C:d79a  95 A6       STA $A6,X
-.C:d79c  B5 9F       LDA $9F,X
+
+.C:d79c  B5 9F       LDA $9F,X ;target for data LSB
 .C:d79e  79 A1 3E    ADC screen_row_offsets_hi,Y
 .C:d7a1  95 A7       STA $A7,X
-.C:d7a3  CA          DEX
+
+.C:d7a3  CA          DEX ;x=0 -> $9e = source for data 
 .C:d7a4  CA          DEX
 .C:d7a5  10 ED       BPL loop1
+
 .C:d7a7  68          PLA
 .C:d7a8  AA          TAX
 .C:d7a9  A8          TAY
-.C:d7aa  A5 B7       LDA $B7
-.C:d7ac  D0 05       BNE $D7B3
-.C:d7ae  91 A8       STA ($A8),Y
-.C:d7b0  4C B7 D7    JMP $D7B7
+.C:d7aa  A5 B7       LDA shutter_direction_flag;$B7
+.C:d7ac  D0 05       BNE shutter_opens;$D7B3
+shutter_closes:
+.C:d7ae  91 A8       STA ($A8),Y ;store 0 = black tile straight away
+.C:d7b0  4C B7 D7    JMP exit_shutter;$D7B7
+shutter_opens:
 .C:d7b3  B1 A6       LDA ($A6),Y
 .C:d7b5  91 A8       STA ($A8),Y
+exit_shutter:
 .C:d7b7  68          PLA
 .C:d7b8  A8          TAY
 .C:d7b9  60          RTS
 ;===========================================
-.C:d7ba  A2 00       LDX #$00
 ;Do raster setup until it's no longer needed
 raster_setup_check:
+.C:d7ba  A2 00       LDX #$00
 .C:d7bc  A5 96       LDA raster_setup_needed
 .C:d7be  F0 06       BEQ set_irq_handler1_signal
 .C:d7c0  20 1C 34    JSR raster_setup
@@ -26034,6 +26067,7 @@ wait_for_irq_handler1_signal_to_clear:
 ;===========================================
 ; Get a random number
 ; 
+; a variant of a 32bit LFSR (Linear Feedback Shift Register)
 ; Arguments:	.X	seed
 ;===========================================
 random_4 = $e1
