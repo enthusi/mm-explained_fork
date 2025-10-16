@@ -756,10 +756,10 @@ room_get_sounds_base:
  *                                obj_gfx_ptr_tbl[*]               (N×16-bit gfx stream offsets)
  *                                room_obj_ofs_tbl[*]              (N×16-bit record start offsets)
  *                                room_object_index_{lo,hi}[*]     (IDs)
- *                                object_width[*], object_height[*]
- *                                object_x_start[*], object_y_start[*]
+ *                                obj_width_tbl[*], obj_height_tbl[*]
+ *                                obj_left_col_tbl[*], obj_top_row_tbl[*]
  *                                object_x_destination[*], object_y_destination[*]
- *                                parent_linkable[*], parent_object[*]
+ *                                ancestor_overlay_req_tbl[*], parent_idx_tbl[*]
  *
  * Description:
  *   - Compute read_ptr = room_base + MEM_HDR_LEN to the metadata block.
@@ -876,20 +876,20 @@ load_obj_records:
 		// Capture the object’s identifier from the record header:
 		ldy     #OBJ_META_IDX_HI_OFS
 		lda     (read_ptr),y
-		sta     room_object_index_hi,x
+		sta     room_obj_id_hi_tbl,x
 		ldy     #OBJ_META_IDX_LO_OFS
 		lda     (read_ptr),y
-		sta     room_object_index_lo,x
+		sta     room_obj_id_lo_tbl,x
 
 		// Record-specified geometry: width byte
 		ldy     #OBJ_META_WIDTH_OFS
 		lda     (read_ptr),y
-		sta     object_width,x
+		sta     obj_width_tbl,x
 
 		// Horizontal start coordinate
 		ldy     #OBJ_META_X_START_OFS
 		lda     (read_ptr),y
-		sta     object_x_start,x
+		sta     obj_left_col_tbl,x
 
 		// Derive parent-linkability flag from Y-start bit7.
 		// Branch meaning: BPL when bit7=0 (N=0) → not linkable; otherwise linkable.
@@ -901,18 +901,18 @@ load_obj_records:
 set_00:
 		lda     #%0000_0000
 set_result:
-		sta     parent_linkable,x
+		sta     ancestor_overlay_req_tbl,x
 
 		// From the same byte, keep bits0..6 as the vertical start coordinate.
 		// Mask clears the parent flag (bit7) set/checked above.
 		lda     (read_ptr),y
 		and     #%0111_1111
-		sta     object_y_start,x
+		sta     obj_top_row_tbl,x
 
-		// Parent chain: index of this object’s parent.
+		// Parent chain: room object index (NOT Object ID) of this object’s parent.
 		ldy     #OBJ_META_PARENT_IDX_OFS
 		lda     (read_ptr),y
-		sta     parent_object,x
+		sta     parent_idx_tbl,x
 
 		// Target horizontal coordinate.
 		ldy     #OBJ_META_X_DEST_OFS
@@ -939,7 +939,7 @@ set_result:
 		lsr     
 		lsr     
 		lsr     
-		sta     object_height,x
+		sta     obj_height_tbl,x
 
 		// Advance to next object: obj_idx is 1-based; obj_count_remaining tracks loop bound.
 		// Exit when obj_count_remaining reaches 0 (Z=1 after DEC); otherwise process next.
