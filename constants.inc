@@ -63,3 +63,5 @@
 .const TILE_DEFS_ADDR = $D800
 .const TILE_DEFS_SIZE = $0800
 
+.const MASK_LAYER_COL_0         = $6AE1  // MASK  layer column 0 base
+.const COLOR_LAYER_COL_0        = $6D89  // COLOR layer column 0 base
