@@ -29,8 +29,8 @@
 
 .label kbd_key_ready       = $2061    // flag: 1 when kbd_keycode is valid
 
-.label view_left_x = $0664	 //Left column for the visible room scene
-.label view_right_x = $0665 //Right column for the visible room scene
+.label viewport_left_col = $0664	 //Left column for the visible room scene
+.label viewport_right_col = $0665 //Right column for the visible room scene
 .label cam_target_pos = $0666
 .label cam_current_pos = $0667
 .label cam_mode = $066a				//02 = follow costume, #03 = pan to position
@@ -48,20 +48,27 @@
 .label rsrc_read_offset             = $5678 // Byte offset into resource stream (passed in X to disk_seek_read).
 .label rsrc_sector_idx             = $5679 // Sector index in physical chain (passed in Y to disk_seek_read).  
 
-.label total_objects_in_room = $715c
+.label total_objects_in_room = $715c	
 .label obj_gfx_ptr_tbl = $7291
 .label room_obj_ofs_tbl = $72c9		//Offsets of objects in a room resource
-.label room_object_index_hi = $7221
-.label room_object_index_lo = $723d
-.label object_x_start = $715d
-.label object_y_start = $7179
-.label object_width = $7195
-.label object_height = $71b1
+.label room_obj_id_hi_tbl = $7221	//Per-room objects ID table (mapping room object index to global Object ID)
+.label room_obj_id_lo_tbl = $723d
+.label obj_left_col_tbl = $715D		//Per-room object left column table (for rendering)
+.label obj_top_row_tbl = $7179		//Per-room object top row table (for rendering)
+.label obj_width_tbl = $7195		//Per-room object width in columns table (for rendering)
+.label obj_height_tbl = $71b1		//Per-room object height in rows table (for rendering)
 .label object_x_destination = $71cd
 .label object_y_destination = $71e9
 .label object_destination_active = $7205
-.label parent_object = $7259
-.label parent_linkable = $7275
+.label parent_idx_tbl = $7259			//Room object index of the parent object - WARNING: it's the object index within a room's objects, NOT the object ID
+										//For instance, Room 1 (Mansion entrance) has 19 objects. Among them:
+										// Object index 3: key (Object ID 0-22)
+										// Object index 4: doormat (Object ID 0-21)
+										// The key has parent object INDEX = 4 (doormat)
+
+.label ancestor_overlay_req_tbl = $7275	//Requirement for ancestor objects overlay state (boolean: $80 = True, $00 = False)
+.label object_attributes = $7301		//Global attributes for objects (indexed by Object ID) - Note: these are NOT memory attributes like used for other resources	
+
 
 .label tile_matrix_ofs   = $7141	// 16-bit offset to tile matrix section
 .label color_layer_ofs   = $7143	// 16-bit offset to color layer section
@@ -190,5 +197,4 @@ They were definitely intended as debugging aids.
 .label raster_setup = $0
 .label assign_available_actor = $0
 .label prepare_video_for_new_room = $0
-.label draw_objects_in_room = $0
 
