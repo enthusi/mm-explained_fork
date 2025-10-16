@@ -13,6 +13,8 @@
 
 .label kbd_keycode         = $30    // ZP: published keycode when ready
 .label joy_state     	   = $33    // ZP: snapshot of joystick mask (bits 0–4)
+.label vertical_offset = $35
+.label current_sprite_y_pos = $3f
 
 /*;Values observed
 ;#00	Scroll right
@@ -21,10 +23,65 @@
 ;#01	Room scene rendering starts (by opening the "lens" outwards)*/
 .label screen_scroll_flag = $4e
 
+.label actor = $D8
 .label print_msg_ptr	   = $DA	// ZP: 16-bit pointer to message to be printed (print_message_wait_for_button)
 .label debug_error_code = $DC
 .label room_bg0_shadow = $8f
 .label room_bg1_shadow = $90
+
+/*
+===========================================================
+ Sprite variables
+===========================================================
+*/
+.label sprite_bank_sel = $fd14		//Sprite buffer index (#00 or #01)
+.label sprite_0_x_lo = $0fca
+.label sprite_1_x_lo = $0fcb
+.label sprite_2_x_lo = $0fcc
+.label sprite_3_x_lo = $0fcd
+.label sprite_4_x_lo = $0fce
+.label sprite_5_x_lo = $0fcf
+.label sprite_6_x_lo = $0fd0
+.label cursor_sprite_x_lo = $0fd1
+.label sprite_0_color = $0fd2
+.label sprite_1_color = $0fd3
+.label sprite_2_color = $0fd4
+.label sprite_3_color = $0fd5
+.label sprite_4_color = $0fd6
+.label sprite_5_color = $0fd7
+.label sprite_6_color = $0fd8
+.label cursor_sprite_color = $0FD9
+.label relative_sprite_0 = $0fda
+.label relative_sprite_1 = $0fdb
+.label relative_sprite_2 = $0fdc
+.label relative_sprite_3 = $0fdd
+.label relative_sprite_4 = $0fde
+.label relative_sprite_5 = $0fdf
+.label relative_sprite_6 = $0fe0
+.label sprite_horizontal_expansion = $0fea
+.label sprite_0_x_hi = $0fe1
+.label sprite_1_x_hi = $0fe2
+.label sprite_2_x_hi = $0fe3
+.label sprite_3_x_hi = $0fe4
+.label sprite_4_x_hi = $0fe5
+.label sprite_5_x_hi = $0fe6
+.label sprite_6_x_hi = $0fe7
+.label cursor_sprite_x_hi = $0fe8
+.label sprites_x_hi_combined = $0fe9
+.label cursor_sprite_y = $0FEB
+
+//These are the sprite shapes to be used by the successive raster IRQ handlers
+.label sprite_shape_1 = $1661
+.label sprite_shape_2 = $1662
+.label sprite_shape_3 = $1663
+.label sprite_shape_4 = $1664
+.label sprite_shape_5 = $1665
+.label sprite_shape_6 = $1666
+.label sprite_shape_7 = $1667
+.label sprite_shape_8 = $1668
+
+.label sprite_shape_cursor = $1669
+.label sprite_shapes_set_to_use = $166a
 
 
 .label kbd_key_ready       = $2061    // flag: 1 when kbd_keycode is valid
@@ -98,6 +155,7 @@
 .label room_bg_colors = $713b
 .label room_tile_definitions_offset = $713f
 .label current_room = $7149
+.label actor_limbs_ofs = $fc36
 
 
 .label room_mem_attrs = $77BC
@@ -128,11 +186,37 @@
 
 .label current_room_rsrc = $715B	//Used by draw_room_scene to ensure residence of the room resources
 
+
 /*
 ===========================================================
  Actor sprites, waypoint and position variables
 ===========================================================
 */
+.label rsrc_ptr_for_active_costume_hi = $7893
+.label rsrc_ptr_for_active_costume_lo = $78ac
+.label actor_gfx_base_lo = $cb42				//Address of the graphic section start, for each actor, low byte
+.label actor_gfx_base_hi = $cb46				//Address of the graphic section start, for each actor, hi byte
+.label active_costume = $fc30
+.label cell_addresses_hi_offset_for_actor = $cb4a		//Offset of the list of hi bytes of cell addresses, for each actor
+.label cell_addresses_hi_offset = $cb53					//Offset of the list of hi bytes of cell addresses of the current actor
+.label limb_cell_list_for_actor_lo = $cb3a				//Address of limb cell list, for each actor, low byte
+.label limb_cell_list_for_actor_hi = $cb3e				//Address of limb cell list, for each actor, hi byte
+.label animation_sets_for_actor_lo = $fe90					//Address of the animation sets, for each actor (lo word)
+.label animation_sets_for_actor_hi = $fe94					// Address of the animation sets, for each actor (hi word)
+.label fifth_byte = $fc03
+.label intercell_vertical_displacement = $fc04
+.label actor_sprite_base = $fc2e						//Base address of the current sprite being drawn in memory
+.label actor_sprite_index = $fc32
+.label current_limb = $fc41
+.label actor_limb_animation_frame = $fc42	//Which animation cell to use as _current_ for the actor limb
+.label actor_limb_current_cell = $fc62
+.label character_sprite_y = $fc37
+.label sprite_vertical_offset = $cb55
+.label limb_flip_tbl = $fc05				//;#00 = no horizontal flip for the limb, #80 = horizontal flip for the limb
+.label max_vertical_offset_for_actor = $FD4F
+
+
+
 .label sprite_buffer = $fd14		//;Sprite buffer index (#00 or #01)
 //;#03 = actor might be obscured by a foreground object
 .label layer_depth_for_actor = $fd18
@@ -150,6 +234,7 @@
 .label actor_sprite_x_lo = $fd60
 .label animation_state_for_actor = $FD97
 
+.label character_sprite_bkg_colors = $f0c0	  //Background colors for each character
 .label costume_for_actor = $fe53		//#FF = actor not in use
 .label actor_for_costume = $fe57		//Bit 7 set - actor moving, clear - not moving
 
@@ -183,6 +268,16 @@ They were definitely intended as debugging aids.
 .label third_kid_id = $FFCA
 .label costume_room_idx = $fefc	 //The CURRENT room where a costume is present
 
+/*
+ Actor_vars bit meanings when bit is set
+ Bit 7 - actor invisible (dead, game won or in the radiation suit)
+ Bit 6 - actor frozen (for instance, when it's captured by Edna, Ed or the tentacle)
+ Bit 3 - is Weird Ed's enemy 
+ Bit 2 - has watched the TV commercial (and thus knows where to send the envelope)
+ Bit 1 - is Green Tentacle's friend (after giving him a recording contract)
+ Bit 0 - is strong (after doing exercise with the Hunk-o-matic)
+*/
+.label actor_vars = $fee3
 
 //Placeholders for routines not modularized yet
 .label print_message_wait_for_button = $0 // UI: print message pointed by msg_to_print_ptr, wait for button
@@ -197,4 +292,5 @@ They were definitely intended as debugging aids.
 .label raster_setup = $0
 .label assign_available_actor = $0
 .label prepare_video_for_new_room = $0
-
+.label mask_actor_with_foreground_layer = $0
+.label blit_and_mask_limb = $0
