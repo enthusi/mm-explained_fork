@@ -1238,20 +1238,20 @@ rsrc_ptr_for_active_costume_hi = $7893
 rsrc_ptr_for_active_costume_lo = $78ac
 limb_cell_list_for_actor_lo = $cb3a					;Address of limb cell list, for each actor, low byte
 limb_cell_list_for_actor_hi = $cb3e					;Address of limb cell list, for each actor, hi byte
-graphic_data_ptr_for_actor_lo = $cb42				;Address of the graphic section start, for each actor, low byte
-graphic_data_ptr_for_actor_hi = $cb46				;Address of the graphic section start, for each actor, hi byte
+actor_gfx_base_lo = $cb42				;Address of the graphic section start, for each actor, low byte
+actor_gfx_base_hi = $cb46				;Address of the graphic section start, for each actor, hi byte
 cell_addresses_hi_offset_for_actor = $cb4a			;Offset of the list of hi bytes of cell addresses, for each actor
 cell_addresses_hi_offset = $cb53					;Offset of the list of hi bytes of cell addresses of the current actor
 animation_sets_for_actor_lo = $fe90					;Address of the animation sets, for each actor (lo word)
 animation_sets_for_actor_hi = $fe94					;Address of the animation sets, for each actor (hi word)
 
-actor_limb_flip = $fc05		;#00 = no horizontal flip for the limb, #80 = horizontal flip for the limb
+limb_flip_tbl = $fc05				;#00 = no horizontal flip for the limb, #80 = horizontal flip for the limb
 actor_sprite_base = $fc2e						;Base address of the current sprite being drawn in memory
 active_costume = $fc30
 actor_sprite_index = $fc32
-actor_index_8th_multiple = $fc36
+actor_limbs_ofs = $fc36
 character_sprite_y = $fc37
-current_actor_limb = $fc41
+current_limb = $fc41
 actor_limb_animation_frame = $fc42	;Which animation cell to use as _current_ for the actor limb
 actor_limb_current_base_cell = $fc82
 actor_limb_desired_base_cell = $fca2	;Which animation cell to use as _base_ for the actor limb
@@ -1267,7 +1267,7 @@ animation_argument_for_actor = $fd0a		;Values: #00, #01, #FF
 ;===========================================================
 ; Actor sprites, waypoint and position variables
 ;===========================================================
-sprite_buffer = $fd14		;Sprite buffer index (#00 or #01)
+sprite_bank_sel = $fd14		;Sprite buffer index (#00 or #01)
 ;#03 = actor might be obscured by a foreground object
 layer_depth_for_actor = $fd18
 character_sprite_x_lo = $fd1c
@@ -2134,7 +2134,7 @@ update_actors:
 ;Redraw all active actors that need a refresh
 .C:05bb  20 8C 33    JSR redraw_actors_that_need_refresh
 ;Update the set of sprite shapes to use for actors
-.C:05be  AD 14 FD    LDA sprite_buffer
+.C:05be  AD 14 FD    LDA sprite_bank_sel
 .C:05c1  18          CLC
 .C:05c2  69 01       ADC #$01
 .C:05c4  8D 6A 16    STA sprite_shapes_set_to_use
@@ -8602,13 +8602,13 @@ draw_actor:
 .C:2272  BD 32 FC    LDA actor_sprite_index,X
 ;.C:2275  AA          TAX	;Redundant code
 .C:2276  A8          TAY
-;Determine base address for the actor's sprite based on the sprite index and the sprite_buffer in use
+;Determine base address for the actor's sprite based on the sprite index and the sprite_bank_sel in use
 .C:2277  20 56 24    JSR set_actor_sprite_base_address
 ;Setup the address of the graphic section start
 .C:227a  A6 D8       LDX actor
-.C:227c  BD 42 CB    LDA graphic_data_ptr_for_actor_lo,X
+.C:227c  BD 42 CB    LDA actor_gfx_base_lo,X
 .C:227f  85 82       STA <graphic_section_offset
-.C:2281  BD 46 CB    LDA graphic_data_ptr_for_actor_hi,X
+.C:2281  BD 46 CB    LDA actor_gfx_base_hi,X
 .C:2284  85 83       STA >graphic_section_offset
 ;Copy the offset for the high-bytes elements of the cell_address_list, for this actor
 .C:2286  BD 4A CB    LDA cell_addresses_hi_offset_for_actor,X
@@ -8626,7 +8626,7 @@ draw_actor:
 .C:229d  0A          ASL A
 .C:229e  0A          ASL A
 .C:229f  0A          ASL A
-.C:22a0  8D 36 FC    STA actor_index_8th_multiple
+.C:22a0  8D 36 FC    STA actor_limbs_ofs
 ;Get the index for the actor's sprite
 .C:22a3  A6 D8       LDX actor
 .C:22a5  BC 32 FC    LDY actor_sprite_index,X
@@ -8653,7 +8653,7 @@ actor_behind_foreground:
 ;Mask the actor with the foreground layer accordingly
 .C:22c8  20 DB 30    JSR mask_actor_with_foreground_layer
 copy_actors_data:
-.C:22cb  20 A8 23    JSR copy_vertical_third_of_sprite_data
+.C:22cb  20 A8 23    JSR blit_sprite_vthird
 set_color_and_x_coordinate:
 ;Set the actor's sprite X position (hi/lo)
 .C:22ce  A6 D8       LDX actor
@@ -8676,30 +8676,30 @@ set_color_and_x_coordinate:
 sprite_data_ptr = $80
 bottom_row = $fd53
 current_row = $cb51
-buffer_00_vertical_offset_for_sprite = $fd8d
-buffer_01_vertical_offset_for_sprite = $fd85
+sprite_voff_buf0 = $fd8d
+sprite_voff_buf1 = $fd85
 
 clear_sprite_visible_rows:
 ;Switch on the current sprite buffer in use (#00 or #01)
-.C:22ec  AD 14 FD    LDA sprite_buffer
-.C:22ef  F0 0D       BEQ sprite_buffer_is_00
+.C:22ec  AD 14 FD    LDA sprite_bank_sel
+.C:22ef  F0 0D       BEQ sprite_bank_sel_is_00
 ;-----------------------------------------
-sprite_buffer_is_01:
+sprite_bank_sel_is_01:
 ;Get the sprite's Y position, set it as the bottom row
 .C:22f1  B9 81 FD    LDA buffer_01_y_position_for_sprite,Y
 .C:22f4  8D 53 FD    STA bottom_row
 ;Subtract the sprite vertical offset to compute the top row
 .C:22f7  38          SEC
-.C:22f8  F9 85 FD    SBC buffer_01_vertical_offset_for_sprite,Y
+.C:22f8  F9 85 FD    SBC sprite_voff_buf1,Y
 .C:22fb  4C 08 23    JMP set_top_row_as_current_row
 ;-----------------------------------------
-sprite_buffer_is_00:
+sprite_bank_sel_is_00:
 ;Get the sprite's Y position, set it as the bottom row
 .C:22fe  B9 89 FD    LDA buffer_00_y_position_for_sprite,Y
 .C:2301  8D 53 FD    STA bottom_row
 ;Subtract the sprite vertical offset to compute the top row
 .C:2304  38          SEC
-.C:2305  F9 8D FD    SBC buffer_00_vertical_offset_for_sprite,Y
+.C:2305  F9 8D FD    SBC sprite_voff_buf0,Y
 ;-----------------------------------------
 set_top_row_as_current_row:
 .C:2308  8D 51 CB    STA current_row
@@ -8784,7 +8784,7 @@ draw_actor_limbs:
 .C:2364  8D 03 FC    STA fifth_byte
 .C:2367  8D 04 FC    STA intercell_vertical_displacement
 .C:236a  8D 55 CB    STA sprite_vertical_offset
-.C:236d  8D 41 FC    STA current_actor_limb
+.C:236d  8D 41 FC    STA current_limb
 ;-------------------------------------------
 draw_limb:
 ;Compute actor limb index
@@ -8793,10 +8793,10 @@ draw_limb:
 .C:2373  0A          ASL A
 .C:2374  0A          ASL A
 .C:2375  18          CLC
-.C:2376  6D 41 FC    ADC current_actor_limb
+.C:2376  6D 41 FC    ADC current_limb
 .C:2379  AA          TAX
 ;Get the flip state for the actor limb, save it in current_limb_flip
-.C:237a  BD 05 FC    LDA actor_limb_flip,X
+.C:237a  BD 05 FC    LDA limb_flip_tbl,X
 .C:237d  8D 25 FC    STA current_limb_flip
 ;Apply displacement from _previous_ cell to vertical position, if needed
 .C:2380  A5 3F       LDA current_sprite_y_pos
@@ -8817,9 +8817,9 @@ draw_limb:
 .C:2397  8D 55 CB    STA sprite_vertical_offset
 ;-------------------------------------------
 next_limb:
-.C:239a  EE 41 FC    INC current_actor_limb
+.C:239a  EE 41 FC    INC current_limb
 .C:239d  A9 08       LDA #$08
-.C:239f  CD 41 FC    CMP current_actor_limb
+.C:239f  CD 41 FC    CMP current_limb
 .C:23a2  D0 CC       BNE draw_limb
 .C:23a4  20 2C 24    JSR update_actor_sprite_vertical_positions_for_buffer
 .C:23a7  60          RTS
@@ -8840,7 +8840,7 @@ sprite_cell_ptr = $7e
 row_counter = $cb54
 temp_x = $2501
 
-copy_vertical_third_of_sprite_data:
+blit_sprite_vthird:
 ;Save original value of .X
 .C:23a8  8E 01 25    STX temp_x
 ;Use .X as row counter, initialize it to #00
@@ -8852,7 +8852,7 @@ next_group:
 ;Set the copy offset into .Y
 .C:23b3  A8          TAY
 .C:23b4  20 0C 24    JSR set_sprite_ptr_for_row					
-.C:23b7  20 1E 24    JSR set_sprite_cell_ptr_address_as_sprite_data_ptr_minus_1
+.C:23b7  20 1E 24    JSR set_cell_ptr_from_data_ptr
 ;Use .Y as the byte offset (in the range #02-#00, as 3 bytes make a whole row)
 .C:23ba  A0 02       LDY #$02
 ;Copy the byte
@@ -8875,6 +8875,7 @@ next_group:
 ;Restore original value of .X
 .C:23d4  AE 01 25    LDX temp_x
 .C:23d7  60          RTS
+
 ;===========================================
 ; Calculates the pointer to the animation cell for the actor's sprite
 ;
@@ -8910,9 +8911,9 @@ sprite_cell_ptr = $7e
 
 calculate_sprite_cell_ptr:
 ;Compute the actor_limb index into .X
-.C:23d8  AD 36 FC    LDA actor_index_8th_multiple
+.C:23d8  AD 36 FC    LDA actor_limbs_ofs
 .C:23db  18          CLC
-.C:23dc  6D 41 FC    ADC current_actor_limb
+.C:23dc  6D 41 FC    ADC current_limb
 .C:23df  AA          TAX
 ;------------------------------------------------------
 ;Add the animation frame index to the current base cell index
@@ -8978,12 +8979,12 @@ set_sprite_ptr_for_row:
 .C:241d  60          RTS
 ;===========================================
 ; Updates sprite_cell_ptr
-; sprite_cell_ptr = sprite_data_ptr - 1
+; sprite_cell_ptr = sprite_data_ptr - 0x100
 ;===========================================
 sprite_cell_ptr = $7e
 sprite_data_ptr = $80
 
-set_sprite_cell_ptr_address_as_sprite_data_ptr_minus_1:
+set_cell_ptr_from_data_ptr:
 .C:241e  A5 80       LDA <sprite_data_ptr
 .C:2420  38          SEC
 .C:2421  E9 00       SBC #$00
@@ -8996,7 +8997,7 @@ set_sprite_cell_ptr_address_as_sprite_data_ptr_minus_1:
 ; Updates an actor's sprite vertical position and offset
 ; for the current sprite buffer in use
 ;
-; Arguments:	sprite_buffer
+; Arguments:	sprite_bank_sel
 ;				actor
 ;===========================================
 update_actor_sprite_vertical_positions_for_buffer:
@@ -9004,22 +9005,22 @@ update_actor_sprite_vertical_positions_for_buffer:
 .C:242c  A6 D8       LDX actor
 .C:242e  BC 32 FC    LDY actor_sprite_index,X
 ;Switch based on the sprite buffer in use (#00 or #01)
-.C:2431  AD 14 FD    LDA sprite_buffer
-.C:2434  F0 0E       BEQ sprite_buffer_00
+.C:2431  AD 14 FD    LDA sprite_bank_sel
+.C:2434  F0 0E       BEQ sprite_bank_sel_00
 ;------------------------------------------------------
-sprite_buffer_01:
+sprite_bank_sel_01:
 ;Set the vertical offset
 .C:2436  AD 55 CB    LDA sprite_vertical_offset
-.C:2439  99 85 FD    STA buffer_01_vertical_offset_for_sprite,Y
+.C:2439  99 85 FD    STA sprite_voff_buf1,Y
 ;Set the vertical position
 .C:243c  A5 3F       LDA current_sprite_y_pos
 .C:243e  99 81 FD    STA buffer_01_y_position_for_sprite,Y
 .C:2441  4C 4F 24    JMP save_vertical_offset_for_actor
 ;------------------------------------------------------
-sprite_buffer_00:
+sprite_bank_sel_00:
 ;Set the vertical offset
 .C:2444  AD 55 CB    LDA sprite_vertical_offset
-.C:2447  99 8D FD    STA buffer_00_vertical_offset_for_sprite,Y
+.C:2447  99 8D FD    STA sprite_voff_buf0,Y
 ;Set the vertical position
 .C:244a  A5 3F       LDA current_sprite_y_pos
 .C:244c  99 89 FD    STA buffer_00_y_position_for_sprite,Y
@@ -9035,7 +9036,7 @@ save_vertical_offset_for_actor:
 ; There are 2 sets of sprites used. 
 ; One starts at $E000, the other one at $E800.
 ; This is used as a kind of double buffering to modify one set of sprites while the other is being rendered on screen.
-; sprite_buffer specifies which "sprite set" is in use.
+; sprite_bank_sel specifies which "sprite set" is in use.
 ;
 ; Each sprite occupies 64 bytes, so once the "sprite set" base address is determined,
 ; we simply have to multiply the sprite index by 64 and add it to the base address.
@@ -9043,7 +9044,7 @@ save_vertical_offset_for_actor:
 ; multiple_64_lo/hi are precalculated multiples of 64
 ;
 ; Input:	.Y				sprite index
-;			sprite_buffer	sprite buffer set in use (#00 or #01)
+;			sprite_bank_sel	sprite buffer set in use (#00 or #01)
 ;
 ; Output:	actor_sprite_base =	sprite_set_base + [64 * sprite_index]
 ;===========================================
@@ -9052,7 +9053,7 @@ set_actor_sprite_base_address:
 .C:2459  8D 2E FC    STA <actor_sprite_base
 .C:245c  B9 F2 24    LDA multiple_64_hi,Y
 .C:245f  18          CLC
-.C:2460  AC 14 FD    LDY sprite_buffer
+.C:2460  AC 14 FD    LDY sprite_bank_sel
 .C:2463  F0 05       BEQ add_e8
 .C:2465  69 E0       ADC #$E0
 .C:2467  4C 6C 24    JMP set_pointer_hi
@@ -9107,19 +9108,19 @@ compute_data_pointer:
 ;Copy the costume resource address to costume_base_address
 .C:248c  BD 61 78    LDA costume_ptr_hi_tbl,X
 .C:248f  BC 57 FE    LDY actor_for_costume,X
-.C:2492  99 46 CB    STA graphic_data_ptr_for_actor_hi,Y
+.C:2492  99 46 CB    STA actor_gfx_base_hi,Y
 .C:2495  85 18       STA >costume_base_address
 .C:2497  BD 7A 78    LDA costume_ptr_lo_tbl,X
 .C:249a  85 17       STA <costume_base_address
 ;Add 9 to the base address to get the address of the graphic section start (past the metadata section)
 .C:249c  18          CLC
 .C:249d  69 09       ADC #$09
-.C:249f  99 42 CB    STA graphic_data_ptr_for_actor_lo,Y
+.C:249f  99 42 CB    STA actor_gfx_base_lo,Y
 ;Add carry to the hi byte, if needed
 .C:24a2  90 08       BCC set_new_costume_ptr_for_actor
-.C:24a4  B9 46 CB    LDA graphic_data_ptr_for_actor_hi,Y
+.C:24a4  B9 46 CB    LDA actor_gfx_base_hi,Y
 .C:24a7  69 00       ADC #$00
-.C:24a9  99 46 CB    STA graphic_data_ptr_for_actor_hi,Y
+.C:24a9  99 46 CB    STA actor_gfx_base_hi,Y
 ;------------------------------------------------------
 set_new_costume_ptr_for_actor:
 ;Set the costume pointer as the current costume pointer
@@ -9142,11 +9143,11 @@ set_new_costume_ptr_for_actor:
 .C:24c1  C8          INY
 .C:24c2  B1 17       LDA (costume_base_address),Y
 .C:24c4  18          CLC
-.C:24c5  7D 42 CB    ADC graphic_data_ptr_for_actor_lo,X
+.C:24c5  7D 42 CB    ADC actor_gfx_base_lo,X
 .C:24c8  9D 3A CB    STA limb_cell_list_for_actor_lo,X
 .C:24cb  C8          INY
 .C:24cc  B1 17       LDA (costume_base_address),Y
-.C:24ce  7D 46 CB    ADC graphic_data_ptr_for_actor_hi,X
+.C:24ce  7D 46 CB    ADC actor_gfx_base_hi,X
 .C:24d1  9D 3E CB    STA limb_cell_list_for_actor_hi,X
 ;------------------------------------------------------
 ;Read from offsets #07 and #08
@@ -9155,11 +9156,11 @@ set_new_costume_ptr_for_actor:
 .C:24d4  C8          INY
 .C:24d5  B1 17       LDA (costume_base_address),Y
 .C:24d7  18          CLC
-.C:24d8  7D 42 CB    ADC graphic_data_ptr_for_actor_lo,X
+.C:24d8  7D 42 CB    ADC actor_gfx_base_lo,X
 .C:24db  9D 90 FE    STA animation_sets_for_actor_lo,X
 .C:24de  C8          INY
 .C:24df  B1 17       LDA (costume_base_address),Y
-.C:24e1  7D 46 CB    ADC graphic_data_ptr_for_actor_hi,X
+.C:24e1  7D 46 CB    ADC actor_gfx_base_hi,X
 .C:24e4  9D 94 FE    STA animation_sets_for_actor_hi,X
 .C:24e7  68          PLA
 .C:24e8  AA          TAX
@@ -9189,20 +9190,20 @@ animate_actor_limbs:
 .C:2507  20 F9 26    JSR animate_character_speaking
 ;Setup the cell list for this actor
 .C:250a  20 DD 25    JSR setup_limb_cell_list
-.C:250d  20 D3 25    JSR compute_actor_index_8th_multiple
-;Init current_actor_limb to #00
+.C:250d  20 D3 25    JSR compute_actor_limbs_ofs
+;Init current_limb to #00
 .C:2510  A9 00       LDA #$00
-.C:2512  8D 41 FC    STA current_actor_limb
+.C:2512  8D 41 FC    STA current_limb
 animate_actor_limb:
 ;Update the base cell for this limb
 .C:2515  20 8E 25    JSR update_limb_base_cell
 ;Animate the limb as needed
 .C:2518  20 26 25    JSR animate_limb
 ;Move to the next limb
-.C:251b  EE 41 FC    INC current_actor_limb
+.C:251b  EE 41 FC    INC current_limb
 ;Are there limbs pending? If so, continue - otherwise, exit
 .C:251e  A9 08       LDA #$08
-.C:2520  CD 41 FC    CMP current_actor_limb
+.C:2520  CD 41 FC    CMP current_limb
 .C:2523  D0 F0       BNE animate_actor_limb
 .C:2525  60          RTS
 ;===========================================
@@ -9216,8 +9217,8 @@ animate_actor_limb:
 ;	-repeat the animation from the first frame (argument == #FF)
 ;	-or stop the animation (argument == #00)
 ;
-; Arguments:	actor_index_8th_multiple
-;				current_actor_limb
+; Arguments:	actor_limbs_ofs
+;				current_limb
 ;				actor_limb_animation_frame
 ;				actor_limb_current_cell
 ;				actor_limb_current_argument
@@ -9229,9 +9230,9 @@ previous_actor_limb_frame = $fc3b
 
 animate_limb:
 ;Compute the actor_limb index into .X
-.C:2526  AD 36 FC    LDA actor_index_8th_multiple
+.C:2526  AD 36 FC    LDA actor_limbs_ofs
 .C:2529  18          CLC
-.C:252a  6D 41 FC    ADC current_actor_limb
+.C:252a  6D 41 FC    ADC current_limb
 .C:252d  AA          TAX
 ;Get the current animation frame index for the actor limb
 .C:252e  BD 42 FC    LDA actor_limb_animation_frame,X
@@ -9297,8 +9298,8 @@ exit:
 ; Updates a base cell for an actor limb, if needed
 ;
 ; 
-; Arguments:	actor_index_8th_multiple
-;				current_actor_limb
+; Arguments:	actor_limbs_ofs
+;				current_limb
 ;				actor_limb_desired_base_cell
 ;				actor_limb_desired_argument
 ;===========================================
@@ -9307,9 +9308,9 @@ actor_limb_current_base_cell = $fc82
 
 update_limb_base_cell:
 ;Compute the actor_limb index into .X
-.C:258e  AD 36 FC    LDA actor_index_8th_multiple
+.C:258e  AD 36 FC    LDA actor_limbs_ofs
 .C:2591  18          CLC
-.C:2592  6D 41 FC    ADC current_actor_limb
+.C:2592  6D 41 FC    ADC current_limb
 .C:2595  AA          TAX
 ;Is there a new desired base cell? If not, exit
 .C:2596  BD A2 FC    LDA actor_limb_desired_base_cell,X
@@ -9339,12 +9340,12 @@ assign_new_base_cell:
 .C:25c2  60          RTS
 ;===========================================
 ; Arguments:	.X		actor_limb index
-;				current_actor_limb
+;				current_limb
 ;===========================================
 actor_limb_current_cell = $fc62
 
 compute_actor_limb_current_cell:
-.C:25c3  AC 41 FC    LDY current_actor_limb
+.C:25c3  AC 41 FC    LDY current_limb
 ;Get the base address for the limb index
 .C:25c6  B1 84       LDA (limb_cell_list),Y
 ;Add the current base cell for the limb, store resulting offset into .Y
@@ -9362,15 +9363,15 @@ compute_actor_limb_current_cell:
 ; This is used in multiple animation routines.
 ;
 ; Arguments:	actor
-; Returns:		actor_index_8th_multiple
+; Returns:		actor_limbs_ofs
 ;===========================================
-compute_actor_index_8th_multiple:
+compute_actor_limbs_ofs:
 .C:25d3  A5 D8       LDA actor
 .C:25d5  18          CLC
 .C:25d6  0A          ASL A
 .C:25d7  0A          ASL A
 .C:25d8  0A          ASL A
-.C:25d9  8D 36 FC    STA actor_index_8th_multiple
+.C:25d9  8D 36 FC    STA actor_limbs_ofs
 .C:25dc  60          RTS
 ;===========================================
 ; Set the current limb cell list address for the current actor.
@@ -9391,9 +9392,9 @@ setup_limb_cell_list:
 ; Unused routine
 ;===========================================
 ;Compute the actor_limb index into .X
-.C:25ea  20 D3 25    JSR compute_actor_index_8th_multiple
+.C:25ea  20 D3 25    JSR compute_actor_limbs_ofs
 .C:25ed  18          CLC
-.C:25ee  6D 41 FC    ADC current_actor_limb
+.C:25ee  6D 41 FC    ADC current_limb
 .C:25f1  AA          TAX
 .C:25f2  AD 12 FD    LDA $FD12
 .C:25f5  9D A2 FC    STA actor_limb_desired_base_cell,X
@@ -9410,7 +9411,7 @@ setup_limb_cell_list:
 ;
 ; Returns:		actor_limb_desired_base_cell
 ;				actor_limb_current_base_cell
-;				actor_limb_flip
+;				limb_flip_tbl
 ;				actor_limb_desired_argument
 ;
 ; This routine will:
@@ -9429,7 +9430,7 @@ setup_limb_cell_list:
 actor_limb_temp = $fc3b
 animation_sets = $17
 limb_index = $2503
-actor_limb_flip = $fc05
+limb_flip_tbl = $fc05
 
 apply_base_cells_for_limbs:
 ;Setup the costume for this actor, if needed
@@ -9464,8 +9465,8 @@ assign_new_animation_set:
 .C:2623  0A          ASL A
 .C:2624  0A          ASL A
 .C:2625  A8          TAY
-;Pre-compute actor_index_8th_multiple = actor index * 8 
-.C:2626  20 D3 25    JSR compute_actor_index_8th_multiple
+;Pre-compute actor_limbs_ofs = actor index * 8 
+.C:2626  20 D3 25    JSR compute_actor_limbs_ofs
 ;-----------------------------------------------------
 ;Use .X as limb index
 .C:2629  A2 00       LDX #$00
@@ -9474,7 +9475,7 @@ prepare_limb_frame:
 ;Compute "actor_limb" index into .X = actor * 8 + limb_index
 .C:262e  18          CLC
 .C:262f  AD 03 25    LDA limb_index
-.C:2632  6D 36 FC    ADC actor_index_8th_multiple
+.C:2632  6D 36 FC    ADC actor_limbs_ofs
 .C:2635  AA          TAX
 ;.C:2636  AD 03 25    LDA limb_index ;Redundant code
 ;Load the frame for this limb in this animation set
@@ -9491,7 +9492,7 @@ bit7_set:
 ;Set the result as the base limb cell
 .C:2643  9D A2 FC    STA actor_limb_desired_base_cell,X
 ;Is flip set?
-.C:2646  BD 05 FC    LDA actor_limb_flip,X
+.C:2646  BD 05 FC    LDA limb_flip_tbl,X
 .C:2649  C9 80       CMP #$80
 .C:264b  F0 05       BEQ set_horizontal_flip
 .C:264d  A9 FF       LDA #$FF
@@ -9499,7 +9500,7 @@ bit7_set:
 set_horizontal_flip:
 ;Set the flip
 .C:2652  A9 80       LDA #$80
-.C:2654  9D 05 FC    STA actor_limb_flip,X
+.C:2654  9D 05 FC    STA limb_flip_tbl,X
 .C:2657  4C 74 26    JMP copy_animation_argument
 next_limb_2:
 .C:265a  4C 82 26    JMP next_limb
@@ -9509,7 +9510,7 @@ bit7_clear:
 ;Set the base limb cell
 .C:2660  9D A2 FC    STA actor_limb_desired_base_cell,X
 ;Is flip clear?
-.C:2663  BD 05 FC    LDA actor_limb_flip,X
+.C:2663  BD 05 FC    LDA limb_flip_tbl,X
 .C:2666  C9 00       CMP #$00
 .C:2668  F0 05       BEQ clear_horizontal_flip
 .C:266a  A9 FF       LDA #$FF
@@ -9517,7 +9518,7 @@ bit7_clear:
 clear_horizontal_flip:
 ;Clear the flip
 .C:266f  A9 00       LDA #$00
-.C:2671  9D 05 FC    STA actor_limb_flip,X
+.C:2671  9D 05 FC    STA limb_flip_tbl,X
 copy_animation_argument:
 ;Save the actor limb index (.X) into a variable temporarily
 .C:2674  8E 3B FC    STX actor_limb_temp
@@ -11280,12 +11281,12 @@ layer_ptrs_hi:
 .C:2e78  8D 12 FD    STA $FD12
 .C:2e7b  8E 13 FD    STX $FD13
 .C:2e7e  A0 07       LDY #$07
-.C:2e80  8C 41 FC    STY current_actor_limb
+.C:2e80  8C 41 FC    STY current_limb
 ;===========================================
 ;Unused routine
 :
 .C:2e83  20 EA 25    JSR $25EA
-.C:2e86  CE 41 FC    DEC current_actor_limb
+.C:2e86  CE 41 FC    DEC current_limb
 .C:2e89  10 F8       BPL $2E83
 .C:2e8b  60          RTS
 ;===========================================
@@ -12461,8 +12462,8 @@ next_actor:
 ;----------------------------------------------------
 ;Toggle the sprite buffer
 .C:33d7  A9 01       LDA #$01
-.C:33d9  4D 14 FD    EOR sprite_buffer
-.C:33dc  8D 14 FD    STA sprite_buffer
+.C:33d9  4D 14 FD    EOR sprite_bank_sel
+.C:33dc  8D 14 FD    STA sprite_bank_sel
 .C:33df  60          RTS
 ;===========================================
 init_sprites_sound:
@@ -14646,20 +14647,20 @@ check_sprite_assigned_to_invisible_actor:
 .C:3eef  AC 4C 40    LDY sprite_index_copy
 .C:3ef2  20 EC 22    JSR clear_sprite_visible_rows
 ;Copy a vertical slice of the sprite data (the top third)
-.C:3ef5  20 A8 23    JSR copy_vertical_third_of_sprite_data
+.C:3ef5  20 A8 23    JSR blit_sprite_vthird
 ;Toggle sprite buffer and repeat the clearing logic
 .C:3ef8  A9 01       LDA #$01
-.C:3efa  4D 14 FD    EOR sprite_buffer
-.C:3efd  8D 14 FD    STA sprite_buffer
+.C:3efa  4D 14 FD    EOR sprite_bank_sel
+.C:3efd  8D 14 FD    STA sprite_bank_sel
 .C:3f00  AC 4C 40    LDY sprite_index_copy
 .C:3f03  20 56 24    JSR set_actor_sprite_base_address
 .C:3f06  AC 4C 40    LDY sprite_index_copy
 .C:3f09  20 EC 22    JSR clear_sprite_visible_rows
-.C:3f0c  20 A8 23    JSR copy_vertical_third_of_sprite_data
+.C:3f0c  20 A8 23    JSR blit_sprite_vthird
 ;Toggle sprite buffer again to revert to the original one
 .C:3f0f  A9 01       LDA #$01
-.C:3f11  4D 14 FD    EOR sprite_buffer
-.C:3f14  8D 14 FD    STA sprite_buffer
+.C:3f11  4D 14 FD    EOR sprite_bank_sel
+.C:3f14  8D 14 FD    STA sprite_bank_sel
 ;Unassign sprite for this actor
 .C:3f17  A9 FF       LDA #$FF
 .C:3f19  9D 32 FC    STA actor_sprite_index,X
