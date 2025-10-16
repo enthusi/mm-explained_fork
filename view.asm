@@ -60,6 +60,7 @@ Notes:
 #import "misc.asm"
 #import "decompressor.asm"
 #import "room_gfx_rsrc.asm"
+#import "render_object.asm"
 
 /*================================= Variables =================================*/
 
@@ -116,10 +117,8 @@ Notes:
 
 .const COLS_PER_ROW             = VIEW_COLS - 1  // copy width used by scroll cores (39 when VIEW_COLS=40)
 
-.const COLOR_LAYER_COL_0        = $6D89  // COLOR layer column 0 base
-.const COLOR_LAYER_COL_1        = $6D8A  // COLOR layer column 1 base
-.const MASK_LAYER_COL_0         = $6AE1  // MASK  layer column 0 base
-.const MASK_LAYER_COL_1         = $6AE2  // MASK  layer column 1 base
+.const COLOR_LAYER_COL_1        = COLOR_LAYER_COL_0 + 1  // COLOR layer column 1 base
+.const MASK_LAYER_COL_1         = MASK_LAYER_COL_0 + 1  // MASK  layer column 1 base
 
 .const DECOMPRESS_ONE_COL       = $00    // decode_scope: single-column decode (scroll updates)
 .const DECOMPRESS_WHOLE_ROOM    = $01    // decode_scope: full 40×17 decode (initial draw)
@@ -142,7 +141,7 @@ Notes:
     room_gfx_layers_active_ptr         “current” gfx-layers pointer to validate
     cam_target_pos, cam_current_pos    camera desired/current column for scroll test
     frame_buffer_base                  active framebuffer base for TILE layer
-    view_left_x               world-space column of leftmost visible tile
+    viewport_left_col               world-space column of leftmost visible tile
 
   Global Outputs:
     screen_scroll_flag                 $00=right, $FF=left, $01=initial redraw
@@ -249,7 +248,7 @@ test_scroll_right:
         /*------------------------------------------------------------
            Decode visible columns starting at new right edge
         ------------------------------------------------------------*/
-        lda     view_left_x          // compute index of new rightmost column: left_edge + 39
+        lda     viewport_left_col          // compute index of new rightmost column: left_edge + 39
         clc
         adc     #VIEW_LAST_COL
         jmp     decode_visible_window    // decode TILE/COLOR/MASK starting at that column
@@ -294,7 +293,7 @@ test_scroll_left:
         /*------------------------------------------------------------
            Decode visible columns starting at new left edge
         ------------------------------------------------------------*/
-        lda     view_left_x          // leftmost visible column index for decode
+        lda     viewport_left_col          // leftmost visible column index for decode
         jmp     decode_visible_window    // decode TILE/COLOR/MASK starting at that column
 
 initial_full_redraw:
@@ -325,7 +324,7 @@ initial_full_redraw:
         lda     #>MASK_LAYER_COL_0
         sta     >mask_layer_ptr
 
-        lda     view_left_x          // load leftmost visible column index for decode
+        lda     viewport_left_col          // load leftmost visible column index for decode
                                               // fall through to decode_visible_window
 /*================================================================================
 decode_visible_window  decode TILE/COLOR/MASK layers for the visible slice
@@ -465,7 +464,7 @@ decode_visible_window:
         /*------------------------------------------------------------
            Draw the dynamic objects onto the freshly decoded layers
         ------------------------------------------------------------*/
-        jsr     draw_objects_in_room
+        jsr     render_room_objects
         rts
 /*================================================================================
   decompress_room_gfx  init mode/counter, load 4-byte dict, dispatch decode
