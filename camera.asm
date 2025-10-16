@@ -52,10 +52,10 @@ right_follow_threshold: .byte $1E
  *     - CAM_MODE_PAN: step 1 column toward cam_pan_goal (left/right).
  *     - CAM_MODE_FOLLOW_ACTOR: keep the followed actor within a horizontal
  *       window [left_follow_threshold .. right_follow_threshold] relative to
- *       view_left_x; when exceeded, step one column toward the actor.
+ *       viewport_left_col; when exceeded, step one column toward the actor.
  * 
  *   After movement (or if no movement), clamps cam_target_pos to room bounds
- *   and derives the visible span [view_left_x, view_right_x].
+ *   and derives the visible span [viewport_left_col, viewport_right_col].
  *
  * Arguments (globals read):
  *   cam_mode                         Camera behavior selector.
@@ -64,7 +64,7 @@ right_follow_threshold: .byte $1E
  *   cam_follow_costume_id            Costume whose actor is followed (FOLLOW mode).
  *   actor_for_costume[ ]            Costume→actor slot map (FOLLOW mode).
  *   position_x_for_actor[ ]         Actor X positions (FOLLOW mode).
- *   view_left_x             Current left edge (for FOLLOW window tests).
+ *   viewport_left_col             Current left edge (for FOLLOW window tests).
  * Vars:
  *   left_follow_threshold            Columns from left edge that define left window bound.
  *   right_follow_threshold           Columns from right edge that define right window bound.
@@ -73,8 +73,8 @@ right_follow_threshold: .byte $1E
  * Returns / side effects (globals written):
  *   cam_target_pos                   Stepped toward goal/actor and clamped to bounds.
  *   actor_follow_needs_pan           Set/cleared when FOLLOW window is crossed/met.
- *   view_left_x             Updated from cam_target_pos (center - VIEW_HALF_SPAN).
- *   view_right_x            Updated from left_edge (+ VIEW_FULL_SPAN_MINUS1).
+ *   viewport_left_col             Updated from cam_target_pos (center - VIEW_HALF_SPAN).
+ *   viewport_right_col            Updated from left_edge (+ VIEW_FULL_SPAN_MINUS1).
  *
  * Flags:
  *   Not preserved. Internal CMP/SBC/ADC modify NZCV.
@@ -83,11 +83,11 @@ right_follow_threshold: .byte $1E
  *   1) If CAM_MODE_PAN: compare cam_target_pos vs cam_pan_goal and step ±1, then clamp.
  *   2) Else if CAM_MODE_FOLLOW_ACTOR:
  *        - Sample actor X for the followed costume.
- *        - Compute (actor_x - view_left_x) and compare against follow window.
+ *        - Compute (actor_x - viewport_left_col) and compare against follow window.
  *        - If outside window, step cam_target_pos one px toward actor.
  *      Clamp afterward.
  *   3) Clamp ensures the 40-col view (centered at cam_target_pos) never exceeds room edges.
- *   4) Finally, compute [view_left_x, view_right_x] from cam_target_pos.
+ *   4) Finally, compute [viewport_left_col, viewport_right_col] from cam_target_pos.
  *========================================================*/
 * = $0668
 cam_upd_target:
@@ -146,10 +146,10 @@ mode_follow_actor:
 		lda     position_x_for_actor,x        // A := actor_x (world/room coordinates)
 
 		// Left-side test:
-		//   delta_left := actor_x - view_left_x
+		//   delta_left := actor_x - viewport_left_col
 		//   if delta_left < left_follow_threshold → need to pan (actor too far left)
 		sec
-		sbc     view_left_x          // A := actor_x - left_edge
+		sbc     viewport_left_col          // A := actor_x - left_edge
 		cmp     left_follow_threshold
 		bcs     check_follow_right_threshold   // A ≥ threshold → left OK; test right next
 
@@ -243,10 +243,10 @@ update_visible_span:
 		lda     cam_target_pos
 		sec                                 // exact subtract (treat as unsigned delta)
 		sbc     #VIEW_HALF_SPAN             // A = center - 0x14 → left edge
-		sta     view_left_x
+		sta     viewport_left_col
 		clc                                 // exact add
 		adc     #VIEW_FULL_SPAN_MINUS1      // A = left + 0x27 → right edge (inclusive)
-		sta     view_right_x
+		sta     viewport_right_col
 		rts
 
 /*===========================================
