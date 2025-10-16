@@ -68,3 +68,29 @@
  *      room’s scene graphics.
  *
  * --------------------------------------------------------- */
+
+;-------------------------------------------------
+; Object attributes
+;-------------------------------------------------
+;Bit 7 - object requires a render overlay
+;Bit 6 - unused
+;Bit 5 - object removed from room
+;			(if the cursor is clicked inside the object's original location in a room, the object's location is ignored)
+;Bits 3-0 (low nibble) = object owner
+;			Special values for owners
+;				#0F - in a room (no owner, it's in a room)
+;				#0D = limbo
+;				#01-07	- index of kid owner
+;
+;The only ownership that's actually checked in the game scripts is kid's ownership.
+;Objects given to other characters are not "owned" by them.
+;In those cases, the change is handled by changing states of game variables.
+;
+;Some objects are in a "limbo" location before being materialized into the world.
+;For instance, the batteries inside the portable radio.
+;When the radio is picked up, the batteries are put in the limbo.
+;When the radio is opened, the batteries owner changes from limbo to the current kid.
+;
+;Limbo is modeled by setting the owner for the object to #0D.
+;#0D would be the owner index for the Green Tentacle, but in reality, it's limbo.
+;In some cases, scripts set the owner of an object to #00 instead of #0D. It has the same effect.
