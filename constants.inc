@@ -65,3 +65,7 @@
 
 .const MASK_LAYER_COL_0         = $6AE1  // MASK  layer column 0 base
 .const COLOR_LAYER_COL_0        = $6D89  // COLOR layer column 0 base
+
+// Actor vars bitmasks
+.const ACTOR_IS_INVISIBLE = $80
+.const ACTOR_IS_FROZEN = $40
