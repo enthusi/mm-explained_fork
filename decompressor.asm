@@ -40,10 +40,10 @@
  *   decomp_stream_next      Returns 1 decompressed byte per call in A;
  *                           maintains state across calls.
  *
- *   decomp_skip_16          Discards decompressed bytes until decomp_skip_rem
+ *   decomp_skip_16bit          Discards decompressed bytes until decomp_skip_rem
  *                           reaches zero.
  *
- *   decomp_skip_8           Discards decompressed bytes using an 8-bit
+ *   decomp_skip_8bit           Discards decompressed bytes using an 8-bit
  *                           count loaded from decomp_skip_rem.
  *
  * Private routines:
@@ -402,7 +402,7 @@ return_read:
  * 	data without needing to actually copy or process the output.
  * ===========================================
  */
-decomp_skip_16:
+decomp_skip_16bit:
        // If decomp_skip_rem == 0, nothing to skip
        lda decomp_skip_rem
        ora decomp_skip_rem + 1
@@ -420,7 +420,7 @@ skip16_step:
 	   
 dec_skip_lo:
        dec decomp_skip_rem
-       jmp decomp_skip_16
+       jmp decomp_skip_16bit
 
 /*
  * ===========================================
@@ -433,13 +433,13 @@ dec_skip_lo:
  * 	None.
  *
  * Description:
- * 	A compact version of decomp_skip_16 for skipping up to 255 bytes.
+ * 	A compact version of decomp_skip_16bit for skipping up to 255 bytes.
  * 	It repeatedly calls the decompression routine, discarding each byte produced,
  * 	until the counter reaches zero. Commonly used for small, localized skips in
  * 	the compressed data stream.
  * ===========================================
  */
-decomp_skip_8:
+decomp_skip_8bit:
        // Load 8-bit count once; if zero, done
        ldy decomp_skip_rem
        bne skip8_step
@@ -530,7 +530,7 @@ skip8_step:
  *   └─ RTS   ; A = fetched byte
  *
  *
- * [decomp_skip_16]
+ * [decomp_skip_16bit]
  * ----------------------------
  * ENTRY
  *   │
@@ -546,7 +546,7 @@ skip8_step:
  *   └─ RTS
  *
  *
- * [decomp_skip_8]
+ * [decomp_skip_8bit]
  * ---------------------------
  * ENTRY
  *   │
