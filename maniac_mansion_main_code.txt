@@ -866,7 +866,7 @@ object_destination_active = $7205
 room_object_index_hi = $7221
 room_object_index_lo = $723d
 parent_object = $7259
-parent_linkable = $7275
+ancestor_overlay_req_tbl = $7275
 obj_gfx_ptr_tbl = $7291
 room_obj_ofs_tbl = $72c9		;Offsets of objects in a room resource
 room_obj_ofs_tbl + 1 = $72ca
@@ -13057,7 +13057,7 @@ load_object_data:
 set_00:
 .C:36d5  A9 00       LDA #$00
 set_result:
-.C:36d7  9D 75 72    STA parent_linkable,X
+.C:36d7  9D 75 72    STA ancestor_overlay_req_tbl,X
 ;Copy object's Y top coordinate from bits 6-0 of offset #07
 .C:36da  B1 15       LDA (read_ptr_lo),Y
 .C:36dc  29 7F       AND #$7F
@@ -14089,7 +14089,7 @@ set_object_as_candidate:
 .C:3c58  8E A0 3E    STX candidate_object
 check_object_parent:
 ;Check if the object can have a parent object and, if so, if it's inside the parent object right now
-.C:3c5b  BD 75 72    LDA parent_linkable,X
+.C:3c5b  BD 75 72    LDA ancestor_overlay_req_tbl,X
 .C:3c5e  85 15       STA current_parent_possible
 .C:3c60  BD 59 72    LDA parent_object,X
 .C:3c63  D0 03       BNE parent_linkable
@@ -14156,7 +14156,7 @@ decompress_object_gfx_loop:
 .C:3cb5  8E A0 3E    STX candidate_object
 check_object_parent:
 ;Is there a parent object?
-.C:3cb8  BD 75 72    LDA parent_linkable,X
+.C:3cb8  BD 75 72    LDA ancestor_overlay_req_tbl,X
 .C:3cbb  85 15       STA current_parent_possible
 .C:3cbd  BD 59 72    LDA parent_object,X
 .C:3cc0  D0 03       BNE parent_linkable
