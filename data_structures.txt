@@ -1,4 +1,6 @@
-/*========================================================
+/*
+/*
+ ========================================================
  * Room resource layout
 ;========================================================
  * Offsets below are relative to (room_base + 4).
@@ -94,3 +96,567 @@
 ;Limbo is modeled by setting the owner for the object to #0D.
 ;#0D would be the owner index for the Green Tentacle, but in reality, it's limbo.
 ;In some cases, scripts set the owner of an object to #00 instead of #0D. It has the same effect.
+
+
+/*
+================================================================================
+Costume Resource Layout
+================================================================================
+
+    A costume defines the visual structure of an actor:
+        - A *limb* is an independently animated body part.
+        - A *cel* is one static drawing for a limb (a single frame).
+        - A *cel sequence* is an ordered list of cels that form one animation
+          cycle for that limb.
+        - A *clip set* (or simply *clip*) combines one cel sequence per limb
+          to create a complete full-body motion or stance, such as "walk" or "stand".
+
+================================================================================
+Header layout (when loaded from disk)
+================================================================================
+
++00..+01 : resource_size
+           16-bit total byte length of this costume resource.
+
++02      : unused (placeholder for resource_type)
+           Expected value = $00
+
++03      : checksum (placeholder for costume_index)
+           
++04      : ofs_cel_hi_tbl
+           8-bit offset (relative to *gfx base*) to the high-byte table of cel
+           addresses. Subtract 2 from this value to determine the number of cel
+           entries defined for this costume.
+
++05..+06 : ofs_cel_seq_tbl
+           16-bit offset (relative to *gfx base*, which begins at offset +$09)
+           to the *cel sequences table*. Each limb’s cel-sequence list
+           starts there.
+
++07..+08 : ofs_clip_table
+           16-bit offset (relative to *gfx base*) to the *clip table*
+           containing full-body animation definitions.
+
+Note: +02 and +03 are used as a placeholder and the checksum of the resource
+when stored on disk; overwritten after load
+--------------------------------------------------------------------------------
+Graphics section (gfx base = +$09)
+--------------------------------------------------------------------------------
++$09..+$0A : Duplicate metadata - ignore.
+
+Following tables and data regions appear sequentially:
+
+    [1] Cel offsets (lo/hi tables)
+        - 1 byte per cel, two parallel tables.
+        - Combine to form 16-bit offsets to each cel, relative to the *gfx base*.
+
+    [2] Cel index table
+        - 1 byte per entry.
+        - Each entry is a *cel index* pointing into the lo/hi offset tables.
+        - This indirection allows multiple frames to reuse cel graphics.
+
+    [3] Cel definitions
+        - Raw bitmap data for each cel (cel 0..N–1).
+        - Cel #0 is always an empty cel (no pixel data).
+        - Each cel begins with 6 bytes of metadata followed by pixel data.
+
+    [4] Cel sequences table
+        - Contains per-limb animation frame lists.
+
+    [5] Clip table (a.k.a. actor_clips)
+        - Array of 8-byte records; one record = one full-body animation (clip).
+        - Each byte corresponds to one limb:
+        - Each clip selects one cel sequence per limb, optionally mirrored.
+
+--------------------------------------------------------------------------------
+Cel sequences table
+--------------------------------------------------------------------------------
+Purpose:
+    Defines all animation sequences (cel sequences) available for each of the
+    actor’s 8 limbs.
+
+Structure:
+    - The first 8 bytes are offsets (1 per limb) relative to this table base.
+      Each points to the first cel sequence for that limb.
+
+    - After those offsets, each limb’s cel sequences follow consecutively.
+      Each sequence:
+          * Is a list of cel references ending with $FF.
+          * Contains 1 or more cel references (frames).
+          * Each reference is an offset directly into the cel-index table
+            (not a cel number) to avoid an extra addition at runtime.
+          * Multiple sequences can exist per limb (one for each clip).
+          * $FF marks the end of a sequence.
+
+--------------------------------------------------------------------------------
+Clip table
+--------------------------------------------------------------------------------
+Purpose:
+    Defines full-body animations (clip sets) by specifying which cel sequence
+    each limb should play and whether it should be horizontally flipped.
+
+Structure:
+    - The table is an array of clip entries.
+    - Each clip entry = 8 bytes (one per limb).
+
+    Each limb entry byte encodes:
+        bit7 : flip flag        (1 = flipped horizontally)
+        bits6..0 : cel sequence index 
+        $FF : limb unused in this clip
+
+    Example:
+        A clip entry might define:
+            Limb0 = $02  → use 3rd cel sequence (no flip)
+            Limb1 = $82  → use 3rd sequence, flipped
+            Limb2 = $FF  → unused
+            ...
+
+--------------------------------------------------------------------------------
+Runtime usage
+--------------------------------------------------------------------------------
+    - The engine loads a clip (full-body animation) by reading 8 bytes from
+      the clip table.
+    - For each limb:
+        - Extract the cel-sequence index and flip flag.
+        - Load that sequence from the cel sequences table.
+        - Each frame fetches the next cel reference; $FF marks the end.
+        - The cel reference resolves to an offset in the cel index table,
+          which maps to a cel offset pair, which points to the cel bitmap.
+
+    This hierarchical layout enables:
+        * Shared cel graphics among multiple animations.
+        * Compact per-limb animation definition.
+        * Simple full-body composition by selecting different clip sets.
+
+================================================================================
+Example: Costume #1 (Syd) — Resource header interpretation
+================================================================================
+
+Raw bytes:
+    0000:  32 07 00 9E 1F F6 05 89 06
+
+Decoded structure (9-byte header):
+    +00..+01 : resource_size
+               Value: $0732 → total size = 0x0732 bytes (1,842 bytes).
+
+    +02 : resource_type
+          Value: $00 (placeholder before load).
+          Note: this byte is overwritten in memory with $02 ("costume" type)
+          once the resource is loaded.
+
+    +03 : costume_index
+          Value: $9E (checksum in file; overwritten in memory with
+          actual resource index after loading).
+
+    +04 : ofs_cel_hi_tbl
+          Value: $1F
+          → Offset (relative to *gfx base*) of the *cel HI table*.
+            Subtract 2 to compute number of cel entries:
+            ($1F − 2) = 29 entries (number of cels defined).
+
+    +05..+06 : ofs_cel_seq_tbl
+          Value: $05F6
+          → 16-bit offset (relative to *gfx base*, which begins at +$09)
+            to the start of the *cel sequences table*.
+            Each limb’s cel-sequences reside there.
+
+    +07..+08 : ofs_clip_table
+          Value: $0689
+          → 16-bit offset (relative to *gfx base*, +$09)
+            to the *clip table* defining full-body animation clips.
+
+Summary:
+    Header bytes encode all internal table offsets for the costume resource:
+        ofs_cel_hi_tbl  → start of cel address HI table
+        ofs_cel_seq_tbl → start of per-limb cel sequences
+        ofs_clip_table  → start of clip table entries
+
+    When loaded, $00/$9E bytes (positions +02/+03) are replaced in memory:
+        resource_type  ← $02  (costume)
+        costume_index  ← actual resource index
+		
+================================================================================
+Clip table: format and selected decodes
+================================================================================
+Summary:
+    The clip table is a linear array of 8-byte records. Each record selects
+    one cel sequence per limb and an optional horizontal flip, forming a full-
+    body animation. Limbs not used in a clip are marked $FF.
+	
+Raw bytes:
+	actor_clips:
+	0692: 00 80 80 80 82 00 00 00
+	069A: 00 00 00 00 02 00 00 00
+	06A2: 00 01 01 01 03 01 01 00
+	06AA: 00 02 02 02 04 02 02 00
+	06B2: 00 84 84 84 82 00 00 00
+	06BA: 00 04 04 04 02 00 00 00
+	06C2: 00 03 03 03 03 03 03 00
+	06CA: 00 05 05 05 04 05 05 00
+	06D2: 00 FF FF 80 82 FF FF 00
+	06DA: 00 FF FF 00 02 FF FF 00
+	06E2: 00 FF FF 01 03 FF FF 00
+	06EA: 00 FF FF 02 04 FF FF 00
+	06F2: 00 FF FF FF 80 FF FF 00
+	06FA: 00 FF FF FF 00 FF FF 00
+	0702: 00 FF FF FF 01 FF FF 00
+	070A: 00 FF FF FF 04 FF FF 00
+	0712: 00 FF FF FF 82 FF FF 00
+	071A: 00 FF FF FF 02 FF FF 00
+	0722: 00 FF FF FF 03 FF FF 00
+	072A: 00 FF FF FF 04 FF FF 00
+	
+	20 clips in total
+
+Record format (per clip, 8 bytes total):
+    Byte[0] .. Byte[7]  → limbs 0..7 respectively.
+        $FF                : limb unused in this clip
+        bit7               : 1 = flip horizontally, 0 = normal
+        bits6..0           : cel sequence index
+
+Base:
+    actor_clips = $0692   ; start of table (relative to resource base)
+    Clip i address = actor_clips + (i * 8)
+
+Legend:
+    v       = raw byte value
+    flip    = (v & $80) != 0
+    seq_idx = (v & $7F)       
+
+Example decode A — Clip 0 @ $0692:
+    Bytes: 00 80 80 80 82 00 00 00
+    Limb0: $00 → flip=0, seq=0
+    Limb1: $80 → flip=1, seq=0
+    Limb2: $80 → flip=1, seq=0
+    Limb3: $80 → flip=1, seq=0
+    Limb4: $82 → flip=1, seq=2
+    Limb5: $00 → flip=0, seq=0
+    Limb6: $00 → flip=0, seq=0
+    Limb7: $00 → flip=0, seq=0
+
+    Interpretation:
+      - All limbs active; most use sequence #0.
+      - Limbs 1–4 are flipped; limb4 uses sequence #2.
+
+Example decode B — Clip with unused limbs @ $06D2:
+    Bytes: 00 FF FF 80 82 FF FF 00
+    Limb0: $00 → flip=0, seq=0
+    Limb1: $FF → unused
+    Limb2: $FF → unused
+    Limb3: $80 → flip=1, seq=0
+    Limb4: $82 → flip=1, seq=2
+    Limb5: $FF → unused
+    Limb6: $FF → unused
+    Limb7: $00 → flip=0, seq=0
+
+    Interpretation:
+      - Only limbs 0,3,4,7 animate in this clip.
+      - Limb3 and limb4 are flipped
+
+Notes:
+    - Directional clip families are often constructed by composing a base
+      direction (“dir offset”) with mouth/variant offsets; the resulting clip
+      id indexes this table. Each selected clip seeds per-limb base cels and
+      flip, which in turn select the actual cel streams in the cel sequences
+      table.
+    - $FF never means “sequence #256”; it always means “disable this limb for
+      this clip.”
+    - Many adjacent clips differ only in one or two limbs,
+      enabling reuse of cel sequences across actions and facings.
+
+How to parse programmatically:
+    for clip_index in 0..N-1:
+        base = actor_clips + (clip_index * 8)
+        for limb in 0..7:
+            v = rsrc[base + limb]
+            if v == $FF:
+                limb_used = 0
+            else:
+                limb_used = 1
+                flip     = (v & $80) != 0
+                seq_idx  = (v & $7F) 
+                ; apply (seq_idx, flip) to limb
+				
+================================================================================
+Cel sequences table (base = cel_seq_list @ $05FF)
+================================================================================
+
+Raw bytes:
+	cel_seq_list:
+	05FF: 08 10 2B 3E 50 5F 75 8B 
+	0606: 0E 0E 0E 0E 0E 0E 3C FF 16 
+	0610: 1B 20 25 27 29 3E 3F 40 41 FF 43 44 45 46 FF 46 
+	0620: 45 43 44 FF 42 FF 3D FF 42 FF 31 34 36 38 3A 3C 
+	0630: 48 49 FF 4B FF 4C FF 4B FF 4A FF 4C FF 44 46 48 
+	0640: 4A 4C 4E 4E FF 4F FF 50 FF 4F FF 4E FF 50 FF 55 
+	0650: 57 59 5B 5D 55 FF 52 FF 54 FF 53 FF 56 FF 65 67 
+	0660: 6B 6F 71 73 5A FF 57 58 59 FF 59 58 57 FF 57 FF 
+	0670: 5A FF 57 FF 7B 7D 81 85 87 89 5E FF 5D 5C 5B FF 
+	0680: 5B 5C 5D FF 5B FF 5E FF 5B FF 91 91 91 91 91 91 
+	0690: 5F FF 
+
+Summary:
+		The first 8 bytes are per-limb cel sequence offsets (relative to this table base),
+    then each limb’s cel sequences follow back-to-back. Each sequence is a list
+    of cel references terminated by $FF. A cel reference is an offset from the
+    gfx base (+$09) into the *cel-index table*; resolving a frame:
+        cel_index = rsrc[GFX_BASE + ref]
+
+Limb cel sequence offsets (relative to cel_seq_list base $05FF):
+    limb0: $08
+    limb1: $10
+    limb2: $2B
+    limb3: $3E
+    limb4: $50
+    limb5: $5F
+    limb6: $75
+    limb7: $8B
+
+Decoded sequences per limb
+    Notation: [ .. ] = one sequence. $FF separates sequences.
+
+    limb0 @ +$08:
+        seq 0:	[ 0E 0E 0E 0E 0E 0E 3C ]
+
+    limb1 @ +$10:
+        seq 0:	[ 16 1B 20 25 27 29 3E 3F 40 41 ]
+        seq 1:	[ 43 44 45 46 ]
+        seq 2:	[ 46 45 43 44 ]
+        seq 3:	[ 42 ]
+        seq 4:	[ 3D ]
+        seq 5:	[ 42 ]
+
+    limb2 @ +$2B:
+        [ 31 34 36 38 3A 3C 48 49 ]
+        [ 4B ]
+        [ 4C ]
+        [ 4B ]
+        [ 4A ]
+        [ 4C ]
+
+    limb3 @ +$3E:
+        [ 44 46 48 4A 4C 4E 4E ]
+        [ 4F ]
+        [ 50 ]
+        [ 4F ]
+        [ 4E ]
+        [ 50 ]
+
+    limb4 @ +$50:
+        [ 55 57 59 5B 5D 55 ]
+        [ 52 ]
+        [ 54 ]
+        [ 53 ]
+        [ 56 ]
+
+    limb5 @ +$5F:
+        [ 65 67 6B 6F 71 73 5A ]
+        [ 57 58 59 ]
+        [ 59 58 57 ]
+        [ 57 ]
+        [ 5A ]
+        [ 57 ]
+
+    limb6 @ +$75:
+        [ 7B 7D 81 85 87 89 5E ]
+        [ 5D 5C 5B ]
+        [ 5B 5C 5D ]
+        [ 5B ]
+        [ 5E ]
+        [ 5B ]
+
+    limb7 @ +$8B:
+        [ 91 91 91 91 91 91 5F ]
+		
+Single-frame resolution example (limb1, seq4):
+  - Reference byte V = $3D 
+  - cel_index = rsrc[GFX_BASE + V] = rsrc[$09 + $3D]
+
+Multi-frame resolution example (limb2, seq1 = [ 31 34 36 38 3A 3C 48 49 ]):
+  For each V ∈ {31, ... , 49}:
+    cel_index = rsrc[GFX_BASE + V]
+
+Observations:
+    - Multiple sequences per limb allow clips to select variants via sequence
+      index (bits6..0 in the clip byte, $FF=unused).
+    - Single-frame sequences (e.g., [42], [4B]) act as holds/poses.
+	
+================================================================================
+Cel-index table (a.k.a. "cel index map") — role, layout, and examples
+================================================================================
+
+What it is:
+    A byte array in the gfx section. Each entry maps a cel-sequence reference
+    (an offset relative to GFX_BASE = +$09) to a cel_index used to look up the
+    final cel address via the LO/HI offset tables.
+	
+Raw bytes:
+	Cel-index table @ $0045:
+	0045: 00 06 04 07 08 09 19 0B
+	004D: 0F 10 14 00 01 03 05 17
+	0055: 02 00 0E 0C 16 00 0D 1A
+	005D: 0A 15 00 18 1B 1C 00 12
+	0066: 11 13 00 00 00 00 00 00
+	006D: 00 00 00 03
+	
+
+How it is used at runtime:
+    Given a cel-sequence byte V (from the cel sequences table):
+        addr_in_table = GFX_BASE + V
+        cel_index     = rsrc[ addr_in_table ]
+
+Interpretation of the provided dump:
+    The bytes labeled under 0045:, 004D:, etc., are the cel-index table bytes
+    at those offsets (relative to resource base). Every value is a cel_index.
+    A cel-sequence element V “falls straight into” this table at (GFX_BASE + V).
+
+Real examples:
+
+  • Example A
+      V (from cel_seq_list)      = $4A
+      addr_in_table              = GFX_BASE + $4A = $09 + $4A = $53
+      table[$53]                 = $05     ; (see 004D-line: 00 01 03 05 ...)
+      cel_index                  = $05
+
+  • Example B
+      V (from cel_seq_list)      = $4E
+      addr_in_table              = GFX_BASE + $4E = $09 + $4E = $57
+      table[$57]                 = $0E     ; (see 0055-line byte #2 is 0E)
+      cel_index                  = $0E
+
+Why this indirection exists:
+    • Keeps cel-sequence stream compact: each frame stores 1 byte (V), not 2.
+    • Allows multiple frames to alias the same cel_index without duplicating LO/HI.
+    • Lets level/costume data reshuffle which cels frames use by editing this table,
+      without rewriting cel sequences or LO/HI tables.
+
+Notes:
+    • A cel_index is 0..(#cels-1). The count is derived from ofs_cel_hi_tbl:
+        num_cels = ofs_cel_hi_tbl - 2
+    • GFX_BASE is the start of the graphics section at offset +$09.
+
+================================================================================
+Cel offset tables
+================================================================================
+
+Summary:
+    How a limb’s cel-sequence entry yields a cel pointer using the
+    graphics-section tables. Includes two real examples.
+
+Definitions:
+    GFX_BASE           := +$09 (start of graphics section, relative to resource)
+    ofs_cel_hi_tbl     := $1F (offset from GFX_BASE to cel HI table)
+    ofs_cel_lo_tbl     := $02 (offset from GFX_BASE to cel LO table)
+
+    cel_seq_list[slot] → byte at slot is an offset into the cel index table, 
+		which yields the cel index:
+        gfx[ slot ] = cel_index
+    cel_index selects parallel LO/HI entries:
+        LO = gfx[ ofs_cel_lo_tbl + cel_index ]
+        HI = gfx[ ofs_cel_hi_tbl + cel_index ]
+
+    Final 16-bit cel pointer (relative to resource base):
+        cel_ptr = ( (HI << 8) | LO ) + GFX_BASE
+    Since GFX_BASE = $0009, this is equivalent to:
+        <cel_ptr = LO + $09 ; >cel_ptr = HI + $00
+
+Procedure:
+    1) Read slot byte S = cel_seq_list[slot].
+    2) cel_index = gfx[ S ].
+    3) LO = gfx[ ofs_cel_lo_tbl + cel_index ].
+    4) HI = gfx[ ofs_cel_hi_tbl + cel_index ].
+    5) cel_ptr = (HI:LO) + GFX_BASE.
+
+Real example:
+	At gfx base:
+		F6 05 → (appears to mirror ofs_cel_seq_tbl; possibly a self-pointer for quick lookup)
+
+	Cel offset tables (all LO first, then all HI) — 29 entries total
+
+	LOW bytes (29):
+		60 66 B4 D3 21 6C BA F8 40 8B D3 DC 24 6F 7A C5
+		10 58 6F 8A A3 D7 E2 2D 4B 68 B3 BC D9
+
+	HIGH bytes (29):
+		00 00 00 00 01 01 01 01 02 02 02 02 03 03 03 03
+		04 04 04 04 04 04 04 05 05 05 05 05 05
+
+	Entry count derivation:
+		ofs_cel_hi_tbl = $1F (from header)
+		(#cels) = ofs_cel_hi_tbl - 2 = $1F - $02 = $1D = 29
+
+Each cel_seq_list value corresponds to an offset relative to gfx_base, 
+so “gfx[$4A]” refers to that location in the gfx_section.
+
+Example A (Limb 2 — slot $3A):
+    cel_seq_list[$3A] = $4A  (offset from GFX_BASE into the cel_index table)
+    cel_index = gfx[$4A] = $05
+    LO index = $02 + $05 = $07 → gfx[$07] = $6C → <ptr = $6C + $09 = $75
+    HI index = $1F + $05 = $24 → gfx[$24] = $01 → >ptr = $01 + $00 = $01
+    Result: cel_ptr = $01:$75 = $0175
+
+Example B (Limb 3 — slot $4C):
+    cel_seq_list[$4C] = $4E  (offset from GFX_BASE)
+    cel_index = gfx[$4E] = $0E
+    LO index = $02 + $0E = $10 → gfx[$10] = $7A → <ptr = $7A + $09 = $83
+    HI index = $1F + $0E = $2D → gfx[$2D] = $03 → >ptr = $03 + $00 = $03
+    Result: cel_ptr = $03:$83 = $0383
+
+Compact formula:
+    Given slot:
+        cel_index      = gfx[ GFX_BASE + slot ]
+        cel_lo         = gfx[ ofs_cel_lo_tbl + cel_index ]
+        cel_hi         = gfx[ ofs_cel_hi_tbl + cel_index ]
+        cel_ptr = ((cel_hi << 8) | cel_lo) + GFX_BASE
+		
+================================================================================
+Cel format (metadata + row data) — with worked example
+================================================================================
+
+Summary:
+    Each cel begins with 6 bytes of metadata, followed by row data. The engine
+    uses “bytes per row” and “vertical size” to locate and blit the bitmap.
+
+Layout:
+    +$00 : bytes_per_row       // 0..3; number of data bytes per row
+    +$01 : v_rows              // vertical size in rows
+    +$02 : x_offset            // horizontal draw offset (pixels)
+    +$03 : y_offset            // vertical draw offset (pixels)
+    +$04 : unused              // reserved (currently not consumed)
+    +$05 : y_offset_next       // inter-cel vertical offset (baseline for next cel)
+    +$06.. : row 0 data
+    +...  : row 1 .. row (v_rows-1) data
+
+Notes:
+    - Total data bytes after the header = bytes_per_row * v_rows.
+    - Row n starts at cel_base + 6 + n*bytes_per_row.
+    - bytes_per_row ≤ 3 keeps rows compact (common in 24-pixel-wide art).
+    - y_offset_next allows stacking or baseline stepping when composing cels.
+
+Worked example (cel at $0175; referenced by “cel offset $3A”, index 5):
+    Raw header bytes:
+        $0175:  03 18 00 2F 00 00
+    Decode:
+        bytes_per_row  = $03  (3 bytes per scanline)
+        v_rows         = $18  (24 rows total)
+        x_offset       = $00
+        y_offset       = $2F  (units are screen pixels)
+        unused         = $00
+        y_offset_next  = $00
+    Derived:
+        payload_size   = 3 * 24 = 72 bytes
+        row0_data_addr = $0175 + 6 = $017B
+        rowN_data_addr = $017B + (N * 3), for N ∈ [0, 23]
+    Interpretation:
+        - 24 cel rows follow the header.
+        - Each row is 3 bytes wide.
+        - Horizontal offset = 0; vertical offset = +47 (0x2F).
+        - No baseline step to the next cel (y_offset_next = 0).
+
+Usage pattern:
+    1) Read 6-byte header.
+    2) For N in 0..v_rows-1: copy bytes_per_row from rowN_data_addr.
+    3) Apply x_offset / y_offset when positioning on screen.
+    4) If batching multiple cels vertically, advance by y_offset_next between cels.
+================================================================================
+*/
