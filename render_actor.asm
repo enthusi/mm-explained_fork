@@ -8,16 +8,16 @@ Render actor - Overview
 
 1. Prepare all pointers (costume, VRAM base, decode tables).
 2. Clear only the rows we will redraw in the current bank.
-3. Resolve each limb’s cell address from animation state, then blit+mask it at the current Y, updating coverage.
+3. Resolve each limb’s cel address from animation state, then blit+mask it at the current Y, updating coverage.
 4. Publish per-bank Y and coverage so downstream steps and the next frame know where the sprite lives.
 5. Publish sprite X and color for the PPU/VIC-II side to use this frame.
 
 Rendering pipeline
 
 	1. Costume preparation (setup_costume_for_actor)
-		- Ensures per-actor graphics tables are current; caches offsets for cell/animation sets.
+		- Ensures per-actor graphics tables are current; caches offsets for cels and clips.
 
-	2. Sprite VRAM resolution (set_actor_sprite_base_address)
+	2. Sprite VRAM resolution (set_actor_sprite_base)
 		- Uses pre-multiplied (index*64) tables for fast pointer math.
 		- Page-aligned bases at $E000 / $E800 minimize carry logic.
 
@@ -26,12 +26,11 @@ Rendering pipeline
 		- Zeros 3 bytes per row (multi-color sprite row width).
 
 	4. Limb rendering (draw_actor_limbs)
-		- Loops 8 limbs: computes cell pointer → calls external blit_and_mask_limb.
+		- Loops 8 limbs: computes cel pointer → calls external blit_and_mask_limb.
 		- Tracks sprite_vertical_offset (max coverage).
 
-	5. Cell pointer math (calculate_sprite_cell_ptr)
-		- Uses combined limb frame + base cell index to resolve into table of cell addresses.
-		- Adds constant layout bump (#$02) and hi-table offset for correct lookup.
+	5. Cel pointer math (compute_cel_ptr)
+		- Uses combined limb frame + base cel index to resolve into table of cel addresses.
 
 	6. Blitting (blit_sprite_vthird)
 		- Copies 7 rows per vertical third using copy_offsets lookup.
@@ -46,16 +45,16 @@ Core relationship: one frame = orchestrate → stage rows → per-limb blits →
 
 How pieces depend on each other
 
-	* setup_costume_for_actor → calculate_sprite_cell_ptr
-	  The costume setup populates actor_gfx_base, limb_cell_list, and the cell address tables’ offsets. 
-	  The cell resolver relies on these to translate (actor, limb, frame) into sprite_cell_ptr.
+	* setup_costume_for_actor → compute_cel_ptr
+	  The costume setup populates actor_gfx_base, cel_seq_tbl, and the cel address tables’ offsets. 
+	  The cel resolver relies on these to translate (actor, limb, frame) into src_cel_ptr.
 
-	* set_actor_sprite_base_address → set_sprite_ptr_for_row → clear_sprite_visible_rows / blits
+	* set_actor_sprite_base → set_sprite_ptr_for_row → clear_sprite_visible_rows / blits
 	  Sprite base comes from bank + sprite index. Row pointers add precomputed row offsets to that base. 
 	  Both the clearer and the blitter use these row pointers to touch the correct VRAM bytes.
 
 	* draw_actor_limbs ↔ blit_and_mask_limb ↔ update_actor_sprite_vertical_positions_for_buffer
-	  Each blit reports vertical_offset. The limb loop tracks the max for the actor. 
+	  Each blit reports vertical_offset. The limb loop tracks the max voffset for the actor. 
 	  That max and the final current_sprite_y_pos are written into the active bank so later passes know 
 	  which rows are occupied and where the sprite sits vertically.
 
@@ -68,10 +67,10 @@ Key shared data
 	* Geometry pointers
 	  actor_sprite_base → base VRAM
 	  sprite_row_offsets_* → row deltas
-	  sprite_data_ptr/sprite_cell_ptr → per-row/per-cell addresses
+	  src_row_ptr/dest_row_ptr → per-row/per-cel addresses
 
 	* Animation addressing
-	  limb_cell_list (frame→cell id per limb), actor_limb_animation_frame, actor_limb_current_cell, cell_addresses_hi_offset, graphic_section_offset.
+	  cel_seq_tbl (frame→cel id per limb), limb_frame_idx, limb_current_cel, ofs_cel_hi_tbl, gfx_base.
 
 	* Visibility/masking
 	  current_sprite_y_pos, sprite_vertical_offset, and banked Y/offset arrays coordinate clearing, blitting, and foreground masking.
@@ -80,9 +79,9 @@ Key shared data
 
 draw_actor
  ├─ setup_costume_for_actor
- │    ↳ sets: actor_gfx_base, limb_cell_list, cell_addresses_hi_offset
+ │    ↳ sets: actor_gfx_base, cel_seq_tbl, ofs_cel_hi_tbl
  │
- ├─ set_actor_sprite_base_address
+ ├─ set_actor_sprite_base
  │    ↳ uses: sprite_bank_sel, actor_sprite_index
  │    ↳ sets: actor_sprite_base
  │
@@ -92,14 +91,14 @@ draw_actor
  │    ↳ sets: cleared rows in VRAM for this sprite slot
  │
  ├─ draw_actor_limbs         (loop 8 limbs)
- │    ├─ calculate_sprite_cell_ptr
- │    │    ↳ uses: actor_gfx_base, limb_cell_list,
+ │    ├─ compute_cel_ptr
+ │    │    ↳ uses: actor_gfx_base, cel_seq_tbl,
  │    │            actor_limbs_ofs(=actor*8), current_limb,
- │    │            actor_limb_animation_frame, actor_limb_current_cell,
- │    │            cell_addresses_hi_offset
- │    │    ↳ sets: sprite_cell_ptr
+ │    │            limb_frame_idx, limb_current_cel,
+ │    │            ofs_cel_hi_tbl
+ │    │    ↳ sets: dest_row_ptr
  │    ├─ blit_and_mask_limb  (external)
- │    │    ↳ uses: sprite_cell_ptr, current_sprite_y_pos, flip
+ │    │    ↳ uses: dest_row_ptr, current_sprite_y_pos, flip
  │    │    ↳ sets: vertical_offset (coverage of this limb)
  │    └─ tracks max sprite_vertical_offset over limbs
  │
@@ -116,36 +115,38 @@ draw_actor
 ================================================================================
 */
 
-.const SPRITE_BASE_0      = $E000   // VRAM base for sprite bank 0
-.const SPRITE_BASE_1      = $E800   // VRAM base for sprite bank 1
-.const VISIBLE_ROW_MAX    = $91     // last drawable row index (clipping threshold)
+.const SPRITE_BASE_0      = $E000   		// VRAM base for sprite bank 0
+.const SPRITE_BASE_1      = $E800   		// VRAM base for sprite bank 1
+.const VISIBLE_ROW_MAX    = $91     		// last drawable row index (clipping threshold)
 .const TOTAL_LIMBS        = $08		
 
 // General vars
-.label costume_base             = $17    // costume resource base (lo/hi at $17/$18)
-.label sprite_cell_ptr          = $7E    // destination row pointer for blits (cell data)
-.label sprite_data_ptr          = $80    // source row pointer (staged sprite row)
+.label costume_base             = $17    	// costume resource base (lo/hi at $17/$18)
+.label dest_row_ptr             = $7E    	// destination row pointer for blits (cel data)
+.label src_row_ptr          	= $80    	// source row pointer (staged sprite row)
+.label src_cel_ptr          	= $7E    	// alias: source cel pointer
+
 
 // draw_actor
-.label graphic_section_offset   = $82    // graphics section base for active costume
-.label limb_cell_list           = $84    // frame→cell-id list for current actor/limb bank
-.label global_mask_patterns_ptr = $8A    // mask pattern table pointer
-.label actor_tile_x_coordinate  = $FD20  // tile-space X = (x>>3) - bias
-.label constant_02              = $CB52  // table layout bump (+2) used in cell address lookup
+.label gfx_base   				= $82    	// graphics section base for active costume
+.label global_mask_patterns_ptr = $8A    	// mask pattern table pointer
+.label actor_tile_x_coordinate  = $FD20  	// tile-space X = (x>>3) - bias
+.label ofs_cel_lo_tbl           = $CB52  	// 8-bit offset (relative to *gfx base*) to the low-byte table of cel addresses, for the current actor - always set to $02
+.label ofs_cel_hi_tbl 			= $CB53		// 8-bit offset (relative to *gfx base*) to the high-byte table of cel addresses, for the current actor
 
 // draw_actor_limbs
-.label current_limb_flip        = $FC25  // cached flip flags for the current limb
+.label current_limb_flip        = $FC25  	// cached flip flags for the current limb
 
 // clear_sprite_visible_rows
-.label bottom_row               = $FD53  // clamped bottom row to clear
-.label clear_row_idx            = $CB51  // current row index during clear loop
-.label sprite_voff_buf0         = $FD8D  // per-sprite vertical coverage (bank 0)
-.label sprite_voff_buf1         = $FD85  // per-sprite vertical coverage (bank 1)
-.label sprite_y_buf1            = $FD81  // per-sprite Y position (bank 1)
-.label sprite_y_buf0            = $FD89  // per-sprite Y position (bank 0)
+.label bottom_row               = $FD53  	// clamped bottom row to clear
+.label clear_row_idx            = $CB51  	// current row index during clear loop
+.label sprite_voff_buf0         = $FD8D 	// per-sprite vertical coverage (bank 0)
+.label sprite_voff_buf1         = $FD85  	// per-sprite vertical coverage (bank 1)
+.label sprite_y_buf1            = $FD81  	// per-sprite Y position (bank 1)
+.label sprite_y_buf0            = $FD89  	// per-sprite Y position (bank 0)
 
-// calculate_sprite_cell_ptr
-.label offset_hi                = $FC3B  // temp: index into HI-byte cell-address table
+// compute_cel_ptr
+.label offset_hi                = $FC3B  // temp: index into HI-byte cel-address table
 
 // blit_sprite_vthird
 .label vthird_row_idx           = $CB54  // loop counter 0..6 for 7-row blit
@@ -260,8 +261,8 @@ Global Inputs
 	actor_sprite_index[]                sprite slot per actor
 	character_sprite_x_{hi,lo}[]        16-bit X in pixels
 	actor_gfx_base_{lo,hi}[]            graphics section base per actor
-	limb_cell_list_for_actor_{lo,hi}[]  limb→cell list pointer per actor
-	cell_addresses_hi_offset_for_actor[]	HI-table offset per actor
+	limb_cel_list_for_actor_{lo,hi}[]  	limb→cel list pointer per actor
+	actor_ofs_cel_hi_tbl[]				cel HI-table offset per actor
 	actor_vars[]                        flags (bit7 = invisible)
 	layer_depth_for_actor[]             0 = in front, ≠0 = behind FG layer
 	character_sprite_bkg_colors[]       per-costume background color
@@ -270,8 +271,8 @@ Global Inputs
 Global Outputs
 	actor_tile_x_coordinate             (X >> 3) - 3 in tile space
 	global_mask_patterns_ptr            → mask_bit_patterns
-	graphic_section_offset              zp pointer to graphics section
-	limb_cell_list                      zp pointer to limb-cell list
+	gfx_base              				zp pointer to graphics section
+	cel_seq_tbl                      	zp pointer to limb-cel list
 	actor_limbs_ofs                     actor index × 8 stride
 	vertical_offset                     cleared to 0 before limb draws
 	actor_sprite_x_{hi,lo}[]            committed sprite X for slot
@@ -285,9 +286,9 @@ Description
 	- X ← actor, Y ← actor_sprite_index[X].
 	- Compute tile X: ((character_sprite_x >> 3) - 3) → actor_tile_x_coordinate.
 	- Point global_mask_patterns_ptr at mask_bit_patterns.
-	- set_actor_sprite_base_address: bind actor_sprite_base for the slot.
-	- Load graphic_section_offset and limb_cell_list from per-actor tables.
-	- Copy cell-address HI offset and constant used by the decoder.
+	- set_actor_sprite_base: bind actor_sprite_base for the slot.
+	- Load gfx_base and cel_seq_tbl from per-actor tables.
+	- Copy cel-address HI offset and constant used by the decoder.
 	- Compute actor_limbs_ofs = actor * 8.
 	- clear_sprite_visible_rows: zero staged rows for this sprite slot.
 	- Zero vertical_offset (and unused $FD15).
@@ -343,32 +344,36 @@ draw_actor:
         // ----------------------------------------
         // Compute sprite VRAM base for this Y (sprite slot)
         // ----------------------------------------
-        jsr     set_actor_sprite_base_address
+        jsr     set_actor_sprite_base
 
         // ----------------------------------------
-        // graphic_section_offset ← actor_gfx_base[actor]
+        // gfx_base ← actor_gfx_base[actor]
         // ----------------------------------------
         ldx     actor
         lda     actor_gfx_base_lo,x
-        sta     <graphic_section_offset
+        sta     <gfx_base
         lda     actor_gfx_base_hi,x
-        sta     >graphic_section_offset
+        sta     >gfx_base
 
         // ----------------------------------------
-        // Copy cell-address HI offset and a small constant used by decoder
+        // Copy offset of cel HI table 
         // ----------------------------------------
-        lda     cell_addresses_hi_offset_for_actor,x
-        sta     cell_addresses_hi_offset
+        lda     actor_ofs_cel_hi_tbl,x
+        sta     ofs_cel_hi_tbl
+        // ----------------------------------------
+        // Save #02 as the offset for the low table,
+		// to skip the unused 16-bit pointer at the beginning
+        // ----------------------------------------
         lda     #$02
-        sta     constant_02
+        sta     ofs_cel_lo_tbl
 
         // ----------------------------------------
-        // limb_cell_list ← limb_cell_list_for_actor[actor]
+        // cel_seq_tbl ← limb_cel_list_for_actor[actor]
         // ----------------------------------------
-        lda     limb_cell_list_for_actor_lo,x
-        sta     <limb_cell_list
-        lda     limb_cell_list_for_actor_hi,x
-        sta     >limb_cell_list
+        lda     actor_cel_seq_tbl_lo,x
+        sta     <cel_seq_tbl
+        lda     actor_cel_seq_tbl_hi,x
+        sta     >cel_seq_tbl
 
         // ----------------------------------------
         // Precompute actor_index * 8 (stride used elsewhere)
@@ -445,7 +450,7 @@ setup_costume_for_actor
 Summary
         Bind the active costume to its actor. If unchanged, exit. Otherwise
         cache the costume base pointer and per-actor derived pointers:
-        graphics base, limb cell list, and animation set list.
+        graphics base, limb cel list, and animation set list.
 
 Arguments
 	(none)
@@ -456,8 +461,8 @@ Returns
 Vars / State
         costume_base  			                 Costume resource base pointer (lo/hi).
         graphic_data_ptr_for_actor_{lo,hi}[]     Per-actor graphics base = base+9.
-        cell_addresses_hi_offset_for_actor[]     Offset to HI-byte table for cell addresses.
-        limb_cell_list_for_actor_{lo,hi}[]       Absolute pointer to limb cell list.
+        actor_ofs_cel_hi_tbl[]     				 Offset to HI-byte table for cel addresses.
+        limb_cel_list_for_actor_{lo,hi}[]        Absolute pointer to limb cel list.
         animation_sets_for_actor_{lo,hi}[]       Absolute pointer to animation sets.
 
 Global Inputs
@@ -479,8 +484,8 @@ Description
         - Update the “current costume” cache for this costume.
         - Using the actor index, read header-relative offsets at +4..+8 and
           materialize absolute pointers by adding graphics base:
-            * +4: cell_addresses_hi_offset_for_actor (1 byte)
-            * +5..+6: limb_cell_list_for_actor (16-bit, gfx-base relative)
+            * +4: actor_ofs_cel_hi_tbl (1 byte)
+            * +5..+6: limb_cel_list_for_actor (16-bit, gfx-base relative)
             * +7..+8: animation_sets_for_actor (16-bit, gfx-base relative)
 
 Notes
@@ -549,37 +554,37 @@ set_new_costume_ptr_for_actor:
         tax
 
         // ----------------------------------------
-        // +4: cell-address HI table offset (1 byte, kept as offset)
+        // +4: cel-address HI table offset (1 byte)
         // ----------------------------------------
         ldy     #$04
         lda     (costume_base),y
-        sta     cell_addresses_hi_offset_for_actor,x
+        sta     actor_ofs_cel_hi_tbl,x
 
         // ----------------------------------------
-        // +5..+6: limb cell list pointer = gfx_base + rel16
+        // +5..+6: limb cel list pointer = gfx_base + rel16
         // ----------------------------------------
         iny
         lda     (costume_base),y
         clc
         adc     actor_gfx_base_lo,x
-        sta     limb_cell_list_for_actor_lo,x
+        sta     actor_cel_seq_tbl_lo,x
         iny
         lda     (costume_base),y
         adc     actor_gfx_base_hi,x
-        sta     limb_cell_list_for_actor_hi,x
+        sta     actor_cel_seq_tbl_hi,x
 
         // ----------------------------------------
-        // +7..+8: animation sets pointer = gfx_base + rel16
+        // +7..+8: clip sets pointer = gfx_base + rel16
         // ----------------------------------------
         iny
         lda     (costume_base),y
         clc
         adc     actor_gfx_base_lo,x
-        sta     animation_sets_for_actor_lo,x
+        sta     actor_clip_tbl_lo,x
         iny
         lda     (costume_base),y
         adc     actor_gfx_base_hi,x
-        sta     animation_sets_for_actor_hi,x
+        sta     actor_clip_tbl_hi,x
 
         // ----------------------------------------
         // Restore costume index and return
@@ -589,7 +594,7 @@ set_new_costume_ptr_for_actor:
         rts
 /*
 ================================================================================
-set_actor_sprite_base_address
+set_actor_sprite_base
 ================================================================================
 
 Summary
@@ -636,7 +641,7 @@ Implementation detail
 ================================================================================
 */
 * = $2456
-set_actor_sprite_base_address:
+set_actor_sprite_base:
         // ----------------------------------------
         // Low byte: 64 * sprite_index
         // ----------------------------------------
@@ -664,7 +669,7 @@ set_sprite_ptr_for_row
 ================================================================================
 
 Summary
-        Compute sprite_data_ptr = actor_sprite_base + sprite_row_offsets[row].
+        Compute src_row_ptr = actor_sprite_base + sprite_row_offsets[row].
 
 Arguments
         Y  = row index (0..rows-1)
@@ -674,7 +679,7 @@ Inputs
         sprite_row_offsets_lo/hi[]          16-bit per-row byte offsets.
 
 Returns
-        sprite_data_ptr (zp lo/hi)          Pointer to start of row Y.
+        src_row_ptr (zp lo/hi)          Pointer to start of row Y.
 
 Description
         Add the 16-bit row offset to the sprite base. CLC before the low-byte
@@ -687,7 +692,7 @@ Sprite row pointer math and tables (start at logical row 8)
 
 Goal
     Compute per-row sprite pointers fast on 6502:
-        sprite_data_ptr = actor_sprite_base + offset(row)
+        src_row_ptr = actor_sprite_base + offset(row)
 
 Sprite layout
     - Each sprite slot = 64 bytes.
@@ -710,8 +715,8 @@ Why row 8
 
 Runtime usage
     CLC
-    sprite_data_ptr.lo = base.lo + sprite_row_offsets_lo[i]
-    sprite_data_ptr.hi = base.hi + sprite_row_offsets_hi[i] + carry
+    src_row_ptr.lo = base.lo + sprite_row_offsets_lo[i]
+    src_row_ptr.hi = base.hi + sprite_row_offsets_hi[i] + carry
     // base = actor_sprite_base, i = (row index starting at logical row 8)
 
 Properties
@@ -747,7 +752,7 @@ Table excerpts
        …
 
 First few pointer results with base = $E000
-  i   lo  hi   offset    sprite_data_ptr
+  i   lo  hi   offset    src_row_ptr
   0  $18 $00   $0018  →  $E018
   1  $1B $00   $001B  →  $E01B
   2  $1E $00   $001E  →  $E01E
@@ -774,48 +779,19 @@ Last pointer examples with base = $E000
 * = $240C
 set_sprite_ptr_for_row:
         // ----------------------------------------
-        // sprite_data_ptr.lo = base.lo + offset.lo
+        // src_row_ptr.lo = base.lo + offset.lo
         // ----------------------------------------
         lda     sprite_row_offsets_lo,y
         clc
         adc     <actor_sprite_base
-        sta     <sprite_data_ptr
+        sta     <src_row_ptr
 
         // ----------------------------------------
-        // sprite_data_ptr.hi = base.hi + offset.hi + carry
+        // src_row_ptr.hi = base.hi + offset.hi + carry
         // ----------------------------------------
         lda     sprite_row_offsets_hi,y
         adc     >actor_sprite_base
-        sta     >sprite_data_ptr
-        rts
-/*
-================================================================================
-compute_actor_limbs_ofs
-================================================================================
-
-Summary
-        Compute stride-8 limbs offset for the current actor:
-        actor_limbs_ofs = actor_idx * 8
-
-Inputs
-        actor                 current actor index (0..N)
-
-Outputs
-        actor_limbs_ofs      byte offset used to index per-actor blocks of 8
-
-Description
-        Multiplies the actor index by 8 using three ASL operations. The result
-        serves as a block stride for tables organized in 8-byte records.
-================================================================================
-*/
-* = $25D3
-compute_actor_limbs_ofs:
-        lda     actor                  
-        clc                            
-        asl                            
-        asl                            
-        asl                            
-        sta     actor_limbs_ofs       
+        sta     >src_row_ptr
         rts
 /*
 ================================================================================
@@ -839,10 +815,10 @@ Global Inputs
 
 Global Outputs
 	(none)                          
-	writes zeros through (sprite_data_ptr),Y
+	writes zeros through (src_row_ptr),Y
 
 ZP / Temps
-	sprite_data_ptr                 	computed row start (lo/hi)
+	src_row_ptr                 	computed row start (lo/hi)
 	clear_row_idx                   	current row being cleared
 	bottom_row                      	clamped bottom row
 
@@ -859,7 +835,7 @@ Description
 		• else bottom_row ← VISIBLE_ROW_MAX
 	If top > VISIBLE_ROW_MAX, clamp clear_row_idx ← 0.
 	- Loop rows from clear_row_idx while row < bottom_row:
-		• set_sprite_ptr_for_row → sprite_data_ptr
+		• set_sprite_ptr_for_row → src_row_ptr
 		• store $00 into bytes [2],[1],[0] of the row.
 
 Notes
@@ -936,15 +912,15 @@ begin_clear_loop:
 
 clear_row_loop:
 		tay                             // Y := current row index
-		jsr     set_sprite_ptr_for_row  // sprite_data_ptr → start of row Y
+		jsr     set_sprite_ptr_for_row  // src_row_ptr → start of row Y
 
 		ldy     #$02                    // Zero row bytes [2],[1],[0]
 		lda     #$00
-		sta     (sprite_data_ptr),y
+		sta     (src_row_ptr),y
 		dey
-		sta     (sprite_data_ptr),y
+		sta     (src_row_ptr),y
 		dey
-		sta     (sprite_data_ptr),y
+		sta     (src_row_ptr),y
 
 		inc     clear_row_idx           // Advance to next row
 		lda     clear_row_idx           // Load current row index
@@ -953,63 +929,33 @@ clear_row_loop:
 		rts                             // Done clearing rows
 /*
 ================================================================================
-calculate_sprite_cell_ptr
+compute_cel_ptr
 ================================================================================
 
 Summary
-        Resolve absolute pointer to the current limb’s cell bitmap:
-        sprite_cell_ptr = graphic_section_offset + cell_address(cell_id)
+        Resolve absolute pointer to the current limb’s cel bitmap:
+        src_cel_ptr = gfx_base + cel_address(cel_id)
 
 Inputs
         actor_limbs_ofs                 base offset for current actor’s limb bank
         current_limb              		limb selector within the actor
-        actor_limb_animation_frame[]    per-(actor,limb): frame index
-        actor_limb_current_cell[]       per-(actor,limb): base cell index
-        limb_cell_list                  table of lists mapping frame→cell_id
-        graphic_section_offset          graphics section base
-        cell_addresses_hi_offset        offset to HI-bytes table within graphics section
-        constant_02 (=#$02)             table layout bump for LO-bytes table
+        limb_frame_idx[]    per-(actor,limb): frame index
+        limb_current_cel[]       			per-(actor,limb): current cel sequence index
+        cel_seq_tbl                  	table of lists mapping frame→cel_id
+        gfx_base          				graphics section base
+        ofs_cel_hi_tbl        			offset to HI-bytes table within graphics section
+        ofs_cel_lo_tbl 			        offset to LO-bytes table within graphics section
 
 Outputs
-        sprite_cell_ptr                 absolute pointer to cell bitmap
+        src_cel_ptr                 absolute pointer to cel bitmap
 
 ================================================================================
-
-Technical: limb→cell resolution and pointer derivation
-
-Goal
-	Compute the absolute sprite cell pointer for the current (actor, limb, frame).
-
-Inputs
-	- actor_limbs_ofs + current_limb: selects the limb bank for this actor.
-	- actor_limb_animation_frame[actor,limb]: animation frame index.
-	- actor_limb_current_cell[actor,limb]: base cell bias for this limb.
-	- limb_cell_list: list-of-lists mapping frame→cell_id, each sublist $FF-terminated.
-	- graphic_section_offset: base of the graphics section containing cell tables.
-
-Data layout
-	limb_cell_list =
-		<cells_for_limb_0>  $FF
-		<cells_for_limb_1>  $FF
-		...
-		<cells_for_limb_n>  $FF
-	Each <cells_for_limb_k> is a linear sequence of cell IDs, one per frame.
-
-Computation
-	idx      := actor_limb_animation_frame + actor_limb_current_cell
-	cell_id  := limb_cell_list[idx]
-	sprite_cell_ptr := graphic_section_offset + cell_address(cell_id)
-
-Notes
-	- The cell address is split across low/high tables within the graphics section.
-	- A small constant bump and a HI-table offset select the correct table entries.
-===============================================================================
 */
 
 * = $23D8
-calculate_sprite_cell_ptr:
+compute_cel_ptr:
         // ----------------------------------------
-        // X := limb context index = actor_limbs_ofs + current_limb
+        // X := limb index for this actor = actor_limbs_ofs + current_limb
         // ----------------------------------------
         lda     actor_limbs_ofs
         clc
@@ -1017,49 +963,51 @@ calculate_sprite_cell_ptr:
         tax
 
         // ----------------------------------------
-        // Y := frame-to-cell index = anim_frame + base_cell
+        // Y := frame-to-cel index = anim_frame + base_cel
         // ----------------------------------------
-        lda     actor_limb_animation_frame,x
+        lda     limb_frame_idx,x
         clc
-        adc     actor_limb_current_cell,x
+        adc     limb_current_cel,x
         tay
 
         // ----------------------------------------
-        // Y := cell_id = limb_cell_list[Y]
+        // A := cel_idx_offset = cel_seq_tbl[Y]
         // ----------------------------------------
-        lda     (limb_cell_list),y
+        lda     (cel_seq_tbl),y
         tay
 
         // ----------------------------------------
-        // lo_idx := table_lo[Y]; hi_idx := lo_idx + cell_addresses_hi_offset
-        // (Tables live at graphic_section_offset)
+        // offset_hi -> cel_hi_tbl
         // ----------------------------------------
-        lda     (graphic_section_offset),y
-        tay                                     // Y := lo_idx
+        lda     (gfx_base),y
+        tay                                     
         clc
-        adc     cell_addresses_hi_offset        // A := lo_idx + hi_ofs
+        adc     ofs_cel_hi_tbl        
         sta     offset_hi
 
         // ----------------------------------------
-        // off_lo := table_lo[lo_idx + 2]
+        // Y -> cel_lo_tbl
         // ----------------------------------------
-        tya                                     // A := lo_idx
+        tya                                     
         clc
-        adc     constant_02                     // +2 layout bump
+        adc     ofs_cel_lo_tbl                     
         tay
-        lda     (graphic_section_offset),y
+		
+        // ----------------------------------------
+        // <src_cel_ptr = cel_lo_tbl[cel_idx] (we're actually using the cel_idx_offset relative to gfx_base)
+        // ----------------------------------------
+        lda     (gfx_base),y
         clc
-        adc     <graphic_section_offset
-        sta     <sprite_cell_ptr
+        adc     <gfx_base
+        sta     <src_cel_ptr
 
         // ----------------------------------------
-        // off_hi := table_hi[hi_idx]
-        // sprite_cell_ptr.hi = base.hi + off_hi + carry
+        // >src_cel_ptr = cel_hi_tbl[cel_idx] (we're actually using the cel_idx_offset relative to gfx_base)
         // ----------------------------------------
         ldy     offset_hi
-        lda     (graphic_section_offset),y
-        adc     >graphic_section_offset
-        sta     >sprite_cell_ptr
+        lda     (gfx_base),y
+        adc     >gfx_base
+        sta     >src_cel_ptr
         rts
 /*
 ================================================================================
@@ -1079,16 +1027,16 @@ Returns
 
 Global Inputs
 	copy_offsets[]                  maps 0..6 → absolute row index
-	sprite_data_ptr                 source pointer (built per row)
-	sprite_cell_ptr                 destination pointer (src − $0100)
+	src_row_ptr                 	source pointer (built per row)
+	dest_row_ptr                 	destination pointer (src − $0100)
 	saved_x                         temp used to preserve caller’s X
 
 Global Outputs
-	(none)                          writes through (sprite_cell_ptr),Y only
+	(none)                          writes through (dest_row_ptr),Y only
 
 Calls
-	set_sprite_ptr_for_row          build sprite_data_ptr for row Y
-	set_cell_ptr_from_data_ptr      set sprite_cell_ptr = sprite_data_ptr−$0100
+	set_sprite_ptr_for_row          build src_row_ptr for row Y
+	derive_dest_from_src      		set dest_row_ptr = src_row_ptr − $0100
 
 Description
 	- Preserve caller’s X in saved_x.
@@ -1096,7 +1044,7 @@ Description
 	- Loop 7 times:
 		• Y ← copy_offsets[X] to select the absolute row.
 		• set_sprite_ptr_for_row builds the source pointer for that row.
-		• set_cell_ptr_from_data_ptr derives the destination one page earlier.
+		• derive_dest_from_src derives the destination one page earlier.
 		• Copy three bytes in order [2],[1],[0] using (zp),Y.
 		• Increment vthird_row_idx and compare against 7 to continue.
 	- Restore X from saved_x and return.
@@ -1109,24 +1057,25 @@ range and adhere to the “logical row 8 = index 0” convention.
 * = $23A8
 blit_sprite_vthird:
 		stx     saved_x                  // Preserve caller X for restore after the loop
+		
 		ldx     #$00                     // Initialize loop: first of 7 rows in this vertical third
 		stx     vthird_row_idx           // Save row index in a local var
 
 row_loop:
 		lda     copy_offsets,x          // Load absolute row index for this iteration
 		tay                             // Y := row index consumed by pointer builders
-		jsr     set_sprite_ptr_for_row  // Build sprite_data_ptr for row Y (source address)
-		jsr     set_cell_ptr_from_data_ptr // Derive dest: sprite_cell_ptr = sprite_data_ptr - $0100
+		jsr     set_sprite_ptr_for_row  // Build src_row_ptr for row Y (source address)
+		jsr     derive_dest_from_src 	// Derive dest: dest_row_ptr = src_row_ptr - $0100
 
 		ldy     #$02                    // Set Y=2: copy three bytes of this row in order [2],[1],[0]
-		lda     (sprite_data_ptr),y     
-		sta     (sprite_cell_ptr),y     
+		lda     (src_row_ptr),y     
+		sta     (dest_row_ptr),y     
 		dey                             // Y=1
-		lda     (sprite_data_ptr),y     
-		sta     (sprite_cell_ptr),y     
+		lda     (src_row_ptr),y     
+		sta     (dest_row_ptr),y     
 		dey                             // Y=0
-		lda     (sprite_data_ptr),y     
-		sta     (sprite_cell_ptr),y     
+		lda     (src_row_ptr),y     
+		sta     (dest_row_ptr),y     
 
 		inc     vthird_row_idx           // Advance row counter for this vertical third
 		ldx     vthird_row_idx           // Reload X with current row index (0..6)
@@ -1134,34 +1083,34 @@ row_loop:
 		bne     row_loop                 // No → iterate
 
 		ldx     saved_x                  // Restore caller’s X
-		rts                              // Return to caller
+		rts                              
 /*
 ================================================================================
-set_cell_ptr_from_data_ptr
+derive_dest_from_src
 ================================================================================
 Summary
         Update destination pointer one page before source:
-        sprite_cell_ptr = sprite_data_ptr - $0100
+        dest_row_ptr = src_row_ptr - $0100
 
 Inputs
-        sprite_data_ptr  
+        src_row_ptr  
 
 Outputs
-        sprite_cell_ptr  
+        dest_row_ptr  
 ================================================================================
 */
 * = $241E
-set_cell_ptr_from_data_ptr:
+derive_dest_from_src:
         // copy low byte, prepare subtract
-        lda     <sprite_data_ptr
+        lda     <src_row_ptr
         sec
         sbc     #$00
-        sta     <sprite_cell_ptr
+        sta     <dest_row_ptr
 
         // subtract one from high byte (page back)
-        lda     >sprite_data_ptr
+        lda     >src_row_ptr
         sbc     #$01
-        sta     >sprite_cell_ptr
+        sta     >dest_row_ptr
         rts
 /*
 ================================================================================
@@ -1171,7 +1120,7 @@ set_cell_ptr_from_data_ptr:
 Summary
 	Render all limbs for the current actor in sequence. Seed the per-draw
 	Y position from the actor, reset per-draw state, resolve each limb’s
-	cell, blit with masking/flip, track maximum vertical coverage, then
+	cel, blit with masking/flip, track maximum vertical coverage, then
 	commit per-bank Y and coverage.
 
 Arguments
@@ -1179,7 +1128,7 @@ Arguments
 
 Vars/State
 	current_sprite_y_pos            	working Y used by the blitter
-	intercell_vertical_displacement 	per-limb Y displacement accumulator
+	intercel_vertical_displacement 	per-limb Y displacement accumulator
 	sprite_vertical_offset          	max coverage seen during this draw
 	current_limb                    	limb index 0..(TOTAL_LIMBS-1)
 	current_limb_flip               	cached flip flags for active limb
@@ -1201,13 +1150,13 @@ Returns
 
 Description
 	- Initialize current_sprite_y_pos from character_sprite_y[actor].
-	- Clear per-draw temporaries: fifth_byte, intercell displacement,
+	- Clear per-draw temporaries: fifth_byte, intercel displacement,
 	sprite_vertical_offset, and current_limb.
 	- For each limb:
 		• Compute (actor*8 + current_limb) index.
 		• Cache flip flags into current_limb_flip.
-		• Apply intercell_vertical_displacement to current_sprite_y_pos.
-		• calculate_sprite_cell_ptr → blit_and_mask_limb.
+		• Apply intercel_vertical_displacement to current_sprite_y_pos.
+		• compute_cel_ptr → blit_and_mask_limb.
 		• Update sprite_vertical_offset = max(sprite_vertical_offset,
 		vertical_offset).
 	- After the loop, write Y and coverage into the active sprite bank via
@@ -1229,7 +1178,7 @@ draw_actor_limbs:
         // ----------------------------------------
         lda     #$00
         sta     fifth_byte
-        sta     intercell_vertical_displacement
+        sta     intercel_vertical_displacement
         sta     sprite_vertical_offset
         sta     current_limb
 
@@ -1252,17 +1201,17 @@ draw_limb:
         sta     current_limb_flip
 
         // ----------------------------------------
-        // Apply inter-cell vertical displacement
+        // Apply inter-cel vertical displacement
         // ----------------------------------------
         lda     current_sprite_y_pos
         sec
-        sbc     intercell_vertical_displacement
+        sbc     intercel_vertical_displacement
         sta     current_sprite_y_pos
 
         // ----------------------------------------
-        // Resolve cell pointer and blit with masking/flip
+        // Resolve cel pointer and blit with masking/flip
         // ----------------------------------------
-        jsr     calculate_sprite_cell_ptr
+        jsr     compute_cel_ptr
         jsr     blit_and_mask_limb
 
         // ----------------------------------------
