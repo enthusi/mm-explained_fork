@@ -1,6 +1,7 @@
 #importonce
 #import "globals.inc"
 #import "constants.inc"
+#import "masking.asm"
 
 /*
 ================================================================================
@@ -37,7 +38,7 @@ Rendering pipeline
 		- Writes three bytes per row (one sprite row).
 
 	7. Commit (commit_sprite_y_and_voff_for_bank)
-		- Writes per-bank Y and offset; mirrors to max_vertical_offset_for_actor.
+		- Writes per-bank Y and offset; mirrors to actor_sprite_y_extent.
 ================================================================================
 
 Core relationship: one frame = orchestrate → stage rows → per-limb blits → commit per-bank state → commit global sprite state.
@@ -106,7 +107,7 @@ draw_actor
  │    ↳ uses: sprite_bank_sel, actor_sprite_index
  │    ↳ uses: current_sprite_y_pos, sprite_vertical_offset
  │    ↳ sets: sprite_voff_buf{0,1}[slot], buffer_{00,01}_y_position_for_sprite[slot],
- │            max_vertical_offset_for_actor[actor]
+ │            actor_sprite_y_extent[actor]
  │
  ├─ commit X and color
  │    ↳ sets: actor_sprite_{x_hi,x_lo}[slot], sprite_0_color[slot]
@@ -130,7 +131,6 @@ draw_actor
 // draw_actor
 .label gfx_base   				= $82    	// graphics section base for active costume
 .label global_mask_patterns_ptr = $8A    	// mask pattern table pointer
-.label actor_tile_x_coordinate  = $FD20  	// tile-space X = (x>>3) - bias
 .label ofs_cel_lo_tbl           = $CB52  	// 8-bit offset (relative to *gfx base*) to the low-byte table of cel addresses, for the current actor - always set to $02
 .label ofs_cel_hi_tbl 			= $CB53		// 8-bit offset (relative to *gfx base*) to the high-byte table of cel addresses, for the current actor
 
@@ -1260,7 +1260,7 @@ Global Inputs
 Global Outputs
 	sprite_y_buf0[], sprite_y_buf1[]        per-sprite Y by bank
 	sprite_voff_buf0[], sprite_voff_buf1[]  per-sprite vertical offset by bank
-	max_vertical_offset_for_actor[]         mirrored per-actor max offset
+	actor_sprite_y_extent[]         mirrored per-actor max offset
 
 Returns
 	(none)
@@ -1269,7 +1269,7 @@ Description
 	- Load X with the actor index and Y with its sprite slot.
 	- If sprite_bank_sel ≠ 0, write Y and vertical offset to bank 1 buffers;
 	else write to bank 0 buffers.
-	- Mirror sprite_vertical_offset into max_vertical_offset_for_actor[X] so
+	- Mirror sprite_vertical_offset into actor_sprite_y_extent[X] so
 	later stages can query the actor’s vertical coverage for this frame.
 
 Notes
@@ -1324,5 +1324,5 @@ save_vertical_offset_for_actor:
 		// Mirror maximum vertical coverage for this actor for later use
 		// ------------------------------------------------------------
 		lda 	sprite_vertical_offset
-		sta 	max_vertical_offset_for_actor,x
+		sta 	actor_sprite_y_extent,x
 		rts
