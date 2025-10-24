@@ -18,9 +18,6 @@
 #importonce
 #import "globals.inc"
 
-.label cursor_sprite_color = $0FD9
-.label sprite_shape_cursor = $1669
-
 .const CURSOR_SNAIL = $C2
 .const CURSOR_CROSS = $C1
 
