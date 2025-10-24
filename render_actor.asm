@@ -1323,6 +1323,6 @@ save_vertical_offset_for_actor:
 		// ------------------------------------------------------------
 		// Mirror maximum vertical coverage for this actor for later use
 		// ------------------------------------------------------------
-		lda sprite_vertical_offset
-		sta max_vertical_offset_for_actor,x
+		lda 	sprite_vertical_offset
+		sta 	max_vertical_offset_for_actor,x
 		rts
