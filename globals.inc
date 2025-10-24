@@ -158,6 +158,7 @@
 .label room_gfx_layers_lo = $7B79
 .label mask_bit_patterns_hi = $7B78		
 .label mask_bit_patterns_lo = $7B7A
+.label mask_base_ptr = $fd6d
 .label room_width = $7139
 .label room_height = $713a
 .label room_bg0 = $713b
@@ -251,7 +252,7 @@
 .label costume_anim_attrs = $f0d9
 .label character_sprite_y = $fc37
 .label sprite_vertical_offset = $cb55
-.label max_vertical_offset_for_actor = $FD4F
+.label actor_sprite_y_extent = $FD4F
 .label fifth_byte = $fc03
 .label intercel_vertical_displacement = $fc04
 .label actor_sprite_base = $fc2e						//Base address of the current sprite being drawn in memory
@@ -281,6 +282,7 @@
 
 // ===========================================================
 .label sprite_buffer = $fd14		//;Sprite buffer index (#00 or #01)
+.label actor_tile_x_coordinate            = $FD20  // Input: actor tile X column
 .label character_sprite_x_lo = $fd1c
 .label character_sprite_x_hi = $fd39
 .label actor_sprite_x_hi = $fd58
@@ -351,5 +353,5 @@ They were definitely intended as debugging aids.
 .label raster_setup = $0
 .label assign_available_actor = $0
 .label prepare_video_for_new_room = $0
-.label mask_actor_with_foreground_layer = $0
 .label blit_and_mask_limb = $0
+.label set_actor_sprite_base_address = $0
