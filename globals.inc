@@ -354,4 +354,3 @@ They were definitely intended as debugging aids.
 .label assign_available_actor = $0
 .label prepare_video_for_new_room = $0
 .label blit_and_mask_limb = $0
-.label set_actor_sprite_base_address = $0

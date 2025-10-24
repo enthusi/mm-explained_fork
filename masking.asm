@@ -161,7 +161,7 @@ y_clamp_done:
 		// ----------------------------------------------
         ldx     actor                        // X := actor index
         ldy     actor_sprite_index,x         // Y := sprite ID for this actor
-        jsr     set_actor_sprite_base_address// sets actor_sprite_base (lo/hi)
+        jsr     set_actor_sprite_base        // sets actor_sprite_base (lo/hi)
         lda     <actor_sprite_base
         sta     <sprite_base_cached          // cache base low byte
         lda     >actor_sprite_base
@@ -631,7 +631,7 @@ mask_actor_with_foreground_layer(actor_tile_x_coordinate):
         y = SCREEN_Y_MAX                                               
 
     # Resolve and cache this actor’s sprite base pointer
-    set_actor_sprite_base_address(actor_sprite_index[actor])
+    set_actor_sprite_base(actor_sprite_index[actor])
     sprite_base_cached = actor_sprite_base                              
 
     # Select current mask row from y>>3 and mask_row_ofs tables
