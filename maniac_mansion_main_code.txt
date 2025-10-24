@@ -1206,7 +1206,7 @@ cia2_irq_status_register = $dd0d
 ; Game engine constants
 ;===========================================================
 character_sprite_bkg_colors = $f0c0	  ;Background colors for each character
-character_animation_settings = $f0d9 ; Check detailed description at the f0d9 address in this listing
+costume_anim_attrs = $f0d9 ; Check detailed description at the f0d9 address in this listing
 verb_pointers_hi = $f20b
 verb_pointers_lo = $f21b
 preposition_pointers_hi = $f22a
@@ -1242,8 +1242,8 @@ actor_gfx_base_lo = $cb42				;Address of the graphic section start, for each act
 actor_gfx_base_hi = $cb46				;Address of the graphic section start, for each actor, hi byte
 cell_addresses_hi_offset_for_actor = $cb4a			;Offset of the list of hi bytes of cell addresses, for each actor
 cell_addresses_hi_offset = $cb53					;Offset of the list of hi bytes of cell addresses of the current actor
-animation_sets_for_actor_lo = $fe90					;Address of the animation sets, for each actor (lo word)
-animation_sets_for_actor_hi = $fe94					;Address of the animation sets, for each actor (hi word)
+actor_clips_lo = $fe90					;Address of the animation sets, for each actor (lo word)
+actor_clips_hi = $fe94					;Address of the animation sets, for each actor (hi word)
 
 limb_flip_tbl = $fc05				;#00 = no horizontal flip for the limb, #80 = horizontal flip for the limb
 actor_sprite_base = $fc2e						;Base address of the current sprite being drawn in memory
@@ -1253,16 +1253,16 @@ actor_limbs_ofs = $fc36
 character_sprite_y = $fc37
 current_limb = $fc41
 actor_limb_animation_frame = $fc42	;Which animation cell to use as _current_ for the actor limb
-actor_limb_current_base_cell = $fc82
-actor_limb_desired_base_cell = $fca2	;Which animation cell to use as _base_ for the actor limb
+limb_current_base_cel_id = $fc82
+limb_target_base_cel_id = $fca2	;Which animation cell to use as _base_ for the actor limb
 ;#00 = stop animation when frames are exhausted
 ;#FF = loop animation from the first frame when frames are exhausted
 ;any other value - counter until stop
-actor_limb_current_argument = $fcc2		
-actor_limb_desired_argument = $fce2
-current_animation_set_for_actor = $fd02		;The current animation set for the actor
-desired_animation_set_for_actor = $fd06		;The desired animation set for the actor
-animation_argument_for_actor = $fd0a		;Values: #00, #01, #FF
+limb_cur_loop_cnt = $fcc2		
+limb_tgt_loop_cnt = $fce2
+actor_current_clip_id = $fd02		;The current animation set for the actor
+actor_target_clip_id = $fd06		;The desired animation set for the actor
+actor_clip_loop_cnt = $fd0a		;Values: #00, #01, #FF
 
 ;===========================================================
 ; Actor sprites, waypoint and position variables
@@ -1360,8 +1360,8 @@ destination_y_for_actor = $fddd
 path_update_needed_for_actor = $fde1
 x_destination = $fde6
 y_destination = $fde7
-animation_argument = $fde8 
-desired_animation_set = $fde9
+clip_loop_cnt = $fde8 
+target_clip_id = $fde9
 room_destination = $fdea
 path_direction_for_actor = $fdeb		;#00 = right, #01 = left, #80 = down, #81 = up
 path_delta_directions_for_actor = $fdef	;#00 = right, #01 = left, #80 = down, #81 = up
@@ -1445,7 +1445,7 @@ active_side_id = $fe9c ;This represents the desired Disk ID (the ID that identif
 ;#01	speaking and closed	
 ;#FF	speaking and open
 ;#80	permanently open	(will stay open until explicitly closed)
-mouth_state_for_actor = $fe9d	
+actor_mouth_state = $fe9d	
 
 music_to_start_ptr = $fea1
 music_index = $fea3
@@ -1480,7 +1480,7 @@ actor_vars = $fee3
 costume_room_idx = $fefc		;The CURRENT room for a costume (not to be confused with costume_room_idx_tbl, which stores the parent room resource for a costume)
 costume_y_destination = $ff15
 costume_x_destination = $ff2e
-animation_set_for_costume = $ff47		;The animation set for a costume, limited to the standing range of sets (#04-#07)
+costume_clip_id = $ff47		;The animation set for a costume, limited to the standing range of sets (#04-#07)
 										;This is used by scripts to determine the direction a costume is facing 
 										;See the details for "animation sets"
 
@@ -2076,14 +2076,14 @@ active_room:
 ;An actor is speaking only when bit 0 is set (states #01 and #FF)
 ;States #00 and #80 don't get flipped as bit 0 is clear
 flip_mouth_state:
-.C:0571  BD 9D FE    LDA mouth_state_for_actor,X
+.C:0571  BD 9D FE    LDA actor_mouth_state,X
 ;If bit 0 is clear, skip to next actor
 .C:0574  29 01       AND #$01
 .C:0576  F0 08       BEQ next_actor
 ;Bit 0 is set, flip all other bits (#01 <-> #FF)
-.C:0578  BD 9D FE    LDA mouth_state_for_actor,X
+.C:0578  BD 9D FE    LDA actor_mouth_state,X
 .C:057b  49 FE       EOR #$FE
-.C:057d  9D 9D FE    STA mouth_state_for_actor,X
+.C:057d  9D 9D FE    STA actor_mouth_state,X
 next_actor:
 .C:0580  CA          DEX
 .C:0581  10 EE       BPL flip_mouth_state
@@ -2439,7 +2439,7 @@ check_actor:
 .C:0735  C9 02       CMP #$02
 .C:0737  F0 11       BEQ next_actor
 ;Test character's animation settings for walking sound (bits 5-0)
-.C:0739  B9 D9 F0    LDA character_animation_settings,Y
+.C:0739  B9 D9 F0    LDA costume_anim_attrs,Y
 .C:073c  29 3F       AND #$3F
 ;If it's #00, there's no sound to be played, continue with next actor
 .C:073e  F0 0A       BEQ next_actor
@@ -3826,10 +3826,10 @@ setup_animation_facing_destination:
 ;Get the animation set for the destination object (facing the correct side)
 .C:0d49  20 82 0D    JSR get_animation_set_for_destination_object
 .C:0d4c  8D C8 0F    STA walking_actor_animation_set
-.C:0d4f  8D E9 FD    STA desired_animation_set
+.C:0d4f  8D E9 FD    STA target_clip_id
 ;Set animation argument to #00 (don't loop)
 .C:0d52  A9 00       LDA #$00
-.C:0d54  8D E8 FD    STA animation_argument
+.C:0d54  8D E8 FD    STA clip_loop_cnt
 ;Set the costume in action
 .C:0d57  AD 67 FF    LDA current_kid
 .C:0d5a  8D 30 FC    STA active_costume
@@ -3851,10 +3851,10 @@ setup_animation_facing_destination:
 ;Flip the animation mode by flipping bit 1
 .C:0d71  AD C8 0F    LDA walking_actor_animation_set
 .C:0d74  49 01       EOR #$01
-.C:0d76  8D E9 FD    STA desired_animation_set
+.C:0d76  8D E9 FD    STA target_clip_id
 ;Set animation argument to #00 (don't loop)
 .C:0d79  A9 00       LDA #$00
-.C:0d7b  8D E8 FD    STA animation_argument
+.C:0d7b  8D E8 FD    STA clip_loop_cnt
 ;Setup the animation set for this other actor
 .C:0d7e  20 20 27    JSR apply_animation_set
 exit:
@@ -9157,11 +9157,11 @@ set_new_costume_ptr_for_actor:
 .C:24d5  B1 17       LDA (costume_base_address),Y
 .C:24d7  18          CLC
 .C:24d8  7D 42 CB    ADC actor_gfx_base_lo,X
-.C:24db  9D 90 FE    STA animation_sets_for_actor_lo,X
+.C:24db  9D 90 FE    STA actor_clips_lo,X
 .C:24de  C8          INY
 .C:24df  B1 17       LDA (costume_base_address),Y
 .C:24e1  7D 46 CB    ADC actor_gfx_base_hi,X
-.C:24e4  9D 94 FE    STA animation_sets_for_actor_hi,X
+.C:24e4  9D 94 FE    STA actor_clips_hi,X
 .C:24e7  68          PLA
 .C:24e8  AA          TAX
 .C:24e9  60          RTS
@@ -9221,7 +9221,7 @@ animate_actor_limb:
 ;				current_limb
 ;				actor_limb_animation_frame
 ;				actor_limb_current_cell
-;				actor_limb_current_argument
+;				limb_cur_loop_cnt
 ;===========================================
 limb_cell_list = $84
 actor_limb_animation_frame = $fc42
@@ -9250,11 +9250,11 @@ animate_limb:
 .C:2541  C9 FF       CMP #$FF
 .C:2543  D0 36       BNE move_animation_state_if_needed
 ;Do we need to loop the animation?
-.C:2545  BD C2 FC    LDA actor_limb_current_argument,X
+.C:2545  BD C2 FC    LDA limb_cur_loop_cnt,X
 .C:2548  F0 0C       BEQ stop_animation
 .C:254a  C9 FF       CMP #$FF
 .C:254c  F0 03       BEQ loop_from_first
-.C:254e  DE C2 FC    DEC actor_limb_current_argument,X
+.C:254e  DE C2 FC    DEC limb_cur_loop_cnt,X
 loop_from_first:
 .C:2551  A9 00       LDA #$00
 .C:2553  4C 78 25    JMP set_new_frame
@@ -9267,15 +9267,15 @@ stop_animation:
 ;Deactivate desired and current animation sets
 .C:255c  A6 D8       LDX actor
 .C:255e  A9 FF       LDA #$FF
-.C:2560  9D 06 FD    STA desired_animation_set_for_actor,X
+.C:2560  9D 06 FD    STA actor_target_clip_id,X
 .C:2563  A9 FF       LDA #$FF
-.C:2565  9D 02 FD    STA current_animation_set_for_actor,X
+.C:2565  9D 02 FD    STA actor_current_clip_id,X
 ;Deactivate desired and current base cells for this limb
 .C:2568  AE 02 25    LDX actor_limb_temp
 .C:256b  A9 FF       LDA #$FF
-.C:256d  9D A2 FC    STA actor_limb_desired_base_cell,X
+.C:256d  9D A2 FC    STA limb_target_base_cel_id,X
 .C:2570  A9 FF       LDA #$FF
-.C:2572  9D 82 FC    STA actor_limb_current_base_cell,X
+.C:2572  9D 82 FC    STA limb_current_base_cel_id,X
 ;---------------------------------------------------
 ;Load the frame number
 .C:2575  BD 42 FC    LDA actor_limb_animation_frame,X
@@ -9300,11 +9300,11 @@ exit:
 ; 
 ; Arguments:	actor_limbs_ofs
 ;				current_limb
-;				actor_limb_desired_base_cell
-;				actor_limb_desired_argument
+;				limb_target_base_cel_id
+;				limb_tgt_loop_cnt
 ;===========================================
 limb_cell_list = $84
-actor_limb_current_base_cell = $fc82
+limb_current_base_cel_id = $fc82
 
 update_limb_base_cell:
 ;Compute the actor_limb index into .X
@@ -9313,21 +9313,21 @@ update_limb_base_cell:
 .C:2592  6D 41 FC    ADC current_limb
 .C:2595  AA          TAX
 ;Is there a new desired base cell? If not, exit
-.C:2596  BD A2 FC    LDA actor_limb_desired_base_cell,X
+.C:2596  BD A2 FC    LDA limb_target_base_cel_id,X
 .C:2599  C9 FF       CMP #$FF
 .C:259b  D0 01       BNE check_for_new_value
 .C:259d  60          RTS
 check_for_new_value:
 ;Is it different than the current one? If not, exit
-.C:259e  DD 82 FC    CMP actor_limb_current_base_cell,X 
+.C:259e  DD 82 FC    CMP limb_current_base_cel_id,X 
 .C:25a1  D0 01       BNE assign_new_base_cell
 .C:25a3  60          RTS
 assign_new_base_cell:
 ;Set the desired values of base cell and argument as the new current ones
-.C:25a4  BD A2 FC    LDA actor_limb_desired_base_cell,X
-.C:25a7  9D 82 FC    STA actor_limb_current_base_cell,X
-.C:25aa  BD E2 FC    LDA actor_limb_desired_argument,X
-.C:25ad  9D C2 FC    STA actor_limb_current_argument,X
+.C:25a4  BD A2 FC    LDA limb_target_base_cel_id,X
+.C:25a7  9D 82 FC    STA limb_current_base_cel_id,X
+.C:25aa  BD E2 FC    LDA limb_tgt_loop_cnt,X
+.C:25ad  9D C2 FC    STA limb_cur_loop_cnt,X
 .C:25b0  20 C3 25    JSR compute_actor_limb_current_cell
 ;Initialize the animation frame for the limb
 .C:25b3  A9 00       LDA #$00
@@ -9350,7 +9350,7 @@ compute_actor_limb_current_cell:
 .C:25c6  B1 84       LDA (limb_cell_list),Y
 ;Add the current base cell for the limb, store resulting offset into .Y
 .C:25c8  18          CLC
-.C:25c9  7D 82 FC    ADC actor_limb_current_base_cell,X
+.C:25c9  7D 82 FC    ADC limb_current_base_cel_id,X
 .C:25cc  A8          TAY
 ;Get the limb cell index
 .C:25cd  B1 84       LDA (limb_cell_list),Y
@@ -9397,22 +9397,22 @@ setup_limb_cell_list:
 .C:25ee  6D 41 FC    ADC current_limb
 .C:25f1  AA          TAX
 .C:25f2  AD 12 FD    LDA $FD12
-.C:25f5  9D A2 FC    STA actor_limb_desired_base_cell,X
+.C:25f5  9D A2 FC    STA limb_target_base_cel_id,X
 .C:25f8  AD 13 FD    LDA $FD13
-.C:25fb  9D E2 FC    STA actor_limb_desired_argument,X
+.C:25fb  9D E2 FC    STA limb_tgt_loop_cnt,X
 .C:25fe  60          RTS
 ;===========================================
 ; Applies base limb cells for an actor, based on the animation set
 ;
 ; Arguments:	actor
-;				desired_animation_set_for_actor
-;				current_animation_set_for_actor
-;				animation_argument_for_actor
+;				actor_target_clip_id
+;				actor_current_clip_id
+;				actor_clip_loop_cnt
 ;
-; Returns:		actor_limb_desired_base_cell
-;				actor_limb_current_base_cell
+; Returns:		limb_target_base_cel_id
+;				limb_current_base_cel_id
 ;				limb_flip_tbl
-;				actor_limb_desired_argument
+;				limb_tgt_loop_cnt
 ;
 ; This routine will:
 ;	-load the desired animation set for the active actor
@@ -9437,7 +9437,7 @@ apply_base_cells_for_limbs:
 .C:25ff  20 70 24    JSR setup_costume_for_actor
 ;Load the desired animation set for this actor
 .C:2602  A6 D8       LDX actor
-.C:2604  BD 06 FD    LDA desired_animation_set_for_actor,X
+.C:2604  BD 06 FD    LDA actor_target_clip_id,X
 ;If there's no valid desired animation set, exit
 .C:2607  C9 FF       CMP #$FF
 .C:2609  D0 01       BNE check_for_new_animation_set
@@ -9445,21 +9445,21 @@ apply_base_cells_for_limbs:
 ;-----------------------------------------------------
 check_for_new_animation_set:
 ;Copy the animation sets list pointer for this actor
-.C:260c  BD 90 FE    LDA animation_sets_for_actor_lo,X
+.C:260c  BD 90 FE    LDA actor_clips_lo,X
 .C:260f  85 17       STA <animation_sets
-.C:2611  BD 94 FE    LDA animation_sets_for_actor_hi,X
+.C:2611  BD 94 FE    LDA actor_clips_hi,X
 .C:2614  85 18       STA >animation_sets
 ;Does the desired animation set match the current one? If so, nothing to do, exit
-.C:2616  BD 06 FD    LDA desired_animation_set_for_actor,X
-.C:2619  DD 02 FD    CMP current_animation_set_for_actor,X
+.C:2616  BD 06 FD    LDA actor_target_clip_id,X
+.C:2619  DD 02 FD    CMP actor_current_clip_id,X
 .C:261c  D0 01       BNE assign_new_animation_set
 .C:261e  60          RTS
 ;-----------------------------------------------------
 assign_new_animation_set:
 ;There's a new animation set desired, set it as current
-.C:261f  9D 02 FD    STA current_animation_set_for_actor,X
+.C:261f  9D 02 FD    STA actor_current_clip_id,X
 ;Use .Y as the index into the animation set
-;.Y = current_animation_set_for_actor * 8
+;.Y = actor_current_clip_id * 8
 ; Each animation set is a list of initial frames for each limb (8 in total)
 .C:2622  0A          ASL A
 .C:2623  0A          ASL A
@@ -9490,13 +9490,13 @@ bit7_set:
 ;Clear bit 7
 .C:2641  29 7F       AND #$7F
 ;Set the result as the base limb cell
-.C:2643  9D A2 FC    STA actor_limb_desired_base_cell,X
+.C:2643  9D A2 FC    STA limb_target_base_cel_id,X
 ;Is flip set?
 .C:2646  BD 05 FC    LDA limb_flip_tbl,X
 .C:2649  C9 80       CMP #$80
 .C:264b  F0 05       BEQ set_horizontal_flip
 .C:264d  A9 FF       LDA #$FF
-.C:264f  9D 82 FC    STA actor_limb_current_base_cell,X
+.C:264f  9D 82 FC    STA limb_current_base_cel_id,X
 set_horizontal_flip:
 ;Set the flip
 .C:2652  A9 80       LDA #$80
@@ -9508,13 +9508,13 @@ next_limb_2:
 ;-----------------------------------------------------
 bit7_clear:
 ;Set the base limb cell
-.C:2660  9D A2 FC    STA actor_limb_desired_base_cell,X
+.C:2660  9D A2 FC    STA limb_target_base_cel_id,X
 ;Is flip clear?
 .C:2663  BD 05 FC    LDA limb_flip_tbl,X
 .C:2666  C9 00       CMP #$00
 .C:2668  F0 05       BEQ clear_horizontal_flip
 .C:266a  A9 FF       LDA #$FF
-.C:266c  9D 82 FC    STA actor_limb_current_base_cell,X
+.C:266c  9D 82 FC    STA limb_current_base_cel_id,X
 clear_horizontal_flip:
 ;Clear the flip
 .C:266f  A9 00       LDA #$00
@@ -9524,10 +9524,10 @@ copy_animation_argument:
 .C:2674  8E 3B FC    STX actor_limb_temp
 ;Load the animation argument for this actor
 .C:2677  A6 D8       LDX actor
-.C:2679  BD 0A FD    LDA animation_argument_for_actor,X
+.C:2679  BD 0A FD    LDA actor_clip_loop_cnt,X
 ;Restore the actor limb index and save the animation argument for this actor limb
 .C:267c  AE 3B FC    LDX actor_limb_temp
-.C:267f  9D E2 FC    STA actor_limb_desired_argument,X
+.C:267f  9D E2 FC    STA limb_tgt_loop_cnt,X
 ;-----------------------------------------------------
 next_limb:
 ;Move .Y to the next limb element in the animation set
@@ -9539,7 +9539,7 @@ next_limb:
 .C:268b  D0 A1       BNE prepare_limb_frame
 ;-----------------------------------------------------
 .C:268d  A6 D8       LDX actor
-.C:268f  BD 02 FD    LDA current_animation_set_for_actor,X
+.C:268f  BD 02 FD    LDA actor_current_clip_id,X
 .C:2692  C9 08       CMP #$08
 .C:2694  B0 05       BCS exit
 .C:2696  29 03       AND #$03
@@ -9608,8 +9608,8 @@ exit:
 ; Animate a character that is speaking
 ;
 ; Arguments:	active_costume
-;				character_animation_settings
-;				mouth_state_for_actor
+;				costume_anim_attrs
+;				actor_mouth_state
 ;
 ; If the character does not have a speaking animation, it will exit.
 ; The animation set for the current direction will be computed first.
@@ -9620,9 +9620,9 @@ exit:
 ; The resulting value will be the speaking animation set, which will be setup as needed.
 ;===========================================
 animate_character_speaking:
-;Check if the character animates when speaking (bit 7 clear of character_animation_settings)
-.C:26f9  AE 30 FC    LDX active_costume
-.C:26fc  BD D9 F0    LDA character_animation_settings,X
+;Check if the character animates when speaking (bit 7 clear of costume_anim_attrs)
+.C:26F9  AE 30 FC    LDX active_costume
+.C:26fc  BD D9 F0    LDA costume_anim_attrs,X
 .C:26ff  10 01       BPL do_animate
 ;If not, exit
 .C:2701  60          RTS
@@ -9632,7 +9632,7 @@ do_animate:
 .C:2704  20 7E 27    JSR get_animation_set_for_direction
 .C:2707  18          CLC
 ;Check mouth state for the actor to determine mouth graphic
-.C:2708  BC 9D FE    LDY mouth_state_for_actor,X
+.C:2708  BC 9D FE    LDY actor_mouth_state,X
 ;Bit 7 set = mouth open (states #80 and #FF)
 .C:270b  30 05       BMI mouth_open
 mouth_closed:
@@ -9644,10 +9644,10 @@ mouth_open:
 ;Add #0C to the direction animation set to get the "mouth open" animation set
 .C:2712  69 0C       ADC #$0C
 set_mouth_graphic:
-.C:2714  8D E9 FD    STA desired_animation_set
+.C:2714  8D E9 FD    STA target_clip_id
 ;Set animation to "don't loop"
 .C:2717  A9 FF       LDA #$FF
-.C:2719  8D E8 FD    STA animation_argument
+.C:2719  8D E8 FD    STA clip_loop_cnt
 ;Apply animation set
 .C:271c  20 20 27    JSR apply_animation_set
 .C:271f  60          RTS
@@ -9655,7 +9655,7 @@ set_mouth_graphic:
 ; Applies a new animation set for a costume
 ;
 ; Arguments:	active_costume
-;				desired_animation_set
+;				target_clip_id
 ;
 ; If the costume is not visible, it will set the animation set outright.
 ; If it's visible, it will:
@@ -9673,16 +9673,16 @@ apply_animation_set:
 .C:2728  85 D8       STA actor
 .C:272a  AA          TAX
 ;Save the desired animation set for this actor
-.C:272b  AD E9 FD    LDA desired_animation_set
-.C:272e  9D 06 FD    STA desired_animation_set_for_actor,X
+.C:272b  AD E9 FD    LDA target_clip_id
+.C:272e  9D 06 FD    STA actor_target_clip_id,X
 ;Save the desired animation argument for this actor
-.C:2731  AD E8 FD    LDA animation_argument
-.C:2734  9D 0A FD    STA animation_argument_for_actor,X
+.C:2731  AD E8 FD    LDA clip_loop_cnt
+.C:2734  9D 0A FD    STA actor_clip_loop_cnt,X
 ;Update limbs' base cells
 .C:2737  20 FF 25    JSR apply_base_cells_for_limbs
 ;-------------------------
 ;Map animation set to path direction
-.C:273a  AD E9 FD    LDA desired_animation_set
+.C:273a  AD E9 FD    LDA target_clip_id
 .C:273d  C9 04       CMP #$04
 .C:273f  D0 05       BNE check_05
 ;Actor moving left
@@ -9719,7 +9719,7 @@ direction_determined:
 actor_unassigned:
 ;Is it a standing animation set? (#04-#07)
 ;If not, exit
-.C:276a  AD E9 FD    LDA desired_animation_set
+.C:276a  AD E9 FD    LDA target_clip_id
 .C:276d  C9 04       CMP #$04
 .C:276f  90 0C       BCC exit
 .C:2771  C9 07       CMP #$07
@@ -9728,7 +9728,7 @@ actor_unassigned:
 standing_animation_set:
 ;It's a standing animation set, save it for the actor
 .C:2777  AE 30 FC    LDX active_costume
-.C:277a  9D 47 FF    STA animation_set_for_costume,X
+.C:277a  9D 47 FF    STA costume_clip_id,X
 exit:
 .C:277d  60          RTS
 ;===========================================
@@ -9796,14 +9796,14 @@ update_actor:
 .C:27aa  20 34 28    JSR reset_talking
 .C:27ad  AE 9A FE    LDX character_talking
 .C:27b0  8E 9B FE    STX message_owner
-;Test bit 6 of character_animation_settings
-.C:27b3  BD D9 F0    LDA character_animation_settings,X
+;Test bit 6 of costume_anim_attrs
+.C:27b3  BD D9 F0    LDA costume_anim_attrs,X
 .C:27b6  29 40       AND #$40
 .C:27b8  D0 08       BNE set_mode_x2
 .C:27ba  BC 57 FE    LDY actor_for_costume,X
 ;Set mouth state to #01 (open)
 .C:27bd  A9 01       LDA #$01
-.C:27bf  99 9D FE    STA mouth_state_for_actor,Y
+.C:27bf  99 9D FE    STA actor_mouth_state,Y
 set_mode_x2:
 .C:27c2  4C CA 27    JMP set_mode_x
 set_mode_00:
@@ -9917,12 +9917,12 @@ reset_talking:
 .C:2841  BC 57 FE    LDY actor_for_costume,X
 .C:2844  30 0C       BMI clear_msg_owner
 ;Does this character animate its mouth when speaking? If not, skip this part
-.C:2846  BD D9 F0    LDA character_animation_settings,X
+.C:2846  BD D9 F0    LDA costume_anim_attrs,X
 .C:2849  29 40       AND #$40
 .C:284b  D0 05       BNE clear_msg_owner
 ;It does - set mouth state to #00 (closed)
 .C:284d  A9 00       LDA #$00
-.C:284f  99 9D FE    STA mouth_state_for_actor,Y
+.C:284f  99 9D FE    STA actor_mouth_state,Y
 clear_msg_owner:
 ;Set message owner to #FF (nobody)
 .C:2852  A9 FF       LDA #$FF
@@ -10669,7 +10669,7 @@ exit:
 ;===========================================
 ; Sets an actor's limbs for standing based on the path direction bitmask
 ;===========================================
-desired_animation_set = $fde9
+target_clip_id = $fde9
 
 set_actor_limbs_for_standing:
 ;Map the path direction bitmask to an animation set for the walking direction 
@@ -10703,10 +10703,10 @@ map_80:
 ;------------------------------------------
 set_animation_mode:
 ;Save the animation set
-.C:2be8  8D E9 FD    STA desired_animation_set
+.C:2be8  8D E9 FD    STA target_clip_id
 ;Set default animation argument
 .C:2beb  A9 FF       LDA #$FF
-.C:2bed  8D E8 FD    STA animation_argument
+.C:2bed  8D E8 FD    STA clip_loop_cnt
 ;Update actor's limbs
 .C:2bf0  20 20 27    JSR apply_animation_set
 .C:2bf3  A6 D8       LDX actor
@@ -10745,10 +10745,10 @@ map_80:
 ;--------------------------------------------
 set_animation_mode:
 ;Save the desired animation set
-.C:2c14  9D 06 FD    STA desired_animation_set_for_actor,X
+.C:2c14  9D 06 FD    STA actor_target_clip_id,X
 ;Set default animation argument
 .C:2c17  A9 FF       LDA #$FF
-.C:2c19  9D 0A FD    STA animation_argument_for_actor,X
+.C:2c19  9D 0A FD    STA actor_clip_loop_cnt,X
 ;Update limbs' base cells
 .C:2c1c  20 FF 25    JSR apply_base_cells_for_limbs
 .C:2c1f  A6 D8       LDX actor
@@ -13473,7 +13473,7 @@ unassign_actor_for_costume:	;Should be renamed to "assign_actor", unassign, rele
 .C:38f4  A9 00       LDA #$00
 .C:38f6  99 6F FD    STA visibility_in_scene_for_actor,Y
 ;Set mouth state to #00 (closed)
-.C:38f9  99 9D FE    STA mouth_state_for_actor,Y
+.C:38f9  99 9D FE    STA actor_mouth_state,Y
 ;Clear actor assigned to this costume, clear actor in use
 .C:38fc  A9 FF       LDA #$FF
 .C:38fe  9D 57 FE    STA actor_for_costume,X
@@ -13481,7 +13481,7 @@ unassign_actor_for_costume:	;Should be renamed to "assign_actor", unassign, rele
 ;Convert actor's direction to an animation set and save it
 .C:3904  B9 EB FD    LDA path_direction_for_actor,Y
 .C:3907  20 DF 3B    JSR convert_actor_direction_to_animation_set
-.C:390a  9D 47 FF    STA animation_set_for_costume,X
+.C:390a  9D 47 FF    STA costume_clip_id,X
 ;Assign sprites to all actors
 .C:390d  20 D3 3E    JSR assign_sprites_to_actors
 .C:3910  60          RTS
@@ -13554,7 +13554,7 @@ initialize_actor_for_costume:
 .C:3969  99 2D FD    STA active_waypoint_y_for_actor,Y
 ;Set mouth state to #00 (closed)
 .C:396c  A9 00       LDA #$00
-.C:396e  99 9D FE    STA mouth_state_for_actor,Y
+.C:396e  99 9D FE    STA actor_mouth_state,Y
 ;Load costume (again? this seems redundant)
 .C:3971  20 A8 38    JSR load_costume
 ;Clear previous resource pointer for the active costume
@@ -13568,8 +13568,8 @@ initialize_actor_for_costume:
 ;Initialize the animation sets
 .C:3984  A4 D8       LDY actor
 .C:3986  A9 FF       LDA #$FF
-.C:3988  99 02 FD    STA current_animation_set_for_actor,Y
-.C:398b  99 06 FD    STA desired_animation_set_for_actor,Y
+.C:3988  99 02 FD    STA actor_current_clip_id,Y
+.C:398b  99 06 FD    STA actor_target_clip_id,Y
 ;---------------------------------------------------------
 ; Initialize all actor limbs
 ;---------------------------------------------------------
@@ -13585,8 +13585,8 @@ initialize_actor_for_costume:
 init_limb_cell:
 ;Init the current and desired limb base cells to #FF
 .C:3996  A9 FF       LDA #$FF
-.C:3998  99 82 FC    STA actor_limb_current_base_cell,Y
-.C:399b  99 A2 FC    STA actor_limb_desired_base_cell,Y
+.C:3998  99 82 FC    STA limb_current_base_cel_id,Y
+.C:399b  99 A2 FC    STA limb_target_base_cel_id,Y
 .C:399e  C8          INY
 .C:399f  CA          DEX
 .C:39a0  10 F4       BPL init_limb_cell
@@ -13599,7 +13599,7 @@ init_limb_cell:
 .C:39a9  99 68 FD    STA motion_state_for_actor,Y
 ;Initialize desired argument for actor_limb
 .C:39ac  A9 00       LDA #$00
-.C:39ae  99 E2 FC    STA actor_limb_desired_argument,Y
+.C:39ae  99 E2 FC    STA limb_tgt_loop_cnt,Y
 ;Initialize animation counter
 .C:39b1  A9 01       LDA #$01
 .C:39b3  99 93 FD    STA animation_counter_for_actor,Y
@@ -13622,11 +13622,11 @@ init_limb_cell:
 .C:39d1  20 0A 2D    JSR actor_not_inside_current_box
 ;Copy the animation set for this costume
 .C:39d4  AE 30 FC    LDX active_costume
-.C:39d7  BD 47 FF    LDA animation_set_for_costume,X
-.C:39da  8D E9 FD    STA desired_animation_set
+.C:39d7  BD 47 FF    LDA costume_clip_id,X
+.C:39da  8D E9 FD    STA target_clip_id
 ;Initialize animation argument
 .C:39dd  A9 01       LDA #$01
-.C:39df  8D E8 FD    STA animation_argument
+.C:39df  8D E8 FD    STA clip_loop_cnt
 ;Setup the animation set
 .C:39e2  20 20 27    JSR apply_animation_set
 .C:39e5  60          RTS
@@ -24112,7 +24112,7 @@ destination_variable = $d0
 .C:694e  4C 54 69    JMP set_value_in_var
 actor_moving:
 ;Get the animation set for this costume
-.C:6951  BD 47 FF    LDA animation_set_for_costume,X
+.C:6951  BD 47 FF    LDA costume_clip_id,X
 set_value_in_var:
 ;Set result in variable
 .C:6954  A6 D0       LDX destination_variable
@@ -24135,19 +24135,19 @@ set_value_in_var:
 ; 	#FE		keep actor's mouth open
 ;	#FF		reset actor's animation state
 ;===========================================
-animation_argument = $fde8
+clip_loop_cnt = $fde8
 ;Read costume index
 .C:695a  20 98 5F    JSR script_load_operand_bit7
 .C:695d  8D 30 FC    STA active_costume
 ;Read animation set 
 .C:6960  20 90 5F    JSR script_load_operand_bit6
-.C:6963  8D E9 FD    STA desired_animation_set
+.C:6963  8D E9 FD    STA target_clip_id
 ;Read animation argument (whether the animation loops or not)
 .C:6966  20 14 5E    JSR script_read_byte
-.C:6969  8D E8 FD    STA animation_argument
+.C:6969  8D E8 FD    STA clip_loop_cnt
 ;-----------------------------------
 ;Switch based on animation_set
-.C:696c  AD E9 FD    LDA desired_animation_set
+.C:696c  AD E9 FD    LDA target_clip_id
 .C:696f  C9 FE       CMP #$FE
 .C:6971  D0 0E       BNE check_fd
 ;---------------------------------------
@@ -24158,7 +24158,7 @@ animation_argument = $fde8
 .C:6979  30 05       BMI exit_1
 ;Set actor's mouth state to #80 (open and still)
 .C:697b  A9 80       LDA #$80
-.C:697d  99 9D FE    STA mouth_state_for_actor,Y
+.C:697d  99 9D FE    STA actor_mouth_state,Y
 exit_1:
 .C:6980  60          RTS
 ;---------------------------------------
@@ -24173,7 +24173,7 @@ check_fd:
 .C:698b  30 05       BMI exit_2
 ;Set actor's mouth state to #00 (closed)
 .C:698d  A9 00       LDA #$00
-.C:698f  99 9D FE    STA mouth_state_for_actor,Y
+.C:698f  99 9D FE    STA actor_mouth_state,Y
 exit_2:
 .C:6992  60          RTS
 ;---------------------------------------
@@ -25400,7 +25400,7 @@ init_game_engine:
 loop:
 ;Set default animation set to "standing looking down"
 .C:85b7  A9 06       LDA #$06
-.C:85b9  9D 47 FF    STA animation_set_for_costume,X
+.C:85b9  9D 47 FF    STA costume_clip_id,X
 ;Unassign actor for costume
 .C:85bc  A9 FF       LDA #$FF
 .C:85be  9D 57 FE    STA actor_for_costume,X
@@ -26131,7 +26131,7 @@ character_sprite_bkg_colors:
 ;FF - No speaking animation, sound #3F played when walking
 ;------------------------------------------------
 f0d9 
-character_animation_settings: 
+costume_anim_attrs: 
 00 
 06 06 06 06 06 06 00 	;Kids (Jeff has #00)
 46 						;Radiation suit
