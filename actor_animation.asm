@@ -622,7 +622,7 @@ default:
 commit_direction_and_exit:
 		ldx     actor                        // X := actor index for per-actor tables
 		sta     path_direction_for_actor,x   // Commit movement direction code for this actor
-		jmp     exit                         // Join common epilogue
+		jmp     exit_4                         // Join common epilogue
 
 		// ------------------------------------------------------------
 		// Actor unassigned: accept only standing sets $04..$07
@@ -630,10 +630,10 @@ commit_direction_and_exit:
 actor_unassigned:
 		lda     target_clip            	// Range-check for standing clips [$04..$07]
 		cmp     #CLIP_SET_LEFT
-		bcc     exit                      	// < $04 → not standing → ignore
+		bcc     exit_4                      	// < $04 → not standing → ignore
 		cmp     #CLIP_SET_UP
 		beq     set_standing_clip_for_costume    // == $07 → accept standing
-		bcs     exit                      	// > $07 → not standing → ignore
+		bcs     exit_4                      	// > $07 → not standing → ignore
 		
 		// ------------------------------------------------------------
 		// Cache standing set per costume and exit
@@ -642,7 +642,7 @@ set_standing_clip_for_costume:
 		ldx     active_costume           	// X := costume index
 		sta     costume_clip_set,x 			// Store standing clip ID for this costume
 		
-exit:
+exit_4:
 		rts
 
 /*
