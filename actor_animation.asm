@@ -744,7 +744,7 @@ mouth_open:
 
 apply_speaking_clip:
         sta     target_clip              // select direction+mouth clip id
-        lda     #ANIM_LOOP_FOREVER            // clip_loop_cnt := don't loop
+        lda     #ANIM_LOOP_FOREVER            // loop forever
         sta     clip_loop_cnt
         jsr     apply_clip_set               // commit clip change
         rts
