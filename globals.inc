@@ -301,6 +301,16 @@
 //;#03 = actor might be obscured by a foreground object
 .label layer_depth_for_actor = $fd18
 
+
+.label destination_box_for_actor = $fdd5
+.label current_box_for_actor = $fdcd
+.label last_box_for_actor = $fdd1
+.label destination_x_for_actor = $fdd9
+.label destination_y_for_actor = $fddd
+.label path_update_needed_for_actor = $fde1
+.label actor_search_depth       = $FE75
+
+
 /*
 ===========================================================
  Game script variables
