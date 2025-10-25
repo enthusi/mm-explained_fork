@@ -21,7 +21,6 @@
 
 .const MASK_BYTES_PER_TILE         = $08    // 8 bytes per tile mask pattern (one per scanline)
 .const MASK_BLOCK_HDR_SIZE         = $04    // Size of mask pattern table header before pattern data
-.const SCREEN_Y_MAX                = $91    // Last visible Y coordinate in pixels (bottom of viewport)
 .const MASK_EVEN_BITS              = %01010101  // Bitmask selecting even bits before duplication for multicolor
 
 * = $D640

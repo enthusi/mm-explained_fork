@@ -2,6 +2,7 @@
 #import "globals.inc"
 #import "constants.inc"
 #import "masking.asm"
+#import "blit_cel.asm"
 
 /*
 ================================================================================
@@ -27,7 +28,7 @@ Rendering pipeline
 		- Zeros 3 bytes per row (multi-color sprite row width).
 
 	4. Limb rendering (draw_actor_limbs)
-		- Loops 8 limbs: computes cel pointer → calls external blit_and_mask_limb.
+		- Loops 8 limbs: computes cel pointer → calls external blit_and_mask_cel.
 		- Tracks sprite_vertical_offset (max coverage).
 
 	5. Cel pointer math (compute_cel_ptr)
@@ -54,7 +55,7 @@ How pieces depend on each other
 	  Sprite base comes from bank + sprite index. Row pointers add precomputed row offsets to that base. 
 	  Both the clearer and the blitter use these row pointers to touch the correct VRAM bytes.
 
-	* draw_actor_limbs ↔ blit_and_mask_limb ↔ update_actor_sprite_vertical_positions_for_buffer
+	* draw_actor_limbs ↔ blit_and_mask_cel ↔ update_actor_sprite_vertical_positions_for_buffer
 	  Each blit reports vertical_offset. The limb loop tracks the max voffset for the actor. 
 	  That max and the final current_sprite_y_pos are written into the active bank so later passes know 
 	  which rows are occupied and where the sprite sits vertically.
@@ -98,7 +99,7 @@ draw_actor
  │    │            limb_frame_idx, limb_current_cel,
  │    │            ofs_cel_hi_tbl
  │    │    ↳ sets: dest_row_ptr
- │    ├─ blit_and_mask_limb  (external)
+ │    ├─ blit_and_mask_cel  (external)
  │    │    ↳ uses: dest_row_ptr, current_sprite_y_pos, flip
  │    │    ↳ sets: vertical_offset (coverage of this limb)
  │    └─ tracks max sprite_vertical_offset over limbs
@@ -1156,7 +1157,7 @@ Description
 		• Compute (actor*8 + current_limb) index.
 		• Cache flip flags into current_limb_flip.
 		• Apply intercel_vertical_displacement to current_sprite_y_pos.
-		• compute_cel_ptr → blit_and_mask_limb.
+		• compute_cel_ptr → blit_and_mask_cel.
 		• Update sprite_vertical_offset = max(sprite_vertical_offset,
 		vertical_offset).
 	- After the loop, write Y and coverage into the active sprite bank via
@@ -1212,7 +1213,7 @@ draw_limb:
         // Resolve cel pointer and blit with masking/flip
         // ----------------------------------------
         jsr     compute_cel_ptr
-        jsr     blit_and_mask_limb
+        jsr     blit_and_mask_cel
 
         // ----------------------------------------
         // Track max vertical coverage for this actor
