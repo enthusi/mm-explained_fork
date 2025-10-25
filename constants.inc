@@ -60,6 +60,9 @@
 .const VIEW_HALF_SPAN = $14
 .const VIEW_FULL_SPAN_MINUS1 = $27
 
+// Screen clamp
+.const SCREEN_Y_MAX                = $91    // Last visible Y coordinate in pixels (bottom of viewport)
+
 .const TILE_DEFS_ADDR = $D800
 .const TILE_DEFS_SIZE = $0800
 
@@ -69,3 +72,4 @@
 // Actor vars bitmasks
 .const ACTOR_IS_INVISIBLE = $80
 .const ACTOR_IS_FROZEN = $40
+

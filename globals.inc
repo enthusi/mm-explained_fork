@@ -13,7 +13,7 @@
 
 .label kbd_keycode         = $30    // ZP: published keycode when ready
 .label joy_state     	   = $33    // ZP: snapshot of joystick mask (bits 0–4)
-.label vertical_offset = $35
+.label vertical_offset 	  = $35
 .label current_sprite_y_pos = $3f
 
 /*;Values observed
@@ -353,4 +353,3 @@ They were definitely intended as debugging aids.
 .label raster_setup = $0
 .label assign_available_actor = $0
 .label prepare_video_for_new_room = $0
-.label blit_and_mask_limb = $0
