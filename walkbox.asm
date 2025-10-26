@@ -1,3 +1,157 @@
+/*
+================================================================================
+Walkbox and Pathfinding System Overview
+================================================================================
+
+    Provides all logic for finding, classifying, and connecting “walkboxes”, 
+    rectangular walkable zones used by actors for navigation. Handles geometric
+    queries (inside checks, nearest box, distance estimation) and graph search
+    (building routes between boxes).
+
+Concepts
+    • A room contains a list of walkboxes. Each entry defines {left, right, top,
+      bottom} edges in pixels. Lists are terminated by $FF.
+    • Each box also has an adjacency list describing which boxes connect to it.
+    • Coordinates grow downward (larger Y = lower on screen).
+
+Main Components
+    1.  Table access
+        - get_walkboxes_for_room / get_walkboxes_for_costume / get_walkboxes_ptr
+          compute the pointer to the room's walkbox table.
+        - Walkbox records have a stride of 5 bytes, plus a global offset at $15.
+
+    2.  Geometry and proximity
+        - get_distance_to_box clamps a point to a box, computes the nearest point
+          and a fast “octagonal” distance (0 if inside).
+        - get_nearest_box scans all boxes to find the one closest to a given
+          coordinate pair.
+        - is_actor_pos_inside_box tests if an actor's position lies inside a box.
+
+    3.  Path search between boxes
+        - build_walkbox_path performs a bounded depth-first search through the
+          adjacency graph to connect an actor's current box to a destination box.
+        - increment_search_depth / decrement_search_depth manage recursive depth
+          with upper/lower caps.
+        - adjacency_contains_destination checks if the destination appears in
+          the current box's neighbor list.
+        - all_adjacent_boxes_known detects when every neighbor has been visited.
+        - write_actor_path_buffer serializes the successful path for an actor.
+
+    4.  Packed list utilities
+        - get_list_element_offset finds the byte offset of the N-th element in a
+          $FF-terminated list.
+        - setup_adjacency_list restores scan position when resuming exploration.
+
+Operation summary
+    • When a path is requested, the system resolves the room's walkbox table,
+      then begins a controlled DFS search.
+    • Each depth represents one box in the route. The system tracks which boxes
+      were already seen and where to resume in each adjacency list.
+    • It stops if:
+          - the destination is found  → RESULT_PATH_OK
+          - the graph is fully explored → RESULT_PATH_GRAPH_EXHAUSTED
+          - the maximum search depth is hit → RESULT_PATH_MAX_DEPTH
+    • The final path buffer contains the destination followed by the reverse
+      chain of boxes leading back to the start.
+
+Why it works efficiently
+    • Entirely integer-based math; no multiplies or square roots.
+    • Compact state per actor: current depth, discovered boxes, and resume
+      indices.
+    • Each actor has a fixed-size (16-byte) segment for its computed route.
+
+================================================================================
+
+Hypothetical DFS example with 4 boxes
+
+Setup
+  Boxes: 0,1,2,3
+  Start (current_box) = 0
+  Goal  (destination_box_id) = 3
+
+Adjacency lists (packed, $FF-terminated)
+  adj(0): [1, 2, $FF]
+  adj(1): [0, $FF]
+  adj(2): [0, 3, $FF]
+  adj(3): [2, $FF]
+
+State vars (per algorithm)
+  active_depth_level       1-based depth
+  actor_discovered_boxes   stack of chosen nodes by depth (index 1..N)
+  resume_index_tbl         last scanned neighbor index per depth (starts $FF)
+
+Walkthrough
+
+1) Initialize
+   active_depth_level = 0
+   actor_discovered_boxes[*] = ?
+   resume_index_tbl[*] = ?
+
+2) increment_search_depth
+   depth := 1
+   actor_discovered_boxes[1] := current_box = 0
+   resume_index_tbl[1] := $FF
+
+   Check adj(0) for destination 3 → not found.
+   all_adjacent_boxes_known?
+     - resume_index_tbl[1] := $00  (first INC)
+     - Next candidate = adj(0)[0] = 1 → is_box_seen_by_actor? (scan 1..1) → not seen.
+     - Return ONE_UNKNOWN → continue exploration at depth 1 (caller loop).
+
+3) Choose neighbor 1 (conceptually “descend” to 1)
+   current_box := 1
+
+   increment_search_depth
+   depth := 2
+   actor_discovered_boxes[2] := 1
+   resume_index_tbl[2] := $FF
+
+   Check adj(1) for destination 3 → not found.
+   all_adjacent_boxes_known?
+     - resume_index_tbl[2] := $00
+     - Next candidate = adj(1)[0] = 0 → is_box_seen_by_actor? (scan 1..2 = {0,1})
+       → 0 is seen → keep scanning
+     - resume_index_tbl[2] := $01
+     - Next byte = $FF → ALL_KNOWN
+
+   decrement_search_depth
+   depth := 1
+   (backtrack to node 0 context)
+
+4) Resume scanning adj(0) after neighbor index 0
+   all_adjacent_boxes_known at depth 1?
+     - resume_index_tbl[1] := $01
+     - Next candidate = adj(0)[1] = 2 → is_box_seen_by_actor? (scan 1..1 = {0})
+       → 2 not seen → ONE_UNKNOWN
+
+5) Choose neighbor 2
+   current_box := 2
+
+   increment_search_depth
+   depth := 2
+   actor_discovered_boxes[2] := 2
+   resume_index_tbl[2] := $FF
+
+   Check adj(2) for destination 3 → FOUND (adj(2)[1] = 3)
+   write_actor_path_buffer:
+     - active_depth_level = 2 → path length = 1 step
+     - Output segment:
+         [0] = destination_box_id = 3
+         [1] = actor_discovered_boxes[2] = 2
+     Path = 2 → 3   (from current chain 0 → 2, then 2 → 3)
+
+Result
+  RESULT_PATH_OK
+  actor_search_depth = 1
+  actor_discovered_boxes segment = { 3, 2, ... }
+
+Notes
+  - The DFS explored 0→1, backtracked, then 0→2 and hit the destination.
+  - resume_index_tbl ensured scanning resumed where it left off per depth.
+  - Depth never exceeded 2, far below MAX_SEARCH_DEPTH.
+================================================================================
+*/
+
 #importonce
 #import "globals.inc"
 #import "constants.inc"
@@ -28,13 +182,13 @@
 // -----------------------------------------------------------------------------
 // Test point and selection state
 // -----------------------------------------------------------------------------
-.label test_x                    = $FE72  // Input test X (pixels)
-.label test_y                    = $FE73  // Input test Y (pixels)
+.label test_x                   = $FE72  // Input test X (pixels)
+.label test_y                   = $FE73  // Input test Y (pixels)
 .label box_index                = $1A5B  // Running box index (starts at -1)
 .label min_distance             = $1A5E  // Best scaled distance so far
 .label min_nearest_x            = $1A62  // Nearest X for best candidate
 .label min_nearest_y            = $1A63  // Nearest Y for best candidate
-.label closest_box_index        = $FDAC  // Output: best box index
+.label nearest_box_idx          = $FDAC  // Output: best box index
 
 // -----------------------------------------------------------------------------
 // Packed list iteration (generic element list)
@@ -146,16 +300,16 @@ build_walkbox_path
 ================================================================================
 
 Summary
-    Constructs a path of connected walkboxes between an actor’s current and
+    Constructs a path of connected walkboxes between an actor's current and
     destination boxes using a bounded depth-first search with backtracking.
 
 Arguments
-    current_box_for_actor
-    destination_box_for_actor
+    actor_current_box
+    actor_destination_box
 
 Global Inputs
     actor                            current actor index
-    box_ptr                          pointer to actor’s walkbox boundary data
+    box_ptr                          pointer to actor's walkbox boundary data
 
 Global Outputs
     adj_list_ptr                     pointer to adjacency list for current actor
@@ -166,13 +320,13 @@ Global Outputs
 
 Returns
     .A  	RESULT_PATH_OK ($00)              path found and copied
-			RESULT_PATH_GRAPH_EXHAUSTED ($01) full graph explored, no path
+			RESULT_PATH_GRAPH_EXHAUSTED ($01) full graph explored, no path  
 			RESULT_PATH_MAX_DEPTH ($02)       search capped by max depth
 
 Description
-    - Retrieves the actor’s walkbox data and computes the base address of the
+    - Retrieves the actor's walkbox data and computes the base address of the
       adjacency list from a relative offset.
-    - Resets search depth and state variables, then loads the actor’s current
+    - Resets search depth and state variables, then loads the actor's current
       and destination box ids.
     - Executes iterative depth-first traversal:
         • Calls increment_search_depth (bounded to MAX_SEARCH_DEPTH).
@@ -224,10 +378,10 @@ init_search_state:
         lda     #INIT_RETURN_SENTINEL
         sta     return_value
 
-        lda     current_box_for_actor,x
+        lda     actor_current_box,x
         sta     current_box
 
-        lda     destination_box_for_actor,x
+        lda     actor_destination_box,x
         sta     destination_box_id
 
 search_loop:
@@ -415,7 +569,7 @@ Arguments
 
 Returns
     resume_index   Resume index within the selected element.
-    list_start_ofs                  Byte offset to that element’s start.
+    list_start_ofs                  Byte offset to that element's start.
 
 Global Inputs
     actor_discovered_boxes[]   Per-depth selected element index.
@@ -454,7 +608,7 @@ setup_adjacency_list:
   adjacency_contains_destination
 ================================================================================
 Summary
-	Check whether the destination box index appears in the current box’s
+	Check whether the destination box index appears in the current box's
 	adjacency sublist. Linear scan to sentinel.
 
 Arguments
@@ -485,7 +639,7 @@ adjacency_contains_destination:
         jsr     setup_adjacency_list
         ldx     actor
 
-        // Y := start of this box’s adjacency sublist
+        // Y := start of this box's adjacency sublist
         ldy     list_start_ofs
 
 scan_candidate:
@@ -547,7 +701,7 @@ all_adjacent_boxes_known:
 
         // ------------------------------------------------------------
         // Compute list_offset := target_offset + resume_index; then Y := list_offset.
-        // This resumes scanning at the element’s previously consumed position.
+        // This resumes scanning at the element's previously consumed position.
         // ------------------------------------------------------------
         lda     resume_index
         clc
@@ -601,7 +755,7 @@ is_box_seen_by_actor
 ================================================================================
 
 Summary
-    Linear membership test for a box id within the actor’s discovered list.
+    Linear membership test for a box id within the actor's discovered list.
 
 Arguments
     current_box					box id under test
@@ -673,7 +827,7 @@ Global Inputs
     active_depth_level             1-based depth of the discovered route
     destination_box_id             goal walkbox id
     actor_discovered_boxes[...]    source stack indexed by depth (1..N)
-    ACTOR_PATH_BUF_SIZE            stride for each actor’s output segment
+    ACTOR_PATH_BUF_SIZE            stride for each actor's output segment
     MIN_SEARCH_DEPTH               minimal valid depth (usually $01)
 
 Global Outputs
@@ -685,18 +839,18 @@ Returns
     None
 
 Description
-    - Compute Y := 16 * (actor + 1) to address the actor’s output segment.
+    - Compute Y := 16 * (actor + 1) to address the actor's output segment.
     - Store path length as (active_depth_level - 1) into actor_search_depth[X].
-    - Write destination_box_id at the start of the actor’s segment.
+    - Write destination_box_id at the start of the actor's segment.
     - If depth == MIN_SEARCH_DEPTH, exit.
     - Otherwise copy entries from actor_discovered_boxes[depth..2] into the
-      actor’s segment in reverse order to reconstruct the path.
+      actor's segment in reverse order to reconstruct the path.
 ================================================================================
 */
 * = $1A08
 write_actor_path_buffer:
         // ------------------------------------------------------------
-        // Y := 16 * (actor + 1) → select actor’s output segment base.
+        // Y := 16 * (actor + 1) → select actor's output segment base.
         // ------------------------------------------------------------
         ldx     actor
         txa
@@ -716,7 +870,7 @@ write_actor_path_buffer:
         dec     actor_search_depth,x
 
         // ------------------------------------------------------------
-        // Write destination box as first element of the actor’s path.
+        // Write destination box as first element of the actor's path.
         // ------------------------------------------------------------
         lda     destination_box_id
         sta     actor_discovered_boxes,y
@@ -815,7 +969,7 @@ scan_next_byte:
         rts
 /*
 ================================================================================
-  get_closest_box
+  get_nearest_box
 ================================================================================
 Summary
 	Iterate through all walkboxes of a room and determine which one is closest
@@ -830,13 +984,13 @@ Arguments
 
 Returns
 	On success:
-		closest_box_index   → index of nearest walkbox
+		nearest_box_idx   → index of nearest walkbox
 		min_nearest_x       → nearest X on or inside that box
 		min_nearest_y       → nearest Y on or inside that box
 		min_distance        → anisotropic distance value
 		A                   → undefined (not guaranteed to contain min_distance)
 	On failure (no room data loaded):
-		closest_box_index   = #$FF
+		nearest_box_idx   = #$FF
 		A                   = #$FF
 
 Global Inputs
@@ -846,11 +1000,11 @@ Global Inputs
 	get_distance_to_box     (computes distance and nearest point).
 
 Description
-	• Calls get_walkboxes_for_room to retrieve the base pointer to the room’s
+	• Calls get_walkboxes_for_room to retrieve the base pointer to the room's
 	walkbox list; aborts if the room is not resident.
 	• Each walkbox entry consists of 6 bytes:
 	[left, right, top, bottom, byte4, byte5]
-	and the list terminates with #$FF at the next entry’s start.
+	and the list terminates with #$FF at the next entry's start.
 	• For every box:
 		– Loads its edges into box_left_edge..box_bottom_edge.
 		– Calls get_distance_to_box to compute both the distance (A) and
@@ -861,7 +1015,7 @@ Description
 ================================================================================
 */
 * = $1AC1
-get_closest_box:
+get_nearest_box:
         // ------------------------------------------------------------
         // Acquire walkbox table pointer for the requested room
         //   A = #$FF on failure (room not resident)
@@ -869,7 +1023,7 @@ get_closest_box:
         jsr     get_walkboxes_for_room
         cmp     #WALKBOX_SENTINEL
         bne     init_scan
-        sta     closest_box_index            // propagate #$FF to output index
+        sta     nearest_box_idx            // propagate #$FF to output index
         rts
 
 init_scan:
@@ -927,7 +1081,7 @@ load_current_box:
 
         sta     min_distance
         lda     box_index
-        sta     closest_box_index
+        sta     nearest_box_idx
         lda     nearest_x
         sta     min_nearest_x
         lda     nearest_y
@@ -1047,7 +1201,7 @@ commit_nearest_y:
         sec                                   // prepare subtraction
         sbc     nearest_x                     // A := test_x - nearest_x
         bcs     set_x_distance                // if A ≥ 0 keep magnitude
-        eor     #$ff                          // two’s complement negate
+        eor     #$ff                          // two's complement negate
         clc
         adc     #$01
 
@@ -1062,7 +1216,7 @@ set_x_distance:
         sec                                   // prepare subtraction
         sbc     nearest_y                     // A := test_y - nearest_y
         bcs     set_y_distance                // if A ≥ 0 keep magnitude
-        eor     #$ff                          // two’s complement negate
+        eor     #$ff                          // two's complement negate
         clc
         adc     #$01
 
@@ -1101,7 +1255,7 @@ return_distance:
   get_walkboxes_for_room
 ==============================================================================
 Summary
-	Return a pointer to the room’s walkbox table for a given room index. If the
+	Return a pointer to the room's walkbox table for a given room index. If the
 	room resource is not resident, return a failure code.
 
 Arguments
@@ -1128,7 +1282,7 @@ Description
 * = $2DA3
 get_walkboxes_for_room:
         ldy     walkbox_room                // Y := target room index to check
-        lda     room_ptr_hi_tbl,y           // load high byte of room’s base pointer
+        lda     room_ptr_hi_tbl,y           // load high byte of room's base pointer
         bne     ptr_present                 // if nonzero → room resource is loaded
         lda     #WALKBOX_NOT_RESIDENT       // else mark failure: room not in memory
         rts                                 
@@ -1140,7 +1294,7 @@ ptr_present:
 ================================================================================
 Summary
 	Return a pointer to the walkbox table for the room currently occupied by the
-	active costume’s actor. If that room’s resource is not resident, return a
+	active costume's actor. If that room's resource is not resident, return a
 	failure code.
 
 Arguments
@@ -1159,7 +1313,7 @@ Global Outputs
 	box_ptr              Pointer to walkbox table (set by callee on success).
 
 Description
-	• Retrieve the actor’s current room index from costume_room_idx[active_costume].
+	• Retrieve the actor's current room index from costume_room_idx[active_costume].
 	• Check if the room resource is resident via its high-byte entry.
 	• If not resident, return failure immediately.
 	• If resident, call get_walkboxes_ptr to compute box_ptr for that room.
@@ -1170,7 +1324,7 @@ Description
 get_walkboxes_for_costume:
         ldy     active_costume              // Y := active costume index
         lda     costume_room_idx,y          // A := room index assigned to this costume
-        tay                                 // Y := actor’s current room index
+        tay                                 // Y := actor's current room index
         lda     room_ptr_hi_tbl,y           // load high byte of room base pointer
         bne     get_walkboxes_ptr           // if nonzero → room resource is resident
         lda     #WALKBOX_NOT_RESIDENT       // else return failure
@@ -1181,7 +1335,7 @@ get_walkboxes_for_costume:
 ==============================================================================
 
 Summary
-	Compute box_ptr to the room’s walkbox table using the room’s loaded
+	Compute box_ptr to the room's walkbox table using the room's loaded
 	base address and the block-relative walkbox offset.
 
 Arguments
@@ -1227,8 +1381,8 @@ exit:
   is_actor_pos_inside_box
 ================================================================================
 Summary
-	Determine whether an actor’s position lies within a rectangular box defined
-	in the active room’s box table. The box is described by four consecutive
+	Determine whether an actor's position lies within a rectangular box defined
+	in the active room's box table. The box is described by four consecutive
 	bytes: [left, right, top, bottom]. All boundaries are inclusive.
 
 Arguments
@@ -1241,14 +1395,14 @@ Returns
 		#$FF if the actor is outside the box.
 
 Global Inputs
-	box_ptr                 Pointer to the active room’s box table.
-	position_x_for_actor[]  Actor horizontal positions.
-	position_y_for_actor[]  Actor vertical positions.
+	box_ptr                 Pointer to the active room's box table.
+	actor_x_pos[]  Actor horizontal positions.
+	actor_y_pos[]  Actor vertical positions.
 
 Description
-	• Compares the actor’s X coordinate against the left and right box edges.
+	• Compares the actor's X coordinate against the left and right box edges.
 	Fails immediately if outside those limits.
-	• Compares the actor’s Y coordinate against the top and bottom edges.
+	• Compares the actor's Y coordinate against the top and bottom edges.
 	Fails if outside the vertical bounds.
 	• If all comparisons pass, returns success (A = #$00).
 ================================================================================
@@ -1263,7 +1417,7 @@ is_actor_pos_inside_box:
            Early-out if outside on either edge test.
         ------------------------------------------------------------
 		*/
-        lda     position_x_for_actor,x
+        lda     actor_x_pos,x
         cmp     (box_ptr),y                  // pos_x ? left
         bcc     return_outside               // pos_x < left → outside
         iny
@@ -1281,7 +1435,7 @@ check_y:
         ------------------------------------------------------------
 		*/
         iny
-        lda     position_y_for_actor,x
+        lda     actor_y_pos,x
         cmp     (box_ptr),y                  // pos_y ? top
         bcc     return_outside               // pos_y < top → outside
         iny
