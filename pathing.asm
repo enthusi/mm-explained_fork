@@ -517,7 +517,7 @@ Description
         • Restore X and Y, return with A=$FF (current code has a stack bug).
     - Else:
         • Write nearest_{x,y}_candidate to test_{x,y}.
-        • Call adjust_diagonal_boundary to refine along sloped edges.
+        • Call clamp_walkbox_diagonal_edge to refine along sloped edges.
         • Restore X and Y and return nearest_box_idx in A.
 ================================================================================
 */
@@ -553,7 +553,7 @@ write_nearest_point:
         sta     test_x
         lda     nearest_y_candidate
         sta     test_y
-        jsr     adjust_diagonal_boundary
+        jsr     clamp_walkbox_diagonal_edge
 
         // 
         // Restore Y,X and return nearest_box_idx in A.
@@ -1413,9 +1413,8 @@ Description
 	- Set diag_clamp_applied and return through finalize_diag_exit.
 ================================================================================
 */
-
 * = $1B91
-adjust_diagonal_boundary:
+clamp_walkbox_diagonal_edge:
         lda     #$00
         sta     diag_clamp_applied             // clear adjustment flag
 
