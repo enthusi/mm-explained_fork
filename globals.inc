@@ -267,6 +267,7 @@
 .label costume_clip_set = $ff47		/*;The animation set for a costume, limited to the standing range of sets (#04-#07)
 										;This is used by scripts to determine the direction a costume is facing 
 										;See the details for "animation sets"*/
+.label actor_motion_state        = $FD68  // per-actor motion state
 .label animation_state_for_actor = $FD97
 /*;Possible mouth state values
 ;---------------------------
@@ -291,10 +292,12 @@
 // ===========================================================
 .label active_waypoint_x_for_actor = $fd25
 .label active_waypoint_y_for_actor = $fd2d
-.label desired_waypoint_x_for_actor = $fd29
-.label desired_waypoint_y_for_actor = $fd31
-.label position_y_for_actor = $fd3d
-.label position_x_for_actor = $fd41
+.label actor_tgt_waypoint_x = $fd29
+.label actor_tgt_waypoint_y = $fd31
+.label actor_y_pos = $fd3d
+.label actor_x_pos = $fd41
+.label actor_x_dest = $fdd9
+.label actor_y_dest = $fddd
 .label position_to_waypoint_x_for_actor = $fd45
 .label position_to_waypoint_y_for_actor = $fd49
 
@@ -302,12 +305,10 @@
 .label layer_depth_for_actor = $fd18
 
 
-.label destination_box_for_actor = $fdd5
-.label current_box_for_actor = $fdcd
-.label last_box_for_actor = $fdd1
-.label destination_x_for_actor = $fdd9
-.label destination_y_for_actor = $fddd
-.label path_update_needed_for_actor = $fde1
+.label actor_destination_box = $fdd5
+.label actor_current_box = $fdcd
+.label actor_last_box = $fdd1
+.label actor_path_update_flag = $fde1
 .label actor_search_depth       = $FE75
 
 
