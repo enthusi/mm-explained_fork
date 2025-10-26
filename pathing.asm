@@ -349,8 +349,22 @@ Caveats
 .label tgt_box_idx              = $FC3B  // walkbox index selected for target at final BFS depth
 .label actor_axis_class         = $FC3C  // axis test vs target: $00 below/left, $01 above/right, $02 inside
 .label dest_other_axis          = $FC3F  // temp: destination coordinate on the axis opposite to the hall axis
+.label closest_box_index             = $FDAC    // current walkbox index
+.label candidate_x                   = $FE72    // candidate X
+.label candidate_y                   = $FE73    // candidate Y
+.label diag_slope_mode                 = $FC3D    // decoded slope selector
+.label diag_clamp_applied             = $CB39    // 00=no adjust, 01=adjusted
 
-
+.const WALKBOX_ATTR_OFS              = $04      // record: attribute byte
+.const DIAG_ENABLE_BIT           = $80    // attribute bit7: diagonal present
+.const DIAG_MASK                 = $7C    // attribute bits6..2 mask for slope code
+.const DIAG_CODE_UP_LEFT         = $08    // bits3..2=10b → up-left slope
+.const DIAG_CODE_DOWN_RIGHT      = $0C    // bits3..2=11b → down-right slope
+.const DIAG_MODE_UP_LEFT     = $01    // stored in box_attribute for up-left
+.const DIAG_MODE_DOWN_RIGHT  = $02    // stored in box_attribute for down-right
+.const RET_NO_ADJUST             = $00    // function return: no clamp applied
+.const RET_ADJUSTED              = $01    // function return: clamp applied
+.const ROOM_X_MAX                = $A0    // upper bound used in up-left path
 .const NO_BOX_FOUND              = $FF    // sentinel: no valid walkbox located
 .const DISCOVERED_LIST_STRIDE    = $10    // bytes reserved per actor in discovered_boxes_tbl
 .const PATH_UPDATE_REQUIRED      = $01    // flag value to trigger path recomputation
@@ -367,7 +381,37 @@ Caveats
 .const PATH_ADJUST_REQUIRED      = $FF    // path recalculation needed (return code)
 .const PATH_NO_ADJUST            = $00    // straight path valid (return code)
 
-.label adjust_diagonal_boundary = $0
+/*
+================================================================================
+Diagonal edge horizontal offset lookup table
+================================================================================
+
+Summary
+    Provides the per-scanline ΔX (horizontal shift) used when clamping
+    coordinates to diagonal walkbox edges.
+
+Description
+    Each entry corresponds to one vertical pixel row below the walkbox’s top
+    edge. The value gives the number of pixels to shift horizontally from the
+    straight boundary to follow the diagonal slope.
+
+    Used by clamp_walkbox_diagonal_edge to determine how far the visible
+    wall edge moves horizontally as Y increases.
+
+Notes
+    - Indexed by (candidate_y − top_edge).
+    - Values plateau briefly to approximate shallower segments of the wall.
+    - Table length = 22 entries.
+
+================================================================================
+*/
+* = $1C09
+diag_dx_lut:
+        .byte $00,$01,$02,$03,$03
+        .byte $04,$05,$06,$06,$07
+        .byte $08,$09,$09,$0A,$0B
+        .byte $0C,$0C,$0D,$0E,$0F
+        .byte $10,$10
 
 /*
 ================================================================================
@@ -1327,5 +1371,145 @@ check_closest_box_edge:
 
 return_PATH_NO_ADJUST:
 		lda     #PATH_NO_ADJUST                           // no adjustment needed
-		rts
+		rts			
+/*
+================================================================================
+  Clamp candidate X against diagonal walkbox edge 
+================================================================================
+
+Summary
+	Adjust candidate_x to respect a diagonal walkbox boundary using a per-row
+	ΔX lookup indexed by vertical distance from the box top.
+
+Arguments
+	None
+
+Returns
+	.A  	RET_ADJUSTED  on paths through finalize_diag_exit
+			(early returns leave .A unchanged)
+
+Global Inputs
+	closest_box_index             walkbox selector
+	candidate_x                   X under test
+	candidate_y                   Y under test
+	current_box_ptr               ZP pointer to walkbox record base
+
+Global Outputs
+	diag_slope_mode               01=up-left, 02=down-right
+	diag_clamp_applied            00 cleared on entry, set to 01 on exit path
+	candidate_x                   clamped when boundary test passes
+
+Description
+	- Resolve walkbox record via closest_box_index and get attribute at +$04.
+	- Require attribute bit7 to enable diagonal handling; otherwise return.
+	- Mask bits6..2, decode slope code:
+		* $08 → up-left (use right − dx)
+		* $0C → down-right (use left + dx)
+	- Compute dy = candidate_y − top(+2), then dx = diag_dx_lut[dy].
+	- Compare adjusted boundary with candidate_x:
+		* up-left: if (right − dx) ≥ candidate_x, clamp candidate_x
+		and guard vs ROOM_X_MAX.
+		* down-right: if (left + dx) ≤ candidate_x, clamp candidate_x.
+	- Set diag_clamp_applied and return through finalize_diag_exit.
+================================================================================
+*/
+
+* = $1B91
+adjust_diagonal_boundary:
+        lda     #$00
+        sta     diag_clamp_applied             // clear adjustment flag
+
+        // ------------------------------------------------------------
+        // Resolve walkbox record and read attribute at +$04
+        // ------------------------------------------------------------
+        lda     closest_box_index
+        jsr     get_walkbox_offset            // Y := base of walkbox record
+        tya
+        clc
+        adc     #WALKBOX_ATTR_OFS
+        tay
+        lda     (current_box_ptr),y
+        bmi     diag_attr_enabled                      // require bit7 set for diagonal
+        rts
+
+        // ------------------------------------------------------------
+        // Decode slope bits (mask 6..2), branch on $0C or $08
+        // ------------------------------------------------------------
+diag_attr_enabled:
+        and     #DIAG_MASK
+        cmp     #DIAG_CODE_DOWN_RIGHT
+        bne     check_slope_up_left
+
+        // down-right slope (right edge)
+        lda     #DIAG_MODE_DOWN_RIGHT
+        jmp     store_slope_mode
+
+check_slope_up_left:
+        cmp     #DIAG_CODE_UP_LEFT
+        bne     no_diagonal_exit
+
+        // up-left slope (left edge)
+        lda     #DIAG_MODE_UP_LEFT
+        jmp     store_slope_mode
+
+no_diagonal_exit:
+        rts
+
+        // ------------------------------------------------------------
+        // Compute dy from top(+2), fetch dx from table, clamp X
+        // ------------------------------------------------------------
+store_slope_mode:
+        sta     diag_slope_mode                 // persist slope selector
+
+        lda     candidate_y                   // A := candidate Y
+        dey                                   // Y := base + 3 (bottom)
+        dey                                   // Y := base + 2 (top)
+        sec
+        sbc     (current_box_ptr),y             // A := Y - top
+        tax                                   // X := dy (table index)
+
+        dey                                   // Y := base + 1 (right)
+        lda     diag_slope_mode
+        cmp     #DIAG_MODE_UP_LEFT
+        bne     handle_down_right_slope
+
+        // up-left slope: boundary = right(+1) - dx
+        lda     (current_box_ptr),y             // right
+        sec
+        sbc     diag_dx_lut,x        // right - dx
+        cmp     candidate_x                   // adjusted ≥ candidate X ?
+        bcs     room_width_guard
+        lda     #RET_NO_ADJUST                         // no adjust (note: exit path forces #$01)
+        jmp     finalize_diag_exit
+
+room_width_guard:
+        cmp     #ROOM_X_MAX                          // guard vs $A0
+        bcc     apply_x_clamp_up
+        beq     apply_x_clamp_up
+        lda     #$00
+apply_x_clamp_up:
+        sta     candidate_x
+        jmp     finalize_diag_exit
+
+        // down-right slope: boundary = left(+0) + dx
+handle_down_right_slope:
+        dey                                   // Y := base + 0 (left)
+        lda     (current_box_ptr),y             // left
+        clc
+        adc     diag_dx_lut,x        // left + dx
+        cmp     candidate_x                   // adjusted ≤ candidate X ?
+        bcc     apply_x_clamp_down
+        beq     apply_x_clamp_down
+        lda     #RET_NO_ADJUST                          // no adjust (note: exit path forces #$01)
+        jmp     finalize_diag_exit
+
+apply_x_clamp_down:
+        sta     candidate_x
+
+finalize_diag_exit:
+        lda     #RET_ADJUSTED                          // original code forces adjust flag
+        sta     diag_clamp_applied
+        rts
+
+
 		
