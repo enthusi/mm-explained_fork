@@ -335,7 +335,37 @@ Caveats
  but the actor’s X position is outside the overlap horizontally.
  The routine detects that a straight-down move would cross a wall
  and sets the corner waypoint instead.
+
+ -----------------------------------------------------------------------------
+ "Narrowest hall"
+ -----------------------------------------------------------------------------
+ 
+ The scene may include overlapping boxes forming a narrow passage between
+ them. The figure below illustrates one example:
+
+     Origin
+     0----------------------> +X axis
+     |        current   target
+     |        |--------|
+     |        |        |---------| <--- farthest top edge
+     |        |   A    |    X    |
+     |        |        |---------| <--- closest bottom edge
+     |        |--------|
+     V
+     +Y axis
+
+     A = actor’s current position
+     X = destination
+
+ In this situation, the target box constrains the available corridor
+ vertically. To find the most restrictive (“narrowest”) passage,
+ choose:
+     - the bottom edge nearest to the origin, and
+     - the top edge farthest from the origin.
+
+ This defines the limiting region used to test for a clear trajectory.
 */
+
 .label current_box_ptr          = $0017  // zp ptr → current walkbox edge table {left,right,top,bottom}
 .label target_box_ptr           = $0019  // zp ptr → target  walkbox edge table {left,right,top,bottom}
 .label nearest_x_candidate      = $1A62  // snapped X (pixels) nearest to destination within chosen walkbox
@@ -349,19 +379,19 @@ Caveats
 .label tgt_box_idx              = $FC3B  // walkbox index selected for target at final BFS depth
 .label actor_axis_class         = $FC3C  // axis test vs target: $00 below/left, $01 above/right, $02 inside
 .label dest_other_axis          = $FC3F  // temp: destination coordinate on the axis opposite to the hall axis
-.label closest_box_index             = $FDAC    // current walkbox index
-.label candidate_x                   = $FE72    // candidate X
-.label candidate_y                   = $FE73    // candidate Y
-.label diag_slope_mode                 = $FC3D    // decoded slope selector
-.label diag_clamp_applied             = $CB39    // 00=no adjust, 01=adjusted
+.label closest_box_index        = $FDAC    // current walkbox index
+.label candidate_x              = $FE72    // candidate X
+.label candidate_y              = $FE73    // candidate Y
+.label diag_slope_mode          = $FC3D    // decoded slope selector
+.label diag_clamp_applied       = $CB39    // 00=no adjust, 01=adjusted
 
-.const WALKBOX_ATTR_OFS              = $04      // record: attribute byte
+.const WALKBOX_ATTR_OFS          = $04      // record: attribute byte
 .const DIAG_ENABLE_BIT           = $80    // attribute bit7: diagonal present
 .const DIAG_MASK                 = $7C    // attribute bits6..2 mask for slope code
 .const DIAG_CODE_UP_LEFT         = $08    // bits3..2=10b → up-left slope
 .const DIAG_CODE_DOWN_RIGHT      = $0C    // bits3..2=11b → down-right slope
-.const DIAG_MODE_UP_LEFT     = $01    // stored in box_attribute for up-left
-.const DIAG_MODE_DOWN_RIGHT  = $02    // stored in box_attribute for down-right
+.const DIAG_MODE_UP_LEFT     	 = $01    // stored in box_attribute for up-left
+.const DIAG_MODE_DOWN_RIGHT  	 = $02    // stored in box_attribute for down-right
 .const RET_NO_ADJUST             = $00    // function return: no clamp applied
 .const RET_ADJUSTED              = $01    // function return: clamp applied
 .const ROOM_X_MAX                = $A0    // upper bound used in up-left path
