@@ -63,7 +63,7 @@ right_follow_threshold: .byte $1E
  *   cam_pan_goal                     Target column for PAN mode.
  *   cam_follow_costume_id            Costume whose actor is followed (FOLLOW mode).
  *   actor_for_costume[ ]            Costume→actor slot map (FOLLOW mode).
- *   position_x_for_actor[ ]         Actor X positions (FOLLOW mode).
+ *   actor_x_pos[ ]         Actor X positions (FOLLOW mode).
  *   viewport_left_col             Current left edge (for FOLLOW window tests).
  * Vars:
  *   left_follow_threshold            Columns from left edge that define left window bound.
@@ -143,7 +143,7 @@ mode_follow_actor:
 		ldx     cam_follow_costume_id         // costume id → actor slot map
 		lda     actor_for_costume,x           // A := actor slot for this costume
 		tax
-		lda     position_x_for_actor,x        // A := actor_x (world/room coordinates)
+		lda     actor_x_pos,x        // A := actor_x (world/room coordinates)
 
 		// Left-side test:
 		//   delta_left := actor_x - viewport_left_col
@@ -177,7 +177,7 @@ handle_follow_pan:
 
 		// Decide pan direction from actor vs camera target:
 		//   CMP sets Z=1 when equal, C=1 when actor_x ≥ cam_target_pos
-		lda     position_x_for_actor,x
+		lda     actor_x_pos,x
 		cmp     cam_target_pos
 		bne     pan_toward_actor            // not equal → take one step toward actor
 
@@ -272,7 +272,7 @@ update_visible_span:
  *   2) Look up costume_room_idx[costume]; if it differs from current_room, prepare video
  *      state and load the target room. (Loader ABI expects room index in X.)
  *   3) Resolve the actor slot bound to that costume (actor_for_costume[costume]) and
- *      feed its X coordinate (position_x_for_actor[y]) into cam_seek_to to pan/snap.
+ *      feed its X coordinate (actor_x_pos[y]) into cam_seek_to to pan/snap.
  *   4) Initialize cam_current_pos to a default baseline (prevents initial jitter).
  *   5) For actor slots 3..0: if assigned (costume_for_actor[x] bit7=0), set
  *      animation_state_for_actor[x].bit0 = 1 
@@ -320,7 +320,7 @@ room_is_current:
          *--------------------------------------*/
         ldx     cam_follow_costume_id
         ldy     actor_for_costume,x
-        lda     position_x_for_actor,y
+        lda     actor_x_pos,y
         jsr     cam_seek_to
 
         // Seed the live camera position with a sane default so the first frame is stable
