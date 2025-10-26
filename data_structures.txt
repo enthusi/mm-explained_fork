@@ -1,104 +1,139 @@
-/*
-/*
- ========================================================
- * Room resource layout
-;========================================================
- * Offsets below are relative to (room_base + 4).
- *
- * +$00  width                      	width of the room, expressed in tiles
- * +$01  height                     	height of the room, expressed in tiles (always $11)
- * +$02  video_flag                 	(observed $00)
- * +$03  bg0                        	background color 0
- * +$04  bg1                        	background color 1
- * +$05  bg2                        	background color 2
- * +$06..+$07  tile_definitions_ofs     offset to compressed tile definitions
- * +$08..+$09  tile_matrix_ofs          offset to compressed tile matrix
- * +$0A..+$0B  color_layer_ofs          offset to compressed color layer
- * +$0C..+$0D  mask_layer_ofs           offset to compressed mask layer
- * +$0E..+$0F  mask_indexes_ofs         offset to compressed mask index table
- * +$10        object_count				total # of objects in this resource
- * +$11        bbox_start_ofs           start of boundary boxes
- * +$12        sound_count				total # of sounds in this resource
- * +$13        script_count				total # of scripts in this resource
- * +$14..+$15  exit_script_ofs          offset to exit script
- * +$16..+$17  entry_script_ofs         offset to entry script
- * Variable-length sections follow:
- * 		- obj_gfx_layers_ofs → offsets for objects’ compressed gfx layers (1 per object)
- *		- room_obj_ofs → offsets for each object resource (1 per object)
- *      - sounds section
- *      - scripts section
- *
- * Decompression note:
- *   At the start of each compressed data section, the first 4 bytes (+$00..+$03
- *   relative to that section) form the symbol dictionary required by the decoder.
- *========================================================*/
-/* ---------------------------------------------------------
- * Object resource layout (offsets from object base), bytes
- *
- * +$00..+$01  resource_size		16-bit total size of this object resource, in bytes.
- * +$02  resource_type				expected value: $01 (object).
- * +$03  inventory_index			index into the inventory table when this object resides in inventory.
- * +$04  id_lo                     	object identifier (low byte)
- * +$05  id_hi                     	object identifier (high byte) + mutability (see below)
- * +$06  x_start                   	coordinate of left edge
- * +$07  y_start_flags             	packed:
- *       - bit7      : parent_linkable (1 = may have parent link; 0 = none)
- *       - bits0..6  : coordinate of top edge (0..127)
- * +$08  width                     	object width (game units)
- * +$09  parent_index              	index of parent object (if any)
- * +$0A  x_destination             	target X coordinate
- * +$0B  ydest_prep                	packed:
- *       - bits7..5  : prep_index (“Use” preposition)
- *       - bits4..0  : y_destination (0..31) / 4
- * +$0C  height_active             	packed:
- *       - bits7..3  : height (store/read as A >> 3)
- *       - bits2..0  : destination_active (3-bit flag; nonzero ⇒ active)
- * +$0D  name_ofs                  	offset to object name string
- * +$0E  verb_handlers_ofs         	start of verb-handler offsets
- * 
- * Mutability semantics
- *
- *  - $00 = mutable:
- *      The object can be removed or swapped to an alternate state/variant.
- *      Typically has an associated replacement graphic:
- *        e.g., a door switches to an “opened” sprite; a pickup switches to a
- *        “removed”/empty graphic after collection.
- *
- *  - $01 = immutable:
- *      The object is static; it cannot be removed or swapped into another state.
- *      No replacement graphic is provided—the object is already baked into the
- *      room’s scene graphics.
- *
- * --------------------------------------------------------- */
+================================================================================
+ Room resource layout
+================================================================================
 
-;-------------------------------------------------
-; Object attributes
-;-------------------------------------------------
-;Bit 7 - object requires a render overlay
-;Bit 6 - unused
-;Bit 5 - object removed from room
-;			(if the cursor is clicked inside the object's original location in a room, the object's location is ignored)
-;Bits 3-0 (low nibble) = object owner
-;			Special values for owners
-;				#0F - in a room (no owner, it's in a room)
-;				#0D = limbo
-;				#01-07	- index of kid owner
-;
-;The only ownership that's actually checked in the game scripts is kid's ownership.
-;Objects given to other characters are not "owned" by them.
-;In those cases, the change is handled by changing states of game variables.
-;
-;Some objects are in a "limbo" location before being materialized into the world.
-;For instance, the batteries inside the portable radio.
-;When the radio is picked up, the batteries are put in the limbo.
-;When the radio is opened, the batteries owner changes from limbo to the current kid.
-;
-;Limbo is modeled by setting the owner for the object to #0D.
-;#0D would be the owner index for the Green Tentacle, but in reality, it's limbo.
-;In some cases, scripts set the owner of an object to #00 instead of #0D. It has the same effect.
+  Offsets below are relative to (room_base + 4).
+ 
+  +$00  width                      	width of the room, expressed in tiles
+  +$01  height                     	height of the room, expressed in tiles (always $11)
+  +$02  video_flag                 	(observed $00)
+  +$03  bg0                        	background color 0
+  +$04  bg1                        	background color 1
+  +$05  bg2                        	background color 2
+  +$06..+$07  tile_definitions_ofs     offset to compressed tile definitions
+  +$08..+$09  tile_matrix_ofs          offset to compressed tile matrix
+  +$0A..+$0B  color_layer_ofs          offset to compressed color layer
+  +$0C..+$0D  mask_layer_ofs           offset to compressed mask layer
+  +$0E..+$0F  mask_indexes_ofs         offset to compressed mask index table
+  +$10        object_count				total # of objects in this resource
+  +$11        bbox_start_ofs           start of boundary boxes
+  +$12        sound_count				total # of sounds in this resource
+  +$13        script_count				total # of scripts in this resource
+  +$14..+$15  exit_script_ofs          offset to exit script
+  +$16..+$17  entry_script_ofs         offset to entry script
+  
+  Variable-length sections follow:
+  		- obj_gfx_layers_ofs → offsets for objects’ compressed gfx layers (1 per object)
+ 		- room_obj_ofs → offsets for each object resource (1 per object)
+       - sounds section
+       - scripts section
+ 
+  Decompression note:
+    At the start of each compressed data section, the first 4 bytes (+$00..+$03
+    relative to that section) form the symbol dictionary required by the decoder.
+	
+================================================================================
+ Object resource layout
+================================================================================
+
+  Offsets below are relative to (object_base).
+ 
+  +$00..+$01  resource_size		16-bit total size of this object resource, in bytes.
+  +$02  resource_type				expected value: $01 (object).
+  +$03  inventory_index			index into the inventory table when this object resides in inventory.
+  +$04  id_lo                     	object identifier (low byte)
+  +$05  id_hi                     	object identifier (high byte) + mutability (see below)
+  +$06  x_start                   	coordinate of left edge
+  +$07  y_start_flags             	packed:
+        - bit7      : parent_linkable (1 = may have parent link; 0 = none)
+        - bits0..6  : coordinate of top edge (0..127)
+  +$08  width                     	object width (game units)
+  +$09  parent_index              	index of parent object (if any)
+  +$0A  x_destination             	target X coordinate
+  +$0B  ydest_prep                	packed:
+        - bits7..5  : prep_index (“Use” preposition)
+        - bits4..0  : y_destination (0..31) / 4
+  +$0C  height_active             	packed:
+        - bits7..3  : height (store/read as A >> 3)
+        - bits2..0  : destination_active (3-bit flag; nonzero ⇒ active)
+  +$0D  name_ofs                  	offset to object name string
+  +$0E  verb_handlers_ofs         	start of verb-handler offsets
+  
+  Mutability semantics
+ 
+   - $00 = mutable:
+       The object can be removed or swapped to an alternate state/variant.
+       Typically has an associated replacement graphic:
+         e.g., a door switches to an “opened” sprite; a pickup switches to a
+         “removed”/empty graphic after collection.
+ 
+   - $01 = immutable:
+       The object is static; it cannot be removed or swapped into another state.
+       No replacement graphic is provided—the object is already baked into the
+       room’s scene graphics.
+ 
+================================================================================
+ Walkbox record layout (per box)
+================================================================================
+
+Summary
+	Fixed-order byte fields define a rectangular walk region, plus attributes
+	that optionally encode a diagonal boundary on one side.
+
+Coordinate system
+	- Units: pixels.
+	- Origin at top-left. Y increases downward.
+
+Base pointer
+	- current_box_ptr (ZP) points to the start of the selected walkbox record.
+	- Code derives the record base with get_walkbox_offset(index) → Y = base.
+
+Fields (byte offsets from record base)
+	+$00 : LEFT         left edge X
+	+$01 : RIGHT        right edge X
+	+$02 : TOP          top edge Y
+	+$03 : BOTTOM       bottom edge Y
+	+$04 : ATTR         attribute byte:
+		   bit7 = 1 → diagonal handling enabled
+		   bits6..2 = slope code (masked with $7C)
+		       $08 → up-left slope (left wall slopes up-right)
+		       $0C → down-right slope (right wall slopes down-right)
+		   bits1..0 = not used here (unknown/other flags)
+
+Diagonal handling (when ATTR.bit7 = 1)
+	- Compute dy = candidate_y − TOP.
+	- Read dx = diag_dx_lut[dy] at $1C09.
+	- If code = $08: boundary = RIGHT − dx; clamp when boundary ≥ candidate_x.
+	- If code = $0C: boundary = LEFT  + dx; clamp when boundary ≤ candidate_x.
+
+================================================================================
+ Object attributes
+================================================================================
+
+	Bit 7 - object requires a render overlay
+	Bit 6 - unused
+	Bit 5 - object removed from room
+				(if the cursor is clicked inside the object's original location in a room, the object's location is ignored)
+	Bits 3-0 (low nibble) = object owner
+				Special values for owners
+					#0F - in a room (no owner, it's in a room)
+					#0D = limbo
+					#01-07	- index of kid owner
+
+	The only ownership that's actually checked in the game scripts is kid's ownership.
+	Objects given to other characters are not "owned" by them.
+	In those cases, the change is handled by changing states of game variables.
+
+	Some objects are in a "limbo" location before being materialized into the world.
+	For instance, the batteries inside the portable radio.
+	When the radio is picked up, the batteries are put in the limbo.
+	When the radio is opened, the batteries owner changes from limbo to the current kid.
+
+	Limbo is modeled by setting the owner for the object to #0D.
+	#0D would be the owner index for the Green Tentacle, but in reality, it's limbo.
+	In some cases, scripts set the owner of an object to #00 instead of #0D. It has the same effect.
 
 
-/*
 ================================================================================
 Costume Resource Layout
 ================================================================================
@@ -112,107 +147,108 @@ Costume Resource Layout
           to create a complete full-body motion or stance, such as "walk" or "stand".
 
 ================================================================================
-Header layout (when loaded from disk)
+ Header layout (when loaded from disk)
 ================================================================================
 
-+00..+01 : resource_size
-           16-bit total byte length of this costume resource.
+	+00..+01 : resource_size
+			   16-bit total byte length of this costume resource.
 
-+02      : unused (placeholder for resource_type)
-           Expected value = $00
+	+02      : unused (placeholder for resource_type)
+			   Expected value = $00
 
-+03      : checksum (placeholder for costume_index)
-           
-+04      : ofs_cel_hi_tbl
-           8-bit offset (relative to *gfx base*) to the high-byte table of cel
-           addresses. Subtract 2 from this value to determine the number of cel
-           entries defined for this costume.
+	+03      : checksum (placeholder for costume_index)
+			   
+	+04      : ofs_cel_hi_tbl
+			   8-bit offset (relative to *gfx base*) to the high-byte table of cel
+			   addresses. Subtract 2 from this value to determine the number of cel
+			   entries defined for this costume.
 
-+05..+06 : ofs_cel_seq_tbl
-           16-bit offset (relative to *gfx base*, which begins at offset +$09)
-           to the *cel sequences table*. Each limb’s cel-sequence list
-           starts there.
+	+05..+06 : ofs_cel_seq_tbl
+			   16-bit offset (relative to *gfx base*, which begins at offset +$09)
+			   to the *cel sequences table*. Each limb’s cel-sequence list
+			   starts there.
 
-+07..+08 : ofs_clip_table
-           16-bit offset (relative to *gfx base*) to the *clip table*
-           containing full-body animation definitions.
+	+07..+08 : ofs_clip_table
+			   16-bit offset (relative to *gfx base*) to the *clip table*
+			   containing full-body animation definitions.
 
-Note: +02 and +03 are used as a placeholder and the checksum of the resource
-when stored on disk; overwritten after load
+	Note: +02 and +03 are used as a placeholder and the checksum of the resource
+	when stored on disk; overwritten after load
+	
 --------------------------------------------------------------------------------
-Graphics section (gfx base = +$09)
+ Graphics section (gfx base = +$09)
 --------------------------------------------------------------------------------
-+$09..+$0A : Duplicate metadata - ignore.
+	+$09..+$0A : Duplicate metadata - ignore.
 
-Following tables and data regions appear sequentially:
+	Following tables and data regions appear sequentially:
 
-    [1] Cel offsets (lo/hi tables)
-        - 1 byte per cel, two parallel tables.
-        - Combine to form 16-bit offsets to each cel, relative to the *gfx base*.
+		[1] Cel offsets (lo/hi tables)
+			- 1 byte per cel, two parallel tables.
+			- Combine to form 16-bit offsets to each cel, relative to the *gfx base*.
 
-    [2] Cel index table
-        - 1 byte per entry.
-        - Each entry is a *cel index* pointing into the lo/hi offset tables.
-        - This indirection allows multiple frames to reuse cel graphics.
+		[2] Cel index table
+			- 1 byte per entry.
+			- Each entry is a *cel index* pointing into the lo/hi offset tables.
+			- This indirection allows multiple frames to reuse cel graphics.
 
-    [3] Cel definitions
-        - Raw bitmap data for each cel (cel 0..N–1).
-        - Cel #0 is always an empty cel (no pixel data).
-        - Each cel begins with 6 bytes of metadata followed by pixel data.
+		[3] Cel definitions
+			- Raw bitmap data for each cel (cel 0..N–1).
+			- Cel #0 is always an empty cel (no pixel data).
+			- Each cel begins with 6 bytes of metadata followed by pixel data.
 
-    [4] Cel sequences table
-        - Contains per-limb animation frame lists.
+		[4] Cel sequences table
+			- Contains per-limb animation frame lists.
 
-    [5] Clip table (a.k.a. actor_clips)
-        - Array of 8-byte records; one record = one full-body animation (clip).
-        - Each byte corresponds to one limb:
-        - Each clip selects one cel sequence per limb, optionally mirrored.
-
---------------------------------------------------------------------------------
-Cel sequences table
---------------------------------------------------------------------------------
-Purpose:
-    Defines all animation sequences (cel sequences) available for each of the
-    actor’s 8 limbs.
-
-Structure:
-    - The first 8 bytes are offsets (1 per limb) relative to this table base.
-      Each points to the first cel sequence for that limb.
-
-    - After those offsets, each limb’s cel sequences follow consecutively.
-      Each sequence:
-          * Is a list of cel references ending with $FF.
-          * Contains 1 or more cel references (frames).
-          * Each reference is an offset directly into the cel-index table
-            (not a cel number) to avoid an extra addition at runtime.
-          * Multiple sequences can exist per limb (one for each clip).
-          * $FF marks the end of a sequence.
+		[5] Clip table (a.k.a. actor_clips)
+			- Array of 8-byte records; one record = one full-body animation (clip).
+			- Each byte corresponds to one limb:
+			- Each clip selects one cel sequence per limb, optionally mirrored.
 
 --------------------------------------------------------------------------------
-Clip table
+ Cel sequences table
 --------------------------------------------------------------------------------
-Purpose:
-    Defines full-body animations (clip sets) by specifying which cel sequence
-    each limb should play and whether it should be horizontally flipped.
+	Purpose:
+		Defines all animation sequences (cel sequences) available for each of the
+		actor’s 8 limbs.
 
-Structure:
-    - The table is an array of clip entries.
-    - Each clip entry = 8 bytes (one per limb).
+	Structure:
+		- The first 8 bytes are offsets (1 per limb) relative to this table base.
+		  Each points to the first cel sequence for that limb.
 
-    Each limb entry byte encodes:
-        bit7 : flip flag        (1 = flipped horizontally)
-        bits6..0 : cel sequence index 
-        $FF : limb unused in this clip
-
-    Example:
-        A clip entry might define:
-            Limb0 = $02  → use 3rd cel sequence (no flip)
-            Limb1 = $82  → use 3rd sequence, flipped
-            Limb2 = $FF  → unused
-            ...
+		- After those offsets, each limb’s cel sequences follow consecutively.
+		  Each sequence:
+			  * Is a list of cel references ending with $FF.
+			  * Contains 1 or more cel references (frames).
+			  * Each reference is an offset directly into the cel-index table
+				(not a cel number) to avoid an extra addition at runtime.
+			  * Multiple sequences can exist per limb (one for each clip).
+			  * $FF marks the end of a sequence.
 
 --------------------------------------------------------------------------------
-Runtime usage
+ Clip table
+--------------------------------------------------------------------------------
+	Purpose:
+		Defines full-body animations (clip sets) by specifying which cel sequence
+		each limb should play and whether it should be horizontally flipped.
+
+	Structure:
+		- The table is an array of clip entries.
+		- Each clip entry = 8 bytes (one per limb).
+
+		Each limb entry byte encodes:
+			bit7 : flip flag        (1 = flipped horizontally)
+			bits6..0 : cel sequence index 
+			$FF : limb unused in this clip
+
+		Example:
+			A clip entry might define:
+				Limb0 = $02  → use 3rd cel sequence (no flip)
+				Limb1 = $82  → use 3rd sequence, flipped
+				Limb2 = $FF  → unused
+				...
+
+--------------------------------------------------------------------------------
+ Runtime usage
 --------------------------------------------------------------------------------
     - The engine loads a clip (full-body animation) by reading 8 bytes from
       the clip table.
@@ -618,12 +654,12 @@ Summary:
     uses “bytes per row” and “vertical size” to locate and blit the bitmap.
 
 Layout:
-    +$00 : bytes_per_row       // 0..3; number of data bytes per row
-    +$01 : v_rows              // vertical size in rows
-    +$02 : x_offset            // horizontal draw offset (pixels)
-    +$03 : y_offset            // vertical draw offset (pixels)
-    +$04 : unused              // reserved (currently not consumed)
-    +$05 : y_offset_next       // inter-cel vertical offset (baseline for next cel)
+    +$00 : bytes_per_row        0..3; number of data bytes per row
+    +$01 : v_rows               vertical size in rows
+    +$02 : x_offset             horizontal draw offset (pixels)
+    +$03 : y_offset             vertical draw offset (pixels)
+    +$04 : unused               reserved (currently not consumed)
+    +$05 : y_offset_next        inter-cel vertical offset (baseline for next cel)
     +$06.. : row 0 data
     +...  : row 1 .. row (v_rows-1) data
 
@@ -659,4 +695,4 @@ Usage pattern:
     3) Apply x_offset / y_offset when positioning on screen.
     4) If batching multiple cels vertically, advance by y_offset_next between cels.
 ================================================================================
-*/
+
