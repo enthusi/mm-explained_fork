@@ -332,16 +332,15 @@ Possible mouth state values
 .label position_to_waypoint_x_for_actor = $fd45
 .label position_to_waypoint_y_for_actor = $fd49
 
-//#03 = actor might be obscured by a foreground object
-.label layer_depth_for_actor = $fd18
-.label layer_1_for_actor = $fda0
-.label layer_2_for_actor = $fda4
-.label layer_3_for_actor = $fda8
+.label actor_box_attr = $fd18
+.label actor_box_prog_idx = $fda0
+.label actor_box_facing_override = $fda4
+.label actor_box_fg_masking = $fda8
 
 
 .label actor_destination_box = $fdd5
-.label actor_current_box = $fdcd
-.label actor_last_box = $fdd1
+.label actor_box_cur = $fdcd
+.label actor_box_prev = $fdd1
 .label actor_path_update_flag = $fde1
 .label actor_search_depth       = $FE75
 
@@ -351,22 +350,26 @@ Possible mouth state values
  Actor path variables
 ===========================================================
 */
-.label path_delta_x_direction = $cb58	//#00 = left, #01 = right
-.label path_delta_y_direction = $cb59	//#00 = up, #01 = down	
-.label path_dominant_axis = $cb66	//Which axis of movement is dominant, #00 = horizontal, #01 = vertical
+.label dir_x_bit = $cb58	//#00 = left, #01 = right
+.label dir_y_bit = $cb59	//#00 = up, #01 = down	
+.label dda_dominant_axis = $cb66	//Which axis of movement is dominant, #00 = horizontal, #01 = vertical
 
 //Possible rename: actor_facing_mask
 .label path_direction_for_actor = $fdeb		//#00 = right, #01 = left, #80 = down, #81 = up
 
 .label path_delta_directions_for_actor = $fdef	//#00 = right, #01 = left, #80 = down, #81 = up
-.label path_delta_dominant_for_actor = $fdf3	//The dominant delta value (the largest between the deltas for the 2 axis)
-.label path_delta_x_step_for_actor = $fdf7		//Value of delta x step (how much to move along this axis on each step to match the rate of motion on the other axis)
-.label path_delta_y_step_for_actor = $fdfb		//Value of delta y step
-.label path_delta_y_for_actor = $fdff			//Absolute value of delta between current position and path destination (Y axis)
-.label path_delta_x_for_actor = $fe03			//Absolute value of delta between current position and path destination (X axis)
-.label path_delta_x_direction_for_actor = $fe07 //#00 = left, #01 = right
-.label path_delta_y_direction_for_actor = $fe0b //#00 = up, #01 = down	
-
+.label actor_dda_dom_abs = $fdf3	//The dominant delta value (the largest between the deltas for the 2 axis)
+.label actor_dx_accum = $fdf7		//Value of delta x step (how much to move along this axis on each step to match the rate of motion on the other axis)
+.label actor_dy_accum = $fdfb		//Value of delta y step
+.label actor_dy_abs = $fdff			//Absolute value of delta between current position and path destination (Y axis)
+.label actor_dx_abs = $fe03			//Absolute value of delta between current position and path destination (X axis)
+.label actor_dir_x_bit = $fe07 //#00 = left, #01 = right
+.label actor_dir_y_bit = $fe0b //#00 = up, #01 = down	
+.label saved_actor_x_pos = $cb5a
+.label saved_actor_y_pos = $cb5b
+.label saved_actor_box_attr = $cb5d
+.label saved_actor_box_cur = $cb5e
+.label saved_actor_path_update_flag = $cb5f
 
 /*
 ===========================================================
