@@ -265,7 +265,7 @@ update_visible_span:
  *   Flags                 Updated per last loads/stores/branches (no contract).
  *   Globals updated       cam_follow_costume_id, cam_mode, cam_current_pos;
  *                         cam_pan_goal (via cam_seek_to); may change current_room (via load_room);
- *                         animation_state_for_actor[0..3] bit0 set for assigned actors.
+ *                         actor_animation_state[0..3] bit0 set for assigned actors.
  *
  * Description:
  *   1) Save the costume id and set camera mode to FOLLOW.
@@ -275,7 +275,7 @@ update_visible_span:
  *      feed its X coordinate (actor_x_pos[y]) into cam_seek_to to pan/snap.
  *   4) Initialize cam_current_pos to a default baseline (prevents initial jitter).
  *   5) For actor slots 3..0: if assigned (costume_for_actor[x] bit7=0), set
- *      animation_state_for_actor[x].bit0 = 1 
+ *      actor_animation_state[x].bit0 = 1 
  *   Notes:
  *     - actor_for_costume/costume_for_actor use bit7=1 as “unassigned” sentinel.
  *     - cam_seek_to performs the thresholded pan/snap decision (≤ CAM_PAN_THRESHOLD pans).
@@ -339,9 +339,9 @@ set_actor_animation_state:
         lda     costume_for_actor,x
         bmi     next_actor_slot                 // unassigned slot → skip
 
-        lda     animation_state_for_actor,x     // set “advance/refresh” flag
+        lda     actor_animation_state,x     // set “advance/refresh” flag
         ora     #$01                            // bit0 := 1
-        sta     animation_state_for_actor,x
+        sta     actor_animation_state,x
 
 next_actor_slot:
         dex
