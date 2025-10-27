@@ -3,20 +3,22 @@
 
 .const PTR_NULL = $00
 
-/*------------------------------------------------------------
-; Block header layout (4-byte header + payload)
-;------------------------------------------------------------
+/*
+------------------------------------------------------------
+ Block header layout (4-byte header + payload)
+------------------------------------------------------------
 */
 .const MEM_HDR_SIZE_LO = $00   // Low byte of block size (total, including header)
 .const MEM_HDR_SIZE_HI = $01   // High byte of block size
 .const MEM_HDR_NEXT_LO = $02   // Low byte of pointer to next block
 .const MEM_HDR_NEXT_HI = $03   // High byte of pointer to next block
 .const MEM_HDR_LEN     = $04   // Total header length (size + next = 4 bytes)
-/*------------------------------------------------------------
-; Each allocated or free block begins with this header.
-; Size fields store the block’s total length in bytes.
-; “Next” fields link to the next block in memory order.
-;------------------------------------------------------------
+/*
+------------------------------------------------------------
+ Each allocated or free block begins with this header.
+ Size fields store the block’s total length in bytes.
+ “Next” fields link to the next block in memory order.
+------------------------------------------------------------
 */
 .const DISK_ERROR_MSG 			    = $3B81
 .const SIDE_ID_MSG        = $3B59      // “Put in side # and push joystick button.” (in RAM)
@@ -73,3 +75,9 @@
 .const ACTOR_IS_INVISIBLE = $80
 .const ACTOR_IS_FROZEN = $40
 
+
+
+.const MOTION_STOPPED_CODE          = $02    // motion state value: actor stopped
+.const ANIM_FLAG_REFRESH            = $20    // animation flag: refresh required
+.const ANIM_FLAG_NEEDS_DRAW         = $01    // animation flag: actor must be drawn
+.const ANIM_FLAGS_REFRESH_DRAW      = $21    // combined flags (#$20 | #$01)
