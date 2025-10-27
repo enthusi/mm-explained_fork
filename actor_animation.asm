@@ -185,9 +185,9 @@ move_animation_state_if_needed:
         cmp     limb_frame_idx,x
         beq     exit_3
         ldx     actor
-        lda     animation_state_for_actor,x
+        lda     actor_animation_state,x
         ora     #$01
-        sta     animation_state_for_actor,x
+        sta     actor_animation_state,x
 
 exit_3:
         rts
@@ -205,7 +205,7 @@ Description:
     - If desired equals current, do nothing.
     - Otherwise: copy desired base cel and argument to “current”, recompute
       current cel, reset the limb’s animation frame to 0, and mark animation
-      as needing refresh (set bit0 in animation_state_for_actor).
+      as needing refresh (set bit0 in actor_animation_state).
 ================================================================================
 */
 * = $258E
@@ -251,9 +251,9 @@ assign_new_base_cel:
         lda     #$00
         sta     limb_frame_idx,x
         ldx     actor
-        lda     animation_state_for_actor,x
+        lda     actor_animation_state,x
         ora     #$01
-        sta     animation_state_for_actor,x
+        sta     actor_animation_state,x
         rts
 
 /*
