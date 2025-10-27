@@ -87,7 +87,7 @@ Detailed explanation
 Inputs and state
 
 	* Destination: (actor_x_dest, actor_y_dest).
-	* Current walkbox index and base pointer: actor_current_box, current_box_ptr.
+	* Current walkbox index and base pointer: actor_box_cur, current_box_ptr.
 	* Discovered path: actor_discovered_boxes with per-actor stride =
 	  DISCOVERED_LIST_STRIDE; terminal depth in search_depth_tbl.
 	* Relation codes: REL_* from classify_box_relation (bit1=axis, bit0=near-origin).
@@ -102,7 +102,7 @@ High-level flow
 
 	   * Use final BFS depth (depth-1) to read the last box id from the discovered
 		 list. Compute target_box_ptr = base + (tgt_box_idx * BOX_RECORD_SIZE).
-	   * Compute current_box_ptr = base + (actor_current_box * BOX_RECORD_SIZE).
+	   * Compute current_box_ptr = base + (actor_box_cur * BOX_RECORD_SIZE).
 	3. Classify current vs target boxes with classify_box_relation:
 
 	   * REL_BELOW/REL_ABOVE/REL_LEFT/REL_RIGHT (bit1 denotes axis).
@@ -610,17 +610,17 @@ Arguments
 Vars/State
 	actor                         current actor index (0..N), read
 	nearest_box_idx               box index selected by snap step, read
-	actor_current_box             table [X] → actor’s current walkbox, read
+	actor_box_cur             table [X] → actor’s current walkbox, read
 	actor_destination_box         table [X] → actor’s destination walkbox, write
 	actor_discovered_boxes        per-actor BFS scratch (stride = 16), write
 	actor_path_update_flag        table [X] → path-needs-update flag, write
-	actor_last_box                table [X] → last-known box snapshot, write
+	actor_box_prev                table [X] → last-known box snapshot, write
 
 Global Outputs
 	actor_destination_box[X]             updated to snapped target box (if any)
 	actor_discovered_boxes[base+0]       cleared to NO_BOX_FOUND when skipping build
 	actor_path_update_flag[X]            set to PATH_UPDATE_REQUIRED
-	actor_last_box[X]                    snapshot of actor_current_box[X]
+	actor_box_prev[X]                    snapshot of actor_box_cur[X]
 
 Returns
 	None
@@ -636,7 +636,7 @@ Description
 	  • Invokes full path build from current to destination box.
 	* In all non-early-exit cases:
 	  • Sets PATH_UPDATE_REQUIRED for the actor.
-	  • Snapshots actor_current_box into actor_last_box.
+	  • Snapshots actor_box_cur into actor_box_prev.
 
 Notes
 	* Calls: snap_coords_to_walkbox, build_walkbox_path.
@@ -665,7 +665,7 @@ save_destination_box:
         // 
         // If destination box equals current box → skip path build.
         // 
-        cmp     actor_current_box,x
+        cmp     actor_box_cur,x
         beq     clear_path_buffer
 
         // 
@@ -696,8 +696,8 @@ mark_path_update_and_snapshot:
         // 
         lda     #PATH_UPDATE_REQUIRED
         sta     actor_path_update_flag,x
-        lda     actor_current_box,x
-        sta     actor_last_box,x
+        lda     actor_box_cur,x
+        sta     actor_box_prev,x
         rts
 /*
 ================================================================================
@@ -786,14 +786,14 @@ Global Inputs
 	actor                          current actor index (mirrored in X)
 	actor_search_depth[]           final BFS depth for actor (or $FF if none)
 	actor_discovered_boxes[]       per-actor discovered boxes (stride = 16)
-	actor_current_box[]            actor’s current walkbox index
+	actor_box_cur[]            actor’s current walkbox index
 	actor_x/y_dest[]			   desired destination in pixels
 	actor_x/y_pos[]				   actor’s current position in pixels
 	current_box_ptr                base pointer to walkbox table {L,R,T,B}
 
 Global Outputs
 	actor_tgt_waypoint_x/y[] 		waypoint X/Y emitted for this step
-	actor_last_box[]               snapshot of last box used
+	actor_box_prev[]               snapshot of last box used
 	actor_motion_state[]           set to 1 on overlap early-exit
 	actor_search_depth[]           reset to $FF on overlap early-exit
 
@@ -876,7 +876,7 @@ index_from_depth:
 		// Fetch box id at that depth; snapshot last box and cache index
 		// 
 		lda     actor_discovered_boxes,y
-		sta     actor_last_box,x
+		sta     actor_box_prev,x
 		sta     tgt_box_idx
 
 		// 
@@ -921,11 +921,11 @@ point_to_current_box:
 		// 
 		// current_box_ptr := base + (current_idx * 5)
 		// 
-		lda     actor_current_box,x
+		lda     actor_box_cur,x
 		asl
 		asl
 		clc
-		adc     actor_current_box,x
+		adc     actor_box_cur,x
 		adc     <current_box_ptr
 		sta     <current_box_ptr
 		bcc     classify_box_relation_2
