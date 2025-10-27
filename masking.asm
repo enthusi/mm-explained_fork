@@ -199,7 +199,7 @@ compute_row_ptrs:
 		// ----------------------------------------------
         ldx     y_coordinate                 // X := current scanline (pixels)
         cpx     y_top_limit                  // compare against upper bound
-        beq     @exit                        // equal → no more rows to process
+        beq     exit_mask_actor                        // equal → no more rows to process
 
 
 		// ----------------------------------------------
@@ -246,7 +246,7 @@ scanline_loop_apply_mask:
 		// ----------------------------------------------
         ldx     y_coordinate                 // X := current scanline (pixels)
         cpx     y_top_limit                  // compare against upper limit
-        bcc     @exit                        // y < top → no more rows to process
+        bcc     exit_mask_actor                        // y < top → no more rows to process
 
 
 		// ----------------------------------------------
@@ -270,7 +270,7 @@ scanline_loop_apply_mask:
 		// ----------------------------------------------
         jmp     compute_row_ptrs
 
-@exit:
+exit_mask_actor:
         rts                                 
 		
 /*
