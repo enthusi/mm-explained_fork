@@ -304,7 +304,7 @@ Summary
     destination boxes using a bounded depth-first search with backtracking.
 
 Arguments
-    actor_current_box
+    actor_box_cur
     actor_destination_box
 
 Global Inputs
@@ -378,7 +378,7 @@ init_search_state:
         lda     #INIT_RETURN_SENTINEL
         sta     return_value
 
-        lda     actor_current_box,x
+        lda     actor_box_cur,x
         sta     current_box
 
         lda     actor_destination_box,x
