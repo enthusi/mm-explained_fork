@@ -16,11 +16,11 @@
 .label vertical_offset 	  = $35
 .label current_sprite_y_pos = $3f
 
-/*;Values observed
-;#00	Scroll right
-;#FF	Scroll left
-;#C8	No scroll
-;#01	Room scene rendering starts (by opening the "lens" outwards)*/
+/*Values observed
+#00	Scroll right
+#FF	Scroll left
+#C8	No scroll
+#01	Room scene rendering starts (by opening the "lens" outwards)*/
 .label screen_scroll_flag = $4e
 
 .label cel_seq_tbl           = $84    // cel sequence table for current actor
@@ -179,10 +179,10 @@
 .label rsrc_released_flag = $FE4A
 .label saved_script_index  = $FEA6    	// external flag controlling delay init
 
-/*;Lights_status values
-;#00	environment lights off, flashlights off
-;#01	environment lights off, flashlight on
-;#02	environment lights on*/
+/*Lights_status values
+#00	environment lights off, flashlights off
+#01	environment lights off, flashlight on
+#02	environment lights on*/
 .label lights_status = $FEAB
 
 .label room_for_character = $FEFC
@@ -192,8 +192,11 @@
 						//Once disk_ensure_side is called, this parameter is set and execution will not resume until the proper disk side is inserted
 						
 						
-.label costume_y_destination = $ff15
-.label costume_x_destination = $ff2e
+.label costume_dest_y = $ff15
+.label costume_dest_x = $ff2e
+.label dest_x = $fde6
+.label dest_y = $fde7
+
 .label game_paused = $1679
 
 .label current_room_rsrc = $715B	//Used by draw_room_scene to ensure residence of the room resources
@@ -234,20 +237,20 @@
 
 // ===========================================================
 /*
-;------------------------------------------------
-; Costume animation settings
-;
-;Bit 7 represents whether a costume animates its mouth when speaking (0 = it animates)
-;Bit 6 represents the same thing, but it's used in a different routine (print_msg_for_actor)
-;Bits 5-0 represent the sound to be played when walking (footsteps)
-;Note that Jeff has #00 as he's barefoot
-;
-;00 - Has speaking animation, no sound played when walking
-;06 - Has speaking animation, sound 6 played when walking (footsteps)
-;46 - No speaking animation, sound 6 played when walking (footsteps)
-;C0 - No speaking animation, no sound played when walking
-;FF - No speaking animation, sound #3F played when walking
-;------------------------------------------------
+------------------------------------------------
+ Costume animation settings
+
+Bit 7 represents whether a costume animates its mouth when speaking (0 = it animates)
+Bit 6 represents the same thing, but it's used in a different routine (print_msg_for_actor)
+Bits 5-0 represent the sound to be played when walking (footsteps)
+Note that Jeff has #00 as he's barefoot
+
+00 - Has speaking animation, no sound played when walking
+06 - Has speaking animation, sound 6 played when walking (footsteps)
+46 - No speaking animation, sound 6 played when walking (footsteps)
+C0 - No speaking animation, no sound played when walking
+FF - No speaking animation, sound #3F played when walking
+------------------------------------------------
 */
 .label costume_anim_attrs = $f0d9
 .label character_sprite_y = $fc37
@@ -260,29 +263,57 @@
 .label clip_loop_cnt = $fde8 			// Current clip loop counter
 .label actor_clip_loop_cnt = $fd0a		// Clip loop counter, for actor
 // ===========================================================
-.label path_direction_for_actor = $fdeb		//;#00 = right, #01 = left, #80 = down, #81 = up
-// ===========================================================
-.label actor_current_clip = $fd02		//;The current animation set for the actor
-.label actor_target_clip = $fd06		//;The desired animation set for the actor
-.label costume_clip_set = $ff47		/*;The animation set for a costume, limited to the standing range of sets (#04-#07)
-										;This is used by scripts to determine the direction a costume is facing 
-										;See the details for "animation sets"*/
+.label actor_current_clip = $fd02		//The current animation set for the actor
+.label actor_target_clip = $fd06		//The desired animation set for the actor
+.label costume_clip_set = $ff47		/*The animation set for a costume, limited to the standing range of sets (#04-#07)
+										This is used by scripts to determine the direction a costume is facing 
+										See the details for "animation sets"*/
 .label actor_motion_state        = $FD68  // per-actor motion state
-.label animation_state_for_actor = $FD97
-/*;Possible mouth state values
-;---------------------------
-;When an actor is speaking, the main_loop will automatically switch between
-; the speaking states (01 and FF), thus opening and closing the mouth.
-;
-;#00	closed	(default)
-;#01	speaking and closed	
-;#FF	speaking and open
-;#80	permanently open	(will stay open until explicitly closed)*/
+
+/*
+===========================================================
+Animation state for actor
+===========================================================
+Only 2 bits are used, bit 5 (#20) and bit 0 (#01).
+
+	Bit 5 		set - draw the actor in the main loop
+				clear - ignore actor in main loop
+	Bit 0 		set - refresh actor's visibility and graphics
+
+ A refresh is triggered when:
+	-the actor gets behind a foreground layer
+	-an animation frame of a limb has changed
+	-a limb base cell has changed
+	-the animation is reset
+	-a camera is fixed on a new actor
+	-the animation counter has not expired
+
+ An actor being updated in the main loop is triggered when:
+	-the animation is reset
+	-the actor is stopped
+	-the animation counter has not expired
+*/
+.label actor_animation_state = $FD97
+
+/*
+===========================================================
+Mouth state for actor
+===========================================================
+When an actor is speaking, the main_loop will automatically switch between
+ the speaking states (01 and FF), thus opening and closing the mouth.
+
+Possible mouth state values
+---------------------------
+	#00		closed	(default)
+	#01		speaking and closed	
+	#FF		speaking and open
+	#80		permanently open	(will stay open until explicitly closed)
+*/
 .label actor_mouth_state = $fe9d	
 
 
 // ===========================================================
-.label sprite_buffer = $fd14		//;Sprite buffer index (#00 or #01)
+.label sprite_buffer = $fd14		//Sprite buffer index (#00 or #01)
 .label actor_tile_x_coordinate            = $FD20  // Input: actor tile X column
 .label character_sprite_x_lo = $fd1c
 .label character_sprite_x_hi = $fd39
@@ -290,8 +321,8 @@
 .label actor_sprite_x_lo = $fd60
 .label character_sprite_bkg_colors = $f0c0	  //Background colors for each character
 // ===========================================================
-.label active_waypoint_x_for_actor = $fd25
-.label active_waypoint_y_for_actor = $fd2d
+.label actor_active_wpt_x = $fd25
+.label actor_active_wpt_y = $fd2d
 .label actor_tgt_waypoint_x = $fd29
 .label actor_tgt_waypoint_y = $fd31
 .label actor_y_pos = $fd3d
@@ -301,8 +332,11 @@
 .label position_to_waypoint_x_for_actor = $fd45
 .label position_to_waypoint_y_for_actor = $fd49
 
-//;#03 = actor might be obscured by a foreground object
+//#03 = actor might be obscured by a foreground object
 .label layer_depth_for_actor = $fd18
+.label layer_1_for_actor = $fda0
+.label layer_2_for_actor = $fda4
+.label layer_3_for_actor = $fda8
 
 
 .label actor_destination_box = $fdd5
@@ -310,6 +344,28 @@
 .label actor_last_box = $fdd1
 .label actor_path_update_flag = $fde1
 .label actor_search_depth       = $FE75
+
+
+/*
+===========================================================
+ Actor path variables
+===========================================================
+*/
+.label path_delta_x_direction = $cb58	//#00 = left, #01 = right
+.label path_delta_y_direction = $cb59	//#00 = up, #01 = down	
+.label path_dominant_axis = $cb66	//Which axis of movement is dominant, #00 = horizontal, #01 = vertical
+
+//Possible rename: actor_facing_mask
+.label path_direction_for_actor = $fdeb		//#00 = right, #01 = left, #80 = down, #81 = up
+
+.label path_delta_directions_for_actor = $fdef	//#00 = right, #01 = left, #80 = down, #81 = up
+.label path_delta_dominant_for_actor = $fdf3	//The dominant delta value (the largest between the deltas for the 2 axis)
+.label path_delta_x_step_for_actor = $fdf7		//Value of delta x step (how much to move along this axis on each step to match the rate of motion on the other axis)
+.label path_delta_y_step_for_actor = $fdfb		//Value of delta y step
+.label path_delta_y_for_actor = $fdff			//Absolute value of delta between current position and path destination (Y axis)
+.label path_delta_x_for_actor = $fe03			//Absolute value of delta between current position and path destination (X axis)
+.label path_delta_x_direction_for_actor = $fe07 //#00 = left, #01 = right
+.label path_delta_y_direction_for_actor = $fe0b //#00 = up, #01 = down	
 
 
 /*
@@ -333,7 +389,7 @@ They were definitely intended as debugging aids.
 .label var_music_playback_in_progress = $ff6f	//This would be var[8]
 .label var_active_verb = $ff70				//This would be var[9]
 .label var_message_length = $ff71			//This would be var[10]
-//;FF72 and onwards are no longer used as debugging variables
+//FF72 and onwards are no longer used as debugging variables
 .label kid_ids = $ffc8
 .label first_kid_id = $FFC8
 .label second_kid_id = $FFC9
