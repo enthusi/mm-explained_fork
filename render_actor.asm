@@ -265,7 +265,7 @@ Global Inputs
 	limb_cel_list_for_actor_{lo,hi}[]  	limb→cel list pointer per actor
 	actor_ofs_cel_hi_tbl[]				cel HI-table offset per actor
 	actor_vars[]                        flags (bit7 = invisible)
-	actor_layer_depth[]             0 = in front, ≠0 = behind FG layer
+	actor_box_attr[]             0 = in front, ≠0 = behind FG layer
 	character_sprite_bkg_colors[]       per-costume background color
 	mask_bit_patterns                   global mask pattern table
 
@@ -295,7 +295,7 @@ Description
 	- Zero vertical_offset (and unused $FD15).
 	- If actor visible (actor_vars[active_costume] & ACTOR_IS_INVISIBLE == 0):
 		• draw_actor_limbs
-		• If behind FG layer (actor_layer_depth[actor] ≠ 0):
+		• If behind FG layer (actor_box_attr[actor] ≠ 0):
 	mask_actor_with_foreground_layer
 	Then blit staged rows: blit_sprite_vthird.
 	- Commit sprite X and background color for this sprite slot.
@@ -416,7 +416,7 @@ draw_actor:
         // If behind foreground, apply mask
         // ----------------------------------------
         ldx     actor
-        lda     actor_layer_depth,x
+        lda     actor_box_attr,x
         beq     copy_rows
         jsr     mask_actor_with_foreground_layer
 
