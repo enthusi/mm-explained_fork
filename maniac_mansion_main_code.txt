@@ -856,10 +856,10 @@ total_objects_in_room = $715c
 ;===========================================================
 ;Room objects variables
 ;===========================================================
-object_x_start = $715d
-object_y_start = $7179
-object_width = $7195
-object_height = $71b1
+obj_left_col_tbl = $715d
+obj_top_row_tbl = $7179
+obj_width_tbl = $7195
+obj_height_tbl = $71b1
 object_x_destination = $71cd
 object_y_destination = $71e9
 object_destination_active = $7205
@@ -3645,7 +3645,7 @@ walk_to_indirect_object:
 .C:0c5e  8E 4F FE    STX destination_obj_lo
 .C:0c61  8D 50 FE    STA destination_obj_hi
 ;Set the destination for approaching the indirect object
-.C:0c64  20 32 0F    JSR set_destination_for_entity
+.C:0c64  20 32 0F    JSR route_destination_by_entity_type
 ;Copy the sentence index (still in .Y) to the destination entity 
 .C:0c67  8C 51 FE    STY destination_entity
 ;--------------------------------------------------
@@ -3697,7 +3697,7 @@ walk_to_direct_object:
 .C:0ca6  8E 4F FE    STX destination_obj_lo
 .C:0ca9  8D 50 FE    STA destination_obj_hi
 ;Set the destination for approaching the direct object
-.C:0cac  20 32 0F    JSR set_destination_for_entity
+.C:0cac  20 32 0F    JSR route_destination_by_entity_type
 ;Copy the sentence index (still in .Y) to the destination entity 
 .C:0caf  8C 51 FE    STY destination_entity
 ;--------------------------------------------------
@@ -3757,7 +3757,7 @@ approach_entity:
 .C:0cf5  AE 4F FE    LDX destination_obj_lo
 .C:0cf8  AD 50 FE    LDA destination_obj_hi
 .C:0cfb  AC 51 FE    LDY destination_entity
-.C:0cfe  20 32 0F    JSR set_destination_for_entity
+.C:0cfe  20 32 0F    JSR route_destination_by_entity_type
 ;Get the actor for the current kid
 .C:0d01  AE 67 FF    LDX current_kid
 .C:0d04  BD 57 FE    LDA actor_for_costume,X
@@ -3798,7 +3798,7 @@ check_y_threshold:
 ;If we're closer than the threshold, setup the animation set facing the entity
 walk_to_destination:
 ;Setup the animation set facing the entity
-.C:0d30  20 49 0D    JSR setup_animation_facing_destination
+.C:0d30  20 49 0D    JSR apply_facing_toward_destination
 ;We have made contact with the entity, mark that situation to trigger any queued action (#FE)
 .C:0d33  A9 FE       LDA #$FE
 .C:0d35  8D 51 FE    STA destination_entity
@@ -3822,9 +3822,9 @@ destination_obj_hi = $fe50
 destination_obj_lo = $fe4f
 walking_actor_animation_set = $0fc8
 
-setup_animation_facing_destination:
+apply_facing_toward_destination:
 ;Get the animation set for the destination object (facing the correct side)
-.C:0d49  20 82 0D    JSR get_animation_set_for_destination_object
+.C:0d49  20 82 0D    JSR select_facing_clip_for_destination
 .C:0d4c  8D C8 0F    STA walking_actor_animation_set
 .C:0d4f  8D E9 FD    STA target_clip_id
 ;Set animation argument to #00 (don't loop)
@@ -3877,7 +3877,7 @@ exit:
 destination_obj_hi = $fe50
 destination_obj_lo = $fe4f
 
-get_animation_set_for_destination_object:
+select_facing_clip_for_destination:
 .C:0d82  AD 50 FE    LDA destination_obj_hi
 .C:0d85  C9 02       CMP #$02
 .C:0d87  D0 28       BNE is_not_a_character
@@ -4282,19 +4282,19 @@ queue_pickup:
 ; the destination entity is an object or an actor.
 ;===========================================
 temp_y = $0fc9
-set_destination_for_entity:
+route_destination_by_entity_type:
 .C:0f32  8C C9 0F    STY temp_y
 ;Is the entity type an object or an actor?
 .C:0f35  C9 02       CMP #$02
-.C:0f37  D0 3C       BNE set_destination_for_object
+.C:0f37  D0 3C       BNE set_actor_destination_to_object
 ;-------------------
 ; Actor
 ;-------------------
 ;Set position offsets (used when approaching an actor, check the routine below)
 .C:0f39  A9 04       LDA #$04
-.C:0f3b  8D 65 0F    STA inlined_positive_destination_offset
+.C:0f3b  8D 65 0F    STA actor_approach_x_offset_pos_byte
 .C:0f3e  A9 FC       LDA #$FC
-.C:0f40  8D 6A 0F    STA inlined_negative_destination_offset
+.C:0f40  8D 6A 0F    STA actor_approach_x_offset_neg_byte
 .C:0f43  AC 67 FF    LDY current_kid
 ;Fall through
 ;===========================================
@@ -4310,7 +4310,7 @@ set_destination_for_entity:
 ;	Arguments:	.X	destination costume
 ;				.Y	costume being moved
 ;===========================================
-set_destination_for_actor:
+set_actor_destination_adjacent_to_actor:
 ;Load actors' indexes
 .C:0f46  B9 57 FE    LDA actor_for_costume,Y
 .C:0f49  A8          TAY
@@ -4326,12 +4326,12 @@ set_destination_for_actor:
 .C:0f5d  CD E6 FD    CMP dest_x
 .C:0f60  90 07       BCC position_is_le
 .C:0f62  F0 05       BEQ position_is_le
-inlined_positive_destination_offset = $0f65
+actor_approach_x_offset_pos_byte = $0f65
 ;Set the positive "approach" offset
 .C:0f64  A9 04       LDA #$04
 .C:0f66  4C 6B 0F    JMP add_offset_to_destination
 position_is_le:
-inlined_negative_destination_offset = $0f6a
+actor_approach_x_offset_neg_byte = $0f6a
 ;Set the negative "approach" offset
 .C:0f69  A9 FC       LDA #$FC
 add_offset_to_destination:
@@ -4339,14 +4339,14 @@ add_offset_to_destination:
 .C:0f6c  6D E6 FD    ADC dest_x
 .C:0f6f  8D E6 FD    STA dest_x
 ;Adjust target coordinate based on boundary boxes
-.C:0f72  4C A3 0F    JMP adjust_by_boundary
+.C:0f72  4C A3 0F    JMP snap_destination_to_walkbox
 ;===========================================
 ; Set destination for object
 ;
 ;	Arguments:	.X	actor to be moved
 ;				.Y	destination object
 ;===========================================
-set_destination_for_object:
+set_actor_destination_to_object:
 ;Is there an explicit destination coordinate for the object?
 .C:0f75  B9 05 72    LDA object_destination_active,Y
 .C:0f78  D0 1B       BNE explicit_destination
@@ -4357,23 +4357,23 @@ set_destination_for_object:
 ;---------------------------------------------------
 no_explicit_destination:
 ;Compute object middle X position = width/2 + x_start
-.C:0f7a  B9 95 71    LDA object_width,Y
+.C:0f7a  B9 95 71    LDA obj_width_tbl,Y
 .C:0f7d  4A          LSR A
 .C:0f7e  18          CLC
-.C:0f7f  79 5D 71    ADC object_x_start,Y
+.C:0f7f  79 5D 71    ADC obj_left_col_tbl,Y
 ;Set as X destination
 .C:0f82  8D E6 FD    STA dest_x
 ;Compute object middle Y position = height/2 + y_start
-.C:0f85  B9 B1 71    LDA object_height,Y
+.C:0f85  B9 B1 71    LDA obj_height_tbl,Y
 .C:0f88  4A          LSR A
 .C:0f89  18          CLC
-.C:0f8a  79 79 71    ADC object_y_start,Y
+.C:0f8a  79 79 71    ADC obj_top_row_tbl,Y
 ;Normalize
 .C:0f8d  0A          ASL A
 .C:0f8e  0A          ASL A
 ;Set as Y destination
 .C:0f8f  8D E7 FD    STA dest_y
-.C:0f92  4C A3 0F    JMP adjust_by_boundary
+.C:0f92  4C A3 0F    JMP snap_destination_to_walkbox
 ;---------------------------------------------------
 ;There's an explicit destination set of coordinates, use them
 ;---------------------------------------------------
@@ -4384,14 +4384,14 @@ explicit_destination:
 .C:0f9e  0A          ASL A
 .C:0f9f  0A          ASL A
 .C:0fa0  8D E7 FD    STA dest_y
-;Fall through to adjust_by_boundary
+;Fall through to snap_destination_to_walkbox
 ;===========================================
 ; Adjust the target coordinates based on boundary boxes
 ;===========================================
 box_check_x = $fe72
 box_check_y = $fe73
 
-adjust_by_boundary:
+snap_destination_to_walkbox:
 ;Copy the destination coordinates into box_check_x/y
 .C:0fa3  AD E6 FD    LDA dest_x
 .C:0fa6  8D 72 FE    STA box_check_x
@@ -9555,7 +9555,7 @@ exit:
 unused_var_1 = $26f7
 unused_var_2 = $26f8
 
-put_actor_at_destination:
+teleport_costume_to_destination:
 ;Copy the room for this costume
 .C:269c  AE 30 FC    LDX active_costume
 .C:269f  AD EA FD    LDA room_destination
@@ -13044,11 +13044,11 @@ load_object_data:
 ;Copy object's width
 .C:36bc  A0 08       LDY #$08
 .C:36be  B1 15       LDA (read_ptr_lo),Y
-.C:36c0  9D 95 71    STA object_width,X
+.C:36c0  9D 95 71    STA obj_width_tbl,X
 ;Copy object's X left coordinate
 .C:36c3  A0 06       LDY #$06
 .C:36c5  B1 15       LDA (read_ptr_lo),Y
-.C:36c7  9D 5D 71    STA object_x_start,X
+.C:36c7  9D 5D 71    STA obj_left_col_tbl,X
 ;Set object's "parent object possible" flag based on bit 7 of offset #07
 .C:36ca  A0 07       LDY #$07
 .C:36cc  B1 15       LDA (read_ptr_lo),Y
@@ -13062,7 +13062,7 @@ set_result:
 ;Copy object's Y top coordinate from bits 6-0 of offset #07
 .C:36da  B1 15       LDA (read_ptr_lo),Y
 .C:36dc  29 7F       AND #$7F
-.C:36de  9D 79 71    STA object_y_start,X
+.C:36de  9D 79 71    STA obj_top_row_tbl,X
 ;Copy object's "parent object" index
 .C:36e1  A0 09       LDY #$09
 .C:36e3  B1 15       LDA (read_ptr_lo),Y
@@ -13087,7 +13087,7 @@ set_result:
 .C:3703  4A          LSR A
 .C:3704  4A          LSR A
 .C:3705  4A          LSR A
-.C:3706  9D B1 71    STA object_height,X
+.C:3706  9D B1 71    STA obj_height_tbl,X
 ;Continue with next object
 .C:3709  E6 1B       INC object_counter
 .C:370b  C6 1D       DEC total_objects_copy
@@ -14211,7 +14211,7 @@ check_cursor_contained_within_object:
 ; within the object's X coordinates (start/end)
 ;-------------------------------------------
 ;Check cursor X position vs. object X start
-.C:3cf4  BD 5D 71    LDA object_x_start,X
+.C:3cf4  BD 5D 71    LDA obj_left_col_tbl,X
 .C:3cf7  C5 17       CMP cursor_x
 ;Are they equal? Check if there's width overlap
 .C:3cf9  F0 02       BEQ check_cursor_contained_in_width
@@ -14220,7 +14220,7 @@ check_cursor_contained_within_object:
 check_cursor_contained_in_width:
 ;Add object height to object's X start to compute object's X end
 .C:3cfd  18          CLC
-.C:3cfe  7D 95 71    ADC object_width,X
+.C:3cfe  7D 95 71    ADC obj_width_tbl,X
 ;Check cursor X position vs. object's X end
 .C:3d01  C5 17       CMP cursor_x
 ;Cursor X > Object X end? - if so, next object
@@ -14233,7 +14233,7 @@ check_cursor_contained_in_width:
 ; within the object's Y coordinates (start/end)
 ;-------------------------------------------
 ;Check cursor Y position vs. object Y start
-.C:3d07  BD 79 71    LDA object_y_start,X
+.C:3d07  BD 79 71    LDA obj_top_row_tbl,X
 .C:3d0a  C5 15       CMP cursor_y
 ;Are they equal? Check if there's height overlap
 .C:3d0c  F0 02       BEQ check_cursor_contained_in_height
@@ -14242,7 +14242,7 @@ check_cursor_contained_in_width:
 check_cursor_contained_in_height:
 ;Add object height to object's Y start to compute object's Y end
 .C:3d10  18          CLC
-.C:3d11  7D B1 71    ADC object_height,X
+.C:3d11  7D B1 71    ADC obj_height_tbl,X
 ;Check cursor Y position vs. object's Y end
 .C:3d14  C5 15       CMP cursor_y
 ;Cursor Y > Object Y end? - if so, next object
@@ -14281,14 +14281,14 @@ draw_visible_part_of_object:
 ;------------------------------------------
 ;Is the object X start <= room_scene_right_edge?
 ;If not, exit
-.C:3d2b  BD 5D 71    LDA object_x_start,X
+.C:3d2b  BD 5D 71    LDA obj_left_col_tbl,X
 .C:3d2e  CD 65 06    CMP room_scene_right_edge
 .C:3d31  F0 02       BEQ x_start_le_right_thr
 .C:3d33  B0 11       BCS exit_2
 x_start_le_right_thr:
 ;Add the width to get object X end in .A
 .C:3d35  18          CLC
-.C:3d36  7D 95 71    ADC object_width,X
+.C:3d36  7D 95 71    ADC obj_width_tbl,X
 ;Is the object X end > room_scene_right_edge?
 ;If not, exit
 .C:3d39  CD 65 06    CMP room_scene_right_edge
@@ -14306,14 +14306,14 @@ check_positive:
 ;------------------------------------------
 ;Is the object X start <= room_scene_left_edge?
 ;If not, exit
-.C:3d4b  BD 5D 71    LDA object_x_start,X
+.C:3d4b  BD 5D 71    LDA obj_left_col_tbl,X
 .C:3d4e  CD 64 06    CMP room_scene_left_edge
 .C:3d51  F0 02       BEQ x_start_le_left_thr
 .C:3d53  B0 11       BCS exit_3
 x_start_le_left_thr:
 ;Add the width to get object X end in .A
 .C:3d55  18          CLC
-.C:3d56  7D 95 71    ADC object_width,X
+.C:3d56  7D 95 71    ADC obj_width_tbl,X
 ;Is the object X end > room_scene_left_edge?
 ;If not, exit
 .C:3d59  CD 64 06    CMP room_scene_left_edge
@@ -14329,14 +14329,14 @@ exit_3:
 no_scroll:
 ;Is the object X start <= room_scene_right_edge?
 ;If not, exit
-.C:3d69  BD 5D 71    LDA object_x_start,X
+.C:3d69  BD 5D 71    LDA obj_left_col_tbl,X
 .C:3d6c  CD 65 06    CMP room_scene_right_edge
 .C:3d6f  F0 02       BEQ x_start_le_right_thr_2
 .C:3d71  B0 11       BCS exit
 x_start_le_right_thr_2:
 ;Add the width to get object X end in .A
 .C:3d73  18          CLC
-.C:3d74  7D 95 71    ADC object_width,X
+.C:3d74  7D 95 71    ADC obj_width_tbl,X
 ;Is the object X end > room_scene_right_edge?
 ;If not, exit
 .C:3d77  CD 64 06    CMP room_scene_left_edge
@@ -14370,13 +14370,13 @@ room_resource = $c3
 
 decompress_object_gfx:
 ;Load the necessary object dimensions
-.C:3d87  BD 5D 71    LDA object_x_start,X
+.C:3d87  BD 5D 71    LDA obj_left_col_tbl,X
 .C:3d8a  8D 9C 3E    STA obj_left_edge
-.C:3d8d  BD 79 71    LDA object_y_start,X
+.C:3d8d  BD 79 71    LDA obj_top_row_tbl,X
 .C:3d90  8D 9D 3E    STA obj_top_row
-.C:3d93  BD 95 71    LDA object_width,X
+.C:3d93  BD 95 71    LDA obj_width_tbl,X
 .C:3d96  8D 9E 3E    STA obj_width
-.C:3d99  BD B1 71    LDA object_height,X
+.C:3d99  BD B1 71    LDA obj_height_tbl,X
 .C:3d9c  8D 9F 3E    STA total_rows
 ;------------------------------------------
 ;Get the offset to the object's compressed graphic data
@@ -22838,13 +22838,13 @@ entry:
 .C:635f  4C 8E 63    JMP exit
 object_found:
 ;Set the destination based on the object's position
-.C:6362  20 75 0F    JSR set_destination_for_object
+.C:6362  20 75 0F    JSR set_actor_destination_to_object
 ;Move the current kid to the position
 .C:6365  AD 67 FF    LDA current_kid
 .C:6368  8D 30 FC    STA active_costume
 .C:636b  AD 49 71    LDA current_room
 .C:636e  8D EA FD    STA room_destination
-.C:6371  20 9C 26    JSR put_actor_at_destination
+.C:6371  20 9C 26    JSR teleport_costume_to_destination
 ;Set the camera position at the kid's position
 .C:6374  AE 67 FF    LDX current_kid
 .C:6377  BD 57 FE    LDA actor_for_costume,X
@@ -23526,7 +23526,7 @@ common:
 .C:6668  C0 FF       CPY #$FF
 .C:666a  F0 06       BEQ exit
 ;Item is available, compute destination
-.C:666c  20 75 0F    JSR set_destination_for_object
+.C:666c  20 75 0F    JSR set_actor_destination_to_object
 .C:666f  20 1F 1C    JSR set_actor_destination
 exit:
 .C:6672  60          RTS
@@ -23556,7 +23556,7 @@ common:
 .C:6688  C0 FF       CPY #$FF
 .C:668a  F0 06       BEQ default_destination
 ;Item is available, compute destination
-.C:668c  20 75 0F    JSR set_destination_for_object
+.C:668c  20 75 0F    JSR set_actor_destination_to_object
 .C:668f  4C 9C 66    JMP move_actor
 default_destination:
 .C:6692  A9 1E       LDA #$1E
@@ -23569,7 +23569,7 @@ move_actor:
 .C:669f  BD FC FE    LDA costume_room_idx,X
 .C:66a2  8D EA FD    STA room_destination
 ;Move actor to destination
-.C:66a5  20 9C 26    JSR put_actor_at_destination
+.C:66a5  20 9C 26    JSR teleport_costume_to_destination
 .C:66a8  20 B4 5D    JSR handle_script_relocation
 .C:66ab  60          RTS
 ;===========================================
@@ -23606,7 +23606,7 @@ both_actors_assigned:
 .C:66d2  69 01       ADC #$01
 .C:66d4  8D 6A 0F    STA inlined_negative_walking_offset
 ;Set destination for actor
-.C:66d7  20 46 0F    JSR set_destination_for_actor
+.C:66d7  20 46 0F    JSR set_actor_destination_adjacent_to_actor
 ;Walk actor to destination
 .C:66da  20 1F 1C    JSR set_actor_destination
 .C:66dd  60          RTS
@@ -23642,7 +23642,7 @@ both_actors_assigned:
 .C:6709  BD FC FE    LDA costume_room_idx,X
 .C:670c  8D EA FD    STA room_destination
 ;Move actor to destination
-.C:670f  20 9C 26    JSR put_actor_at_destination
+.C:670f  20 9C 26    JSR teleport_costume_to_destination
 .C:6712  20 B4 5D    JSR handle_script_relocation
 .C:6715  60          RTS
 ;===========================================
