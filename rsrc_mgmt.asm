@@ -1441,9 +1441,9 @@ scan_for_evict:
         // Reset default destination for evicted costume (spawn/parking coords).
         // Units are engine-specific (pixels/tiles); X and Y set to sane defaults.
         lda #COSTUME_DFLT_X_DEST                          // default X destination
-        sta costume_x_destination,x
+        sta costume_dest_x,x
         lda #COSTUME_DFLT_Y_DEST                          // default Y destination
-        sta costume_y_destination,x
+        sta costume_dest_y,x
 
         // Park the costume in the holding room ($2C) and return.
         // This de-associates it from the active room until explicitly reloaded.
