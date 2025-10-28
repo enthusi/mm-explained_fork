@@ -333,7 +333,7 @@ Possible mouth state values
 .label position_to_waypoint_y_for_actor = $fd49
 
 .label actor_box_attr = $fd18
-.label actor_box_prog_idx = $fda0
+.label actor_box_handler_idx = $fda0
 .label actor_box_facing_override = $fda4
 .label actor_box_fg_masking = $fda8
 

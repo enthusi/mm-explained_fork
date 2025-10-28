@@ -2,6 +2,9 @@
 
 
 .const PTR_NULL = $00
+.const MSK_LOW_NIBBLE              = $0F    // Mask: keep low 4 bits
+.const MSK_HIGH_NIBBLE             = $F0    // Mask: keep high 4 bits
+.const MSK_LOW7BITS                = $7F    // Mask: clear bit7 (keep bits 0..6)
 
 /*
 ------------------------------------------------------------
