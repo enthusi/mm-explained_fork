@@ -84,3 +84,11 @@
 .const ANIM_FLAG_REFRESH            = $20    // animation flag: refresh required
 .const ANIM_FLAG_NEEDS_DRAW         = $01    // animation flag: actor must be drawn
 .const ANIM_FLAGS_REFRESH_DRAW      = $21    // combined flags (#$20 | #$01)
+
+.const OBJ_TYPE_ACTOR            = $02    // destination_obj_hi value for “actor”
+.const COSTUME_ID_PLANT          = $13    // costume id for plant (skip mirroring)
+
+.const DIRECTION_LEFT  			= $01     	// left movement direction code
+.const DIRECTION_RIGHT 			= $00     	// right movement direction code
+.const DIRECTION_DOWN  			= $80     	// down movement direction code
+.const DIRECTION_UP    			= $81     	// up movement direction code

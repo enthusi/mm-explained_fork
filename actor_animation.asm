@@ -32,12 +32,6 @@ Terminology
 .const CLIP_SET_RIGHT   		= $05     	// standing-right clip id
 .const CLIP_SET_DOWN    		= $06     	// standing-down clip id
 .const CLIP_SET_UP      		= $07     	// standing-up clip id
-.const DIRECTION_LEFT  			= $01     	// left movement direction code
-.const DIRECTION_RIGHT 			= $00     	// right movement direction code
-.const DIRECTION_DOWN  			= $80     	// down movement direction code
-.const DIRECTION_UP    			= $81     	// up movement direction code
-//.const SPEAKING_DISABLED_BIT     = $80   // costume_anim_attrs: bit7=1 → no speaking anim
-//.const MOUTH_OPEN_BIT            = $80   // actor_mouth_state: bit7=1 → mouth open
 .const CLIP_OFS_MOUTH_CLOSED  	= $10   	// add for closed-mouth variant
 .const CLIP_OFS_MOUTH_OPEN    	= $0C   	// add for open-mouth variant
 .const CLIP_OFS_DIR_LEFT 		= $00   
