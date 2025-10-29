@@ -211,8 +211,8 @@
 .label actor_for_costume = $fe57		//Bit 7 set - actor moving, clear - not moving
 .label active_costume = $fc30
 // ===========================================================
-.label rsrc_ptr_for_active_costume_hi = $7893
-.label rsrc_ptr_for_active_costume_lo = $78ac
+.label active_costume_rsrc_hi = $7893
+.label active_costume_rsrc_lo = $78ac
 .label actor_gfx_base_lo = $cb42				// Base address of the graphics section, for each actor (low byte)
 .label actor_gfx_base_hi = $cb46				// Base address of the graphics section, for each actor (hi byte)
 .label actor_ofs_cel_hi_tbl = $cb4a				// 8-bit offset (relative to *gfx base*) to the high-byte table of cel addresses, for each actor
@@ -220,6 +220,7 @@
 .label actor_clip_tbl_hi = $fe94				// Base address of clip table, for each actor (hi byte)
 .label actor_cel_seq_tbl_lo = $cb3a				// Base address of cel sequence table, for each actor (low byte)
 .label actor_cel_seq_tbl_hi = $cb3e				// Base address of cel sequence table, for each actor (hi byte)
+.label target_clip_id            = $FDE9  // Target clip id (per-actor intent)
 // ===========================================================
 .label current_limb = $fc41
 .label actor_limbs_ofs = $fc36
@@ -256,6 +257,8 @@ FF - No speaking animation, sound #3F played when walking
 .label character_sprite_y = $fc37
 .label sprite_vertical_offset = $cb55
 .label actor_sprite_y_extent = $FD4F
+.label relative_sprite_index = $fd78
+.label relative_sprite_for_actor = $fd7c
 .label fifth_byte = $fc03
 .label intercel_vertical_displacement = $fc04
 .label actor_sprite_base = $fc2e						//Base address of the current sprite being drawn in memory
@@ -265,10 +268,12 @@ FF - No speaking animation, sound #3F played when walking
 // ===========================================================
 .label actor_current_clip = $fd02		//The current animation set for the actor
 .label actor_target_clip = $fd06		//The desired animation set for the actor
+.label actor_anim_counter = $fd93
 .label costume_clip_set = $ff47		/*The animation set for a costume, limited to the standing range of sets (#04-#07)
 										This is used by scripts to determine the direction a costume is facing 
 										See the details for "animation sets"*/
 .label actor_motion_state        = $FD68  // per-actor motion state
+.label actor_visible = $fd6f
 
 /*
 ===========================================================
@@ -315,8 +320,8 @@ Possible mouth state values
 // ===========================================================
 .label sprite_buffer = $fd14		//Sprite buffer index (#00 or #01)
 .label actor_tile_x_coordinate            = $FD20  // Input: actor tile X column
-.label character_sprite_x_lo = $fd1c
-.label character_sprite_x_hi = $fd39
+.label actor_tgt_sprite_x_lo = $fd1c
+.label actor_tgt_sprite_x_hi = $fd39
 .label actor_sprite_x_hi = $fd58
 .label actor_sprite_x_lo = $fd60
 .label character_sprite_bkg_colors = $f0c0	  //Background colors for each character
@@ -413,13 +418,10 @@ They were definitely intended as debugging aids.
 //Placeholders for routines not modularized yet
 .label print_message_wait_for_button = $0 // UI: print message pointed by msg_to_print_ptr, wait for button
 .label release_one_costume = $0
-.label unassign_actor_for_costume = $0
 .label reset_sentence_queue_system = $0
 .label execute_room_exit_script = $0
 .label execute_room_entry_script = $0
 .label open_shutter_flag = $0
-.label clear_actors_visibility_in_scene = $0
 .label init_sprites_sound = $0
 .label raster_setup = $0
-.label assign_available_actor = $0
 .label prepare_video_for_new_room = $0
