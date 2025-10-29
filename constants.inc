@@ -49,7 +49,7 @@
 .const SCROLL_LEFT_FLAG     = $FF   // screen_scroll_flag: left scroll
 .const SCROLL_INIT_FLAG     = $01   // screen_scroll_flag: initial full draw
 
-// --- I/O mapping presets for $01 (processor_port_register) ---
+// --- I/O mapping presets for $01 (cpu_port) ---
 .const MAP_IO_OFF                 	= $24     // Map RAM under I/O/KERNAL as needed by this program
 .const MAP_IO_ON                   = $25     // Map I/O visible at $D000–$DFFF during IEC transfers
 
