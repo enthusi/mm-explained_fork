@@ -3,6 +3,14 @@
 .label fill_dest_ptr            = $19   // 16-bit destination pointer (lo at $19, hi at $1A); advanced after each store
 .label fill_byte_cnt            = $1b   // 16-bit remaining byte count (lo at $1B, hi at $1C); decremented to zero
 
+/*
+Video memory mode values
+	#00		Do nothing
+	#01		Character base: D800	Video matrix: C800	Sprite shape: CBF8
+	#02		Character base: D800	Video matrix: CC00	Sprite shape: CFF8
+	#03		Copy color data only
+*/
+.label video_memory_mode = $22
 .label frame_buffer = $23
 .label frame_buffer_base = $24		//Base address of frame buffer
 
@@ -16,21 +24,28 @@
 .label vertical_offset 	  = $35
 .label current_sprite_y_pos = $3f
 
-/*Values observed
+/*
+Values observed
 #00	Scroll right
 #FF	Scroll left
 #C8	No scroll
-#01	Room scene rendering starts (by opening the "lens" outwards)*/
+#01	Room scene rendering starts (by opening the "lens" outwards)
+*/
 .label screen_scroll_flag = $4e
 
 .label cel_seq_tbl           = $84    // cel sequence table for current actor
+.label vic_memory_layout = $be
 
 .label actor = $D8
 .label print_msg_ptr	   = $DA	// ZP: 16-bit pointer to message to be printed (print_message_wait_for_button)
+.label irq_handler1_section_entry_count = $d9
 .label debug_error_code = $DC
 .label irq_lock = $e3
+.label sprite_shape_data_ptr = $8c
+.label video_update_signal = $8e			// synchronization flag - NOT to be confused with vsync
 .label room_bg0_shadow = $8f
 .label room_bg1_shadow = $90
+
 
 /*
 ===========================================================
@@ -84,7 +99,20 @@
 .label sprite_shape_8 = $1668
 
 .label sprite_shape_cursor = $1669
-.label sprite_shapes_set_to_use = $166a
+.label sprite_shapeset = $166a
+.label irq_handler1_video_processed_signal = $166b
+//===========================================================
+//Cursor variables
+.label hide_cursor = $166c	//#01 if cursor needs to be hidden, #00 otherwise
+
+//Each time irq_handler1 is executed, the wait counter is decremented
+//As the start value for the counter is #06, the cursor color will be updated 
+//every 6 executions of irq_handler1
+.label cursor_color_wait_counter = $166d
+.label cursor_color_index = $166e
+//The reset value for the wait counter (#06)
+.label cursor_color_wait_start = $166f
+.label first_cursor_color_index = $1670
 
 // ===========================================================
 
@@ -100,6 +128,11 @@
 .label cam_pan_goal = $066c				//Position to pan camera to
 .label actor_follow_needs_pan = $066d		
 // ===========================================================
+.label color_ram_data_copied = $1677 //Boolean
+.label general_semaphore = $1678 //Semaphore used to control access to a section in irq_handler1
+.label game_paused = $1679	//#01 if game is paused, #00 otherwise
+
+
 
 // --- Copy/write byte-count accumulator ---
 .label disk_copy_count_lo 			= $463C // 16-bit count of bytes to copy/write: low byte
@@ -197,8 +230,6 @@
 .label costume_dest_x = $ff2e
 .label dest_x = $fde6
 .label dest_y = $fde7
-
-.label game_paused = $1679
 
 .label current_room_rsrc = $715B	//Used by draw_room_scene to ensure residence of the room resources
 
@@ -398,7 +429,7 @@ They were definitely intended as debugging aids.
 .label var_music_playback_in_progress = $ff6f	//This would be var[8]
 .label var_active_verb = $ff70				//This would be var[9]
 .label var_message_length = $ff71			//This would be var[10]
-//FF72 and onwards are no longer used as debugging variables
+//FF72 and onwards are  no longer used as debugging variables
 .label kid_ids = $ffc8
 .label first_kid_id = $FFC8
 .label second_kid_id = $FFC9
@@ -415,6 +446,21 @@ They were definitely intended as debugging aids.
  Bit 0 - is strong (after doing exercise with the Hunk-o-matic)
 */
 .label actor_vars = $fee3
+
+.label room_scene_clicked = $fd77
+.label click_trigger_sentence = $fe8e
+//Control mode values
+//#00 - cutscene
+//#01 - push only, verb forcefully set to "push" (no walking possible) - used for keypad interaction and start screen
+//#02 - normal play, disable kid change via Function keys
+//#03 - normal play, enable kid change via Function keys
+.label control_mode = $fea8
+.label saved_control_mode = $fea9
+
+//Sound
+.label new_sound_instructions_allowed = $fe71	//00 = not allowed, nonzero = allowed
+.label music_to_start_ptr = $fea1
+.label music_index = $fea3
 
 //Placeholders for routines not modularized yet
 .label print_message_wait_for_button = $0 // UI: print message pointed by msg_to_print_ptr, wait for button
