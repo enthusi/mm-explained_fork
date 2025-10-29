@@ -2,10 +2,20 @@
 
 .label cpu_port = $0001		// CPU I/O port: map I/O/KERNAL/BASIC
 
-.label vic_border_color  = $D020
-.label vic_bg0_reg = $D021
+//======================================
+//Screen control register 1 bits meaning
+//======================================
+//	Bit 7		High bit of raster compare register (D012)
+//	Bit 6		Enable extended color mode
+//	Bit 5 		Enable bitmap graphics mode
+//	Bit 4		Blank entire screen to same color as border (0 = blank)
+//	Bit 3		1 = 25 row display, 0 = 24 rows
+//	Bits 0-2	Fine scroll display vertically by X scan lines (0-7)
 .label vic_screen_control_reg_1 = $D011    // Vertical scroll + 25/24 row select + raster high bit + display enable
 .label vic_raster_line_reg = $D012    // Current raster line (0–255); low 8 bits of beam position
+.label vic_memory_layout_reg = $D018    // Screen and character memory base select (video matrix + char set)
+.label vic_border_color  = $D020
+.label vic_bg0_reg = $D021
 
 
 .label cia1_pra        	= $DC00   	// PRA — CIA1 Port A data register
