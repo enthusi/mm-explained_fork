@@ -4,6 +4,9 @@
 
 .label vic_border_color  = $D020
 .label vic_bg0_reg = $D021
+.label vic_screen_control_reg_1 = $D011    // Vertical scroll + 25/24 row select + raster high bit + display enable
+.label vic_raster_line_reg = $D012    // Current raster line (0–255); low 8 bits of beam position
+
 
 .label cia1_pra        	= $DC00   	// PRA — CIA1 Port A data register
                                 /*
