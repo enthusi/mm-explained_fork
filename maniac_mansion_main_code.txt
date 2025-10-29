@@ -523,8 +523,9 @@ processor_port_register = $01
 ;	#01		Character base: D800	Video matrix: C800	Sprite shape: CBF8
 ;	#02		Character base: D800	Video matrix: CC00	Sprite shape: CFF8
 ;	#03		Copy color data only
-video_memory_mode = $22
+video_setup_mode = $22
 ;This variable (frame_buffer) can only take values of #01 or #02, it's just the index
+;#01 - frame_buffer_base = CC28, #02 = C828 (yes, they are not in numerical order)
 frame_buffer = $23
 frame_buffer_base = $24		;Base address of frame buffer
 processor_port_reg_copy = $26
@@ -564,7 +565,7 @@ rebuild_action_sentence = $95
 raster_setup_needed = $96
 voice_read_ptr = $ba
 sound_read_ptr = $bc
-vic_memory_layout = $be
+vic_memory_layout_shadow = $be
 
 ;Possible values: 
 ;#00 (entering reset_talking)
@@ -581,7 +582,7 @@ debug_error_code = $dc
 random_1 = $dd
 random_2 = $de
 random_3 = $df
-irq_lock = $e3
+irq_handler1_entry_lock = $e3
 
 decomp_dict4 = $0100
 ;Base address for message bar source buffers
@@ -655,7 +656,7 @@ sprite_shape_7 = $1667
 sprite_shape_8 = $1668
 ;===========================================================
 sprite_shape_cursor = $1669
-sprite_shapes_set_to_use = $166a
+target_sprite_shapeset = $166a
 irq_handler1_video_processed_signal = $166b
 
 ;===========================================================
@@ -1117,7 +1118,7 @@ vic_screen_control2_reg = $d016
 ;Values used throughout the game for this register
 ;--------------------------------------
 ;
-; vic_memory_layout ($BE) 
+; vic_memory_layout_shadow ($BE) 
 ;	Possible values: #18, #1C, #26, #36
 ;(irq_handler3 & init_memory_sound_and_video) - can take values of #26 or #36
 ; #3E (irq_handler17 & print_message_wait_for_button)
@@ -1149,7 +1150,7 @@ vic_screen_control2_reg = $d016
 ; For video matrix:
 ; 	First 1024 bytes are screen codes for characters
 ;	Last 8 bytes are pointers to 64-byte blocks for sprites shape data
-vic_memory_control_register = $d018
+vic_memory_layout_reg = $d018
 vic_irq_flag_register = $d019
 vic_irq_mask_register = $d01a
 vic_sprite_hor_expansion_reg = $d01d
@@ -2137,7 +2138,7 @@ update_actors:
 .C:05be  AD 14 FD    LDA sprite_bank_sel
 .C:05c1  18          CLC
 .C:05c2  69 01       ADC #$01
-.C:05c4  8D 6A 16    STA sprite_shapes_set_to_use
+.C:05c4  8D 6A 16    STA target_sprite_shapeset
 ;--------------------------------------------------
 ; Shutter effect check and execution
 ;--------------------------------------------------
@@ -2198,7 +2199,7 @@ flashlight_coords_changed:
 .C:0610  20 7F 32    JSR draw_flashlight_area
 ;Set video memory mode to only copy color data
 .C:0613  A9 03       LDA #$03
-.C:0615  85 22       STA video_memory_mode
+.C:0615  85 22       STA video_setup_mode
 ;--------------------------------------------------
 ; Synchronization point
 ;--------------------------------------------------
@@ -2474,7 +2475,7 @@ switch_to_frame_buffer_2:
 .C:0761  85 25       STA >frame_buffer_base
 ;Set video memory mode #02 (CC00 base)
 .C:0763  A9 02       LDA #$02
-.C:0765  85 22       STA video_memory_mode
+.C:0765  85 22       STA video_setup_mode
 ;Set frame buffer to #02
 .C:0767  85 23       STA frame_buffer
 .C:0769  4C 7A 07    JMP exit
@@ -2486,7 +2487,7 @@ switch_to_frame_buffer_1:
 .C:0772  85 25       STA >frame_buffer_base
 ;Set video memory mode #01 (C800 base)
 .C:0774  A9 01       LDA #$01
-.C:0776  85 22       STA video_memory_mode
+.C:0776  85 22       STA video_setup_mode
 ;Set frame buffer to #01
 .C:0778  85 23       STA frame_buffer
 exit:
@@ -4758,11 +4759,11 @@ irq_handler3:
 .C:11e6  EA          NOP
 .C:11e7  EA          NOP
 ;Load current memory layout into .Y
-.C:11e8  A4 BE       LDY vic_memory_layout
+.C:11e8  A4 BE       LDY vic_memory_layout_shadow
 ;Load value in .A for multicolor text mode
 .C:11ea  A9 18       LDA #$18	
 ;Set the current multicolor memory layout for the VIC-II
-.C:11ec  8C 18 D0    STY vic_memory_control_register
+.C:11ec  8C 18 D0    STY vic_memory_layout_reg
 ;Set Multicolor on, 40 columns, horizontal fine scroll 0
 .C:11ef  8D 16 D0    STA vic_screen_control2_reg
 ;------------------------------------------------
@@ -5525,7 +5526,7 @@ irq_handler17:
 .C:1621  EA          NOP
 ;Set character base address: F800 (regular text characters)
 ;Set video matrix: CC00
-.C:1622  8D 18 D0    STA vic_memory_control_register
+.C:1622  8D 18 D0    STA vic_memory_layout_reg
 ;Set Multicolor off, 40 columns, horizontal fine scroll 1
 .C:1625  8C 16 D0    STY vic_screen_control2_reg
 ;------------------------------------------------
@@ -5580,12 +5581,12 @@ irq_handler1:
 .C:1682  A0 25       LDY #$25
 .C:1684  84 01       STY processor_port_register
 ;Check if irq lock is clear - if so, continue
-.C:1686  A5 E3       LDA irq_lock
+.C:1686  A5 E3       LDA irq_handler1_entry_lock
 .C:1688  F0 07       BEQ entry_enabled
 ;IRQ lock is set - clear it and return
 ;Another part of the code was waiting for this lock to be cleared
 .C:168a  A9 00       LDA #$00
-.C:168c  85 E3       STA irq_lock
+.C:168c  85 E3       STA irq_handler1_entry_lock
 .C:168e  4C 4B 18    JMP exit
 ;--------------------------------------------------
 entry_enabled:
@@ -5616,7 +5617,7 @@ signal_clear:
 ;Video update signal is set
 signal_set:
 ;Do we have to switch the sprite shapes set?
-.C:16ad  AD 6A 16    LDA sprite_shapes_set_to_use
+.C:16ad  AD 6A 16    LDA target_sprite_shapeset
 .C:16b0  D0 03       BNE check_sprites_shapes_set
 ;If not, continue with preparing the next frame IRQ handler
 .C:16b2  4C 59 17    JMP prepare_next_frame_handler
@@ -5695,13 +5696,13 @@ update_sprites_0_to_3_positions:
 ;--------------------------------------------------
 ;We switched sprite shapes, so clear this flag
 .C:1754  A9 00       LDA #$00
-.C:1756  8D 6A 16    STA sprite_shapes_set_to_use
+.C:1756  8D 6A 16    STA target_sprite_shapeset
 prepare_next_frame_handler:
 ;Update all sprites' X hi byte and set up the next IRQ handler as irq_handler2
 .C:1759  20 EF 0F    JSR update_sprites_x_hi_and_chain_handlers
 .C:175c  58          CLI
 ;--------------------------------------------------
-;Switch (video_memory_mode)
+;Switch (video_setup_mode)
 ;
 ; #00	do nothing
 ; #01	set D800/C800/CBF8 as dot-date/video matrix/sprite shape base addresses
@@ -5710,12 +5711,12 @@ prepare_next_frame_handler:
 ;			and copy color data
 ; #03	just copy color data
 ;--------------------------------------------------
-.C:175d  A5 22       LDA video_memory_mode
+.C:175d  A5 22       LDA video_setup_mode
 .C:175f  F0 37       BEQ video_update_finished
 .C:1761  C9 03       CMP #$03
 .C:1763  D0 06       BNE check_01
 ;--------------------------------------------------
-; video_memory_mode == #03
+; video_setup_mode == #03
 ;--------------------------------------------------
 case_03:
 ;Just copy color data, don't change base addresses
@@ -5726,14 +5727,14 @@ check_01:
 .C:176b  C9 01       CMP #$01
 .C:176d  D0 12       BNE case_02
 ;--------------------------------------------------
-; video_memory_mode == #01
+; video_setup_mode == #01
 ;--------------------------------------------------
 case_01:
 ;Set character dot-data base address: D800
 ;Set video matrix base address: C800
 ;Sprite shape data starts at CBF8
 .C:176f  A9 26       LDA #$26
-.C:1771  85 BE       STA vic_memory_layout
+.C:1771  85 BE       STA vic_memory_layout_shadow
 .C:1773  A9 F8       LDA #$F8
 .C:1775  85 8C       STA <sprite_shape_data_ptr
 .C:1777  A9 CB       LDA #$CB
@@ -5741,14 +5742,14 @@ case_01:
 .C:177b  20 60 18    JSR copy_color_ram
 .C:177e  4C 90 17    JMP video_memory_layout_complete
 ;--------------------------------------------------
-; video_memory_mode == #02
+; video_setup_mode == #02
 ;--------------------------------------------------
 case_02:
 ;Set character dot-data base address: D800
 ;Set video matrix base address: CC00
 ;Sprite shape data starts at CFF8
 .C:1781  A9 36       LDA #$36
-.C:1783  85 BE       STA vic_memory_layout
+.C:1783  85 BE       STA vic_memory_layout_shadow
 .C:1785  A9 F8       LDA #$F8
 .C:1787  85 8C       STA <sprite_shape_data_ptr
 .C:1789  A9 CF       LDA #$CF
@@ -5759,9 +5760,9 @@ video_memory_layout_complete:
 ;Copy the room's bkg color - not sure why this is done
 .C:1790  A5 8F       LDA room_bg0_shadow
 .C:1792  85 90       STA room_bkg_color_copy_1
-;Reset video_memory_mode to #00
+;Reset video_setup_mode to #00
 .C:1794  A9 00       LDA #$00
-.C:1796  85 22       STA video_memory_mode
+.C:1796  85 22       STA video_setup_mode
 ;--------------------------------------------------
 video_update_finished:
 ;Clear video update synchronization signal
@@ -12482,9 +12483,9 @@ check_raster_setup_needed:
 ;Wait for irq_handler1 to be executed at least once
 ;Set the synchronization flag and wait for the IRQ handler to clear it
 .C:33ee  A9 01       LDA #$01
-.C:33f0  85 E3       STA irq_lock
+.C:33f0  85 E3       STA irq_handler1_entry_lock
 wait_for_irq_handler_entry:
-.C:33f2  A5 E3       LDA irq_lock
+.C:33f2  A5 E3       LDA irq_handler1_entry_lock
 .C:33f4  D0 FC       BNE wait_for_irq_handler_entry
 ;At this point, we're sure the IRQ handler has just exited
 ;Disable interrupts
@@ -13894,7 +13895,7 @@ print_message_wait_for_button:
 ;Load value in .Y for normal text mode
 .C:3b25  A9 3E       LDA #$3E		
 .C:3b27  A0 09       LDY #$09		
-.C:3b29  8D 18 D0    STA vic_memory_control_register
+.C:3b29  8D 18 D0    STA vic_memory_layout_reg
 .C:3b2c  8C 16 D0    STY vic_screen_control2_reg
 clear_msg_bar_text_2:
 .C:3b2f  20 57 28    JSR clear_msg_bar_text
@@ -21585,7 +21586,7 @@ exit:
 ; Clears the scene area in video memory.
 ;
 ; There are two main base addresses used for video matrix data: C800 and CC00.
-; See video_memory_mode description for details.
+; See video_setup_mode description for details.
 ; 
 ; The first #27 bytes are used for the message bar.
 ; Offsets #28-3D0 cover the scene area (where the game's graphics are displayed)
@@ -24919,7 +24920,7 @@ init_memory_sound_and_video:
 .C:8305  20 18 85    JSR clear_gfx_memory	
 .C:8308  20 67 84    JSR clear_zero_page_vars
 .C:830b  20 72 84    JSR clear_game_and_engine_vars ;Also clears CAD0-CB90
-.C:830e  20 0E 85    JSR init_video_memory_mode_and_fd77	;Set video_memory_mode = #00 and room_scene_clicked to #01
+.C:830e  20 0E 85    JSR init_video_setup_mode_and_fd77	;Set video_setup_mode = #00 and room_scene_clicked to #01
 .C:8311  20 18 85    JSR clear_gfx_memory
 .C:8314  20 BA 84    JSR setup_border_and_sprite_colors
 .C:8317  20 D2 84    JSR clear_sprite_regs_and_sprite_memory
@@ -24959,8 +24960,8 @@ init_memory_sound_and_video:
 ;Load value in .A for D800/C800 VIC memory layout (dot-data/video matrix)
 .C:8346  A9 26       LDA #$26		
 .C:8348  85 21       STA $21
-.C:834a  85 BE       STA vic_memory_layout
-.C:834c  8D 18 D0    STA vic_memory_control_register
+.C:834a  85 BE       STA vic_memory_layout_shadow
+.C:834c  8D 18 D0    STA vic_memory_layout_reg
 ;Set initial frame buffer to #01
 .C:834f  A9 01       LDA #$01
 .C:8351  85 23       STA frame_buffer
@@ -25287,11 +25288,11 @@ clear_sprite_regs_and_sprite_memory:
 .C:850a  20 8A 84    JSR mem_fill_x_3
 .C:850d  60          RTS
 ;===========================================
-; video_memory_mode = #00, room_scene_clicked = #01
+; video_setup_mode = #00, room_scene_clicked = #01
 ;===========================================
-init_video_memory_mode_and_fd77:
+init_video_setup_mode_and_fd77:
 .C:850e  A9 00       LDA #$00
-.C:8510  85 22       STA video_memory_mode
+.C:8510  85 22       STA video_setup_mode
 .C:8512  A9 01       LDA #$01
 .C:8514  8D 77 FD    STA room_scene_clicked
 .C:8517  60          RTS
