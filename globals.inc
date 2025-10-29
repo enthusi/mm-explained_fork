@@ -99,7 +99,7 @@ Values observed
 .label sprite_shape_8 = $1668
 
 .label sprite_shape_cursor = $1669
-.label sprite_shapeset = $166a
+.label target_sprite_shapeset = $166a	//0, 1 or 2
 .label irq_handler1_video_processed_signal = $166b
 //===========================================================
 //Cursor variables
