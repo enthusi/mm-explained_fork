@@ -10,7 +10,10 @@ Video memory mode values
 	#02		Character base: D800	Video matrix: CC00	Sprite shape: CFF8
 	#03		Copy color data only
 */
-.label video_memory_mode = $22
+.label video_setup_mode = $22
+
+//This variable (frame_buffer) can only take values of #01 or #02, it's just the index
+//#01 - frame_buffer_base = CC28, #02 = C828 (yes, they are not in numerical order)
 .label frame_buffer = $23
 .label frame_buffer_base = $24		//Base address of frame buffer
 
@@ -34,13 +37,13 @@ Values observed
 .label screen_scroll_flag = $4e
 
 .label cel_seq_tbl           = $84    // cel sequence table for current actor
-.label vic_memory_layout = $be
+.label vic_memory_layout_shadow = $be
 
 .label actor = $D8
 .label print_msg_ptr	   = $DA	// ZP: 16-bit pointer to message to be printed (print_message_wait_for_button)
 .label irq_handler1_section_entry_count = $d9
 .label debug_error_code = $DC
-.label irq_lock = $e3
+.label irq_handler1_entry_lock = $e3
 .label sprite_shape_data_ptr = $8c
 .label video_update_signal = $8e			// synchronization flag - NOT to be confused with vsync
 .label room_bg0_shadow = $8f
@@ -99,7 +102,7 @@ Values observed
 .label sprite_shape_8 = $1668
 
 .label sprite_shape_cursor = $1669
-.label target_sprite_shapeset = $166a	//0, 1 or 2
+.label target_sprite_shapeset = $166a	//0 = no new shapeset, 1 or 2: switch to that shapeset
 .label irq_handler1_video_processed_signal = $166b
 //===========================================================
 //Cursor variables
