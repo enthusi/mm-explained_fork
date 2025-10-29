@@ -28,6 +28,7 @@
 .label actor = $D8
 .label print_msg_ptr	   = $DA	// ZP: 16-bit pointer to message to be printed (print_message_wait_for_button)
 .label debug_error_code = $DC
+.label irq_lock = $e3
 .label room_bg0_shadow = $8f
 .label room_bg1_shadow = $90
 
