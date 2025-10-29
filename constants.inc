@@ -92,3 +92,21 @@
 .const DIRECTION_RIGHT 			= $00     	// right movement direction code
 .const DIRECTION_DOWN  			= $80     	// down movement direction code
 .const DIRECTION_UP    			= $81     	// up movement direction code
+
+.const MAX_LIMB_IDX    			= $07     	// highest limb index (8 limbs total)
+
+.const ACTOR_COUNT_TOTAL = $04 // total actors (0..3)
+.const ACTOR_MAX_INDEX = ACTOR_COUNT_TOTAL - 1 // total actors (0..3)
+.const SPRITE_COUNT_TOTAL = $04
+.const SPRITE_MAX_INDEX = SPRITE_COUNT_TOTAL - 1
+
+.const CLIP_STAND_RIGHT            = $05    // Standing clip id: facing right
+.const CLIP_STAND_LEFT             = $04    // Standing clip id: facing left
+.const CLIP_STAND_DOWN             = $06    // Standing clip id: facing down
+.const CLIP_STAND_UP               = $07    // Standing clip id: facing up
+
+.const CLIP_WALK_LEFT              = $00    // Walking clip id: left
+.const CLIP_WALK_RIGHT             = $01    // Walking clip id: right
+.const CLIP_WALK_DOWN              = $02    // Walking clip id: down
+.const CLIP_WALK_UP                = $03    // Walking clip id: up
+
