@@ -110,3 +110,32 @@
 .const CLIP_WALK_DOWN              = $02    // Walking clip id: down
 .const CLIP_WALK_UP                = $03    // Walking clip id: up
 
+// Control mode values
+.const CONTROL_MODE_CUTSCENE       = $00   // Cutscene active → hide cursor
+
+// Generic booleans
+.const FALSE                       = $00
+.const TRUE                        = $01
+
+// Generic signal set/clear
+.const SIGNAL_SET                  = $01
+.const SIGNAL_CLEAR				   = $00
+.const LOCK_SET                  = $01
+.const LOCK_CLEAR				   = $00
+
+.const COLOR_BLACK                 = $00   // Background color 0 = black
+
+//----------------------------------------------------------------
+//Values used throughout the game for the vic_screen_control_reg_1
+//----------------------------------------------------------------
+// #00	game code entry
+// #0B	after IRQ handler has exited
+// #1B	irq_handler1, raster_setup
+// #1C	irq_handler3
+// #1D	irq_handler17
+// Blank screen bit cleared/set in print_message_wait_for_button
+.const VIC_CTRL_BLANK_0       = $00   // $D011 preset: blank screen, vertical scroll = 0
+.const VIC_CTRL_BLANK_3       = $0B   // $D011 preset: blank screen, vertical scroll = 3
+.const VIC_CTRL_DEFAULT_1       = $1B   // $D011 preset: 25 rows, vertical scroll = 3
+.const VIC_CTRL_DEFAULT_2       = $1C   // $D011 preset: 25 rows, vertical scroll = 4
+.const VIC_CTRL_DEFAULT_3       = $1D   // $D011 preset: 25 rows, vertical scroll = 5
