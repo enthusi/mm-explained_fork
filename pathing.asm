@@ -379,7 +379,7 @@ Caveats
 .label tgt_box_idx              = $FC3B  // walkbox index selected for target at final BFS depth
 .label actor_axis_class         = $FC3C  // axis test vs target: $00 below/left, $01 above/right, $02 inside
 .label dest_other_axis          = $FC3F  // temp: destination coordinate on the axis opposite to the hall axis
-.label closest_box_index        = $FDAC    // current walkbox index
+.label nearest_box_index        = $FDAC    // current walkbox index
 .label candidate_x              = $FE72    // candidate X
 .label candidate_y              = $FE73    // candidate Y
 .label diag_slope_mode          = $FC3D    // decoded slope selector
@@ -1419,7 +1419,7 @@ Returns
 			(early returns leave .A unchanged)
 
 Global Inputs
-	closest_box_index             walkbox selector
+	nearest_box_index             walkbox selector
 	candidate_x                   X under test
 	candidate_y                   Y under test
 	current_box_ptr               ZP pointer to walkbox record base
@@ -1430,7 +1430,7 @@ Global Outputs
 	candidate_x                   clamped when boundary test passes
 
 Description
-	- Resolve walkbox record via closest_box_index and get attribute at +$04.
+	- Resolve walkbox record via nearest_box_index and get attribute at +$04.
 	- Require attribute bit7 to enable diagonal handling; otherwise return.
 	- Mask bits6..2, decode slope code:
 		* $08 → up-left (use right − dx)
@@ -1451,7 +1451,7 @@ clamp_walkbox_diagonal_edge:
         // ------------------------------------------------------------
         // Resolve walkbox record and read attribute at +$04
         // ------------------------------------------------------------
-        lda     closest_box_index
+        lda     nearest_box_index
         jsr     get_walkbox_offset            // Y := base of walkbox record
         tya
         clc

@@ -4,11 +4,11 @@
 #import "registers.inc"
 #import "actor_animation.asm"
 #import "pathing.asm"
+#import "actor.asm"
 
 .label destination_obj_hi              = $FE50   // destination object type byte (hi); nonzero means object context
 .label destination_obj_lo              = $FE4F   // destination object index (lo); 0..255
 .label saved_facing_clip_id            = $0FC8   // mover’s last selected facing clip id
-.label target_clip_id                  = $FDE9   // working clip id register for apply/play
 .label destination_entity              = $FE51   // destination entity type: $02=actor, else object
 .label saved_param_y                   = $0FC9   // dispatcher-saved Y param (restored on return)
 .label snap_probe_x                    = $FE72   // snap input X (pixels) for walkbox clamp
@@ -19,9 +19,6 @@
 .label unused_var_1                   = $26F7   // debug storage: last written destination X coordinate (pixels)
 .label unused_var_2                   = $26F8   // debug storage: last written destination Y coordinate (pixels)
 
-.const CLIP_STAND_LEFT                 = $04     // standing clip: facing left
-.const CLIP_STAND_RIGHT                = $05     // standing clip: facing right
-.const CLIP_STAND_DOWN                 = $06     // standing clip: facing down/front
 .const CLIP_LR_BIT                     = $01     // clip id bit0 toggles left/right
 .const LOOP_ONE_SHOT                   = $00     // play clip once (no loop)
 .const ACTOR_APPROACH_X_OFFSET_POS     = $04     // +4 px lateral offset when approaching actor
@@ -541,7 +538,7 @@ teleport_actor:
 		sta     path_direction_for_actor,y
 
 		// Unassign the actor from this costume (will reassign if needed below)
-		jsr     unassign_actor_for_costume
+		jsr     detach_actor_from_costume
 
 reassign_if_in_current_room:
 		// If destination room is zero or not the current room, done
@@ -552,7 +549,7 @@ reassign_if_in_current_room:
 
 		// Destination is the current room: assign any available actor
 		ldx     active_costume
-		jsr     assign_available_actor
+		jsr     assign_costume_to_free_actor
 
 done_3:
 		rts

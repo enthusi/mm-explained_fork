@@ -27,7 +27,6 @@ Terminology
 .const INACTIVE_CLIP_SET  		= $FF     	// sentinel: no clip
 .const FLIP_SET        			= $80     	// bit7 = 1 → horizontal flip enabled
 .const FLIP_CLEAR     			= $00     	// bit7 = 0 → no flip
-.const MAX_LIMB_IDX    			= $07     	// highest limb index (8 limbs total)
 .const CLIP_SET_LEFT    		= $04     	// standing-left clip id
 .const CLIP_SET_RIGHT   		= $05     	// standing-right clip id
 .const CLIP_SET_DOWN    		= $06     	// standing-down clip id

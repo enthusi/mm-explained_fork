@@ -49,11 +49,9 @@
  *   • Sync waits while (IEC_PRA_CLK_IN & PRA)==0 and proceeds when it reads 1
  *     (post-inversion “released” on IEC).
  * ===========================================
- * ===========================================
- * Variables / Constants
- * ===========================================
  */
 
+#importonce
 #import "registers.inc"
 #import "globals.inc"
 #import "constants.inc"

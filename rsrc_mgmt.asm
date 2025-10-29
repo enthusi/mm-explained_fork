@@ -5,6 +5,7 @@
 #import "memory_mgmt.asm"
 #import "disk_high_level.asm"
 #import "pause.asm"
+#import "actor.asm"
 
 /*===========================================
  * Private variables & constants
@@ -1379,7 +1380,7 @@ costume_cache_miss:
  *   2) Unassignment pass (only if no locks found):
  *        LDX := COSTUME_SCAN_FIRST8; scan X = 8..1.
  *        Skip if X == current_actor_idx, or not resident (ptr.hi==0), or attrs != 0.
- *        On hit: attrs := 0; JSR unassign_actor_for_costume;
+ *        On hit: attrs := 0; JSR detach_actor_from_costume;
  *                (dest_x,dest_y) := (COSTUME_DFLT_X_DEST,COSTUME_DFLT_Y_DEST);
  *                actor_room_idx_tbl[X] := COSTUME_HOLDING_ROOM; RTS.
  *   3) Failure:
@@ -1431,7 +1432,7 @@ scan_for_evict:
         txa                               // A := X (index snapshot)
         pha                               // push index; will restore after JSR
 
-        jsr unassign_actor_for_costume               
+        jsr detach_actor_from_costume               
 
         // Restore loop index for subsequent bookkeeping (coords/room updates).
         pla                               // A := saved index

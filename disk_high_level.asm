@@ -84,7 +84,7 @@
  *   disk_write_sector (internal leaf) — see individual routine headers below.
  * ===============================================================================
  */
-
+#importonce
 #import "globals.inc"
 #import "constants.inc"
 #import "disk_low_level.asm"

@@ -324,9 +324,9 @@ draw_actor:
         // actor_tile_x_coordinate = (Xpx >> 3) - 3
 		// (Xpx is the X pixel coordinate)
         // ----------------------------------------
-        lda     character_sprite_x_hi,x      // >>1 into carry
+        lda     actor_tgt_sprite_x_hi,x      // >>1 into carry
         lsr      
-        lda     character_sprite_x_lo,x
+        lda     actor_tgt_sprite_x_lo,x
         ror                                  // now >>1 with hi carry
         lsr                                  // >>2
         lsr                                  // >>3
@@ -428,10 +428,10 @@ skip_draw:
         // Commit sprite X position for this sprite slot
         // ----------------------------------------
         ldx     actor
-        lda     character_sprite_x_hi,x
+        lda     actor_tgt_sprite_x_hi,x
         ldy     actor_sprite_index,x
         sta     actor_sprite_x_hi,y
-        lda     character_sprite_x_lo,x
+        lda     actor_tgt_sprite_x_lo,x
         ldy     actor_sprite_index,x
         sta     actor_sprite_x_lo,y
 
@@ -510,10 +510,10 @@ check_if_new_costume_for_actor:
         // Is requested costume already active? If so, exit.
         // ----------------------------------------
         lda     costume_ptr_hi_tbl,x
-        cmp     rsrc_ptr_for_active_costume_hi,x
+        cmp     active_costume_rsrc_hi,x
         bne     compute_data_pointer
         lda     costume_ptr_lo_tbl,x
-        cmp     rsrc_ptr_for_active_costume_lo,x
+        cmp     active_costume_rsrc_lo,x
         bne     compute_data_pointer
         rts
 
@@ -544,9 +544,9 @@ set_new_costume_ptr_for_actor:
         // Update “current costume” pointer cache for this costume
         // ----------------------------------------
         lda     costume_ptr_hi_tbl,x
-        sta     rsrc_ptr_for_active_costume_hi,x
+        sta     active_costume_rsrc_hi,x
         lda     costume_ptr_lo_tbl,x
-        sta     rsrc_ptr_for_active_costume_lo,x
+        sta     active_costume_rsrc_lo,x
 
         // ----------------------------------------
         // Switch X=actor index, Y=header read offset

@@ -145,7 +145,7 @@
  *   - Prologue: save X on stack to survive teardown subcalls.
  *   - Teardown (old room): clear sentence queue, run EXIT script, hide all actors.
  *   - Release per-actor visuals: walk costume slots $18..$01; if actor_for_costume[x]
- *     has bit7=0, unbind via unassign_actor_for_costume (bit7=1 = empty slot).
+ *     has bit7=0, unbind via detach_actor_from_costume (bit7=1 = empty slot).
  *   - Switch: restore X; mirror to var_current_room; seed camera with CAM_DEFAULT_POS;
  *     re-init sprites/sound; call room_switch_load_assets to set current_room, load
  *     base room data, and wire scene pointers/LRU.
@@ -166,13 +166,13 @@ load_room:
 		// Teardown (in order) to leave no stale UI/actors before switching rooms
 		jsr     reset_sentence_queue_system      // flush pending verb/noun input so scripts don’t consume old commands
 		jsr     execute_room_exit_script         // run the CURRENT room’s exit logic while its data is still valid
-		jsr     clear_actors_visibility_in_scene // hide all actors to avoid one-frame carryover/flicker during reload
+		jsr     hide_all_actors_and_release_sprites // hide all actors to avoid one-frame carryover/flicker during reload
 
 		/*---------------------------------------
 		 * Release any actor → costume bindings
 		 *  -X scans costume slots $18..$01; exit when X reaches $00 (BNE falls through).
 		 *  -actor_for_costume[x] has bit7=1 ⇒ no actor assigned (BMI taken → skip).
-		 *  -unassign_actor_for_costume clears the mapping for the current slot.
+		 *  -detach_actor_from_costume clears the mapping for the current slot.
 		 *--------------------------------------*/
 		ldx     #$18
 release_costume_in_use:
@@ -181,7 +181,7 @@ release_costume_in_use:
 
 		txa                                     // preserve X across subcall
 		pha
-		jsr     unassign_actor_for_costume       // free this costume slot’s actor assignment
+		jsr     detach_actor_from_costume       // free this costume slot’s actor assignment
 		pla
 		tax
 
@@ -1366,12 +1366,12 @@ commit_room_attr:
  *   current_room               Active room index to match against.
  *   rsrc_ensure_costume_resident (subroutine)
  *                              Ensures the costume asset is loaded; sets rsrc_resource_index.
- *   assign_available_actor     Binds a free actor slot; consumes X as costume/resource index.
+ *   assign_costume_to_free_actor     Binds a free actor slot; consumes X as costume/resource index.
  *
  * Returns:
  *   A, X, Y                    Clobbered.
  *   Flags                      Modified by loop/subcalls; no guarantees to callers.
- *   Globals updated            actor tables via assign_available_actor;
+ *   Globals updated            actor tables via assign_costume_to_free_actor;
  *                              rsrc_resource_index set by rsrc_ensure_costume_resident;
  *                              'unused' receives A (legacy write, no semantic effect).
  *
@@ -1381,11 +1381,11 @@ commit_room_attr:
  *     - If costume_room_idx[X] != current_room, skip (not present here).
  *     - Otherwise:
  *         • rsrc_ensure_costume_resident → guarantees asset availability and writes rsrc_resource_index.
- *         • X := rsrc_resource_index; assign_available_actor → allocate/init actor for this costume.
+ *         • X := rsrc_resource_index; assign_costume_to_free_actor → allocate/init actor for this costume.
  *   Loop exits once all costume slots have been considered.
  *   Notes:
  *     • Assignment sentinel is active-high for “free”: bit7=1 means no actor bound yet.
- *     • The routine relies on the convention that assign_available_actor consumes X as the
+ *     • The routine relies on the convention that assign_costume_to_free_actor consumes X as the
  *       costume/resource index; X is (re)loaded from rsrc_resource_index before the call.
  *===========================================*/		
 * = $3881
@@ -1415,10 +1415,10 @@ costume_in_current_room:
         jsr     rsrc_ensure_costume_resident
 
         // Bind a free actor slot to this costume.
-        // Convention: assign_available_actor consumes X as the costume/resource index,
+        // Convention: assign_costume_to_free_actor consumes X as the costume/resource index,
         // so load X from rsrc_resource_index produced by the loader above.
         ldx     rsrc_resource_index
-        jsr     assign_available_actor
+        jsr     assign_costume_to_free_actor
 
         // Restore costume index into X
         ldx     rsrc_resource_index

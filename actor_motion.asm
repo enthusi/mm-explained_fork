@@ -256,8 +256,6 @@ Operational notes
 
 .label box_attr_handler_jsr_op   = $2E0D  // Code-site: JSR operand for selected box-attr handler
 
-.label target_clip_id            = $FDE9  // Target clip id for standing animation (per-actor intent)
-
 .label motion_needed             = $FC3B  // Alias of shared scratch: #$00=motion, #$01=no motion (from init_dda_for_path)
 .label axis_bit_scratch          = $FC3B  // Alias of shared scratch: holds bit7 result for axis compare
 .label selected_box_attr         = $FC3B  // Alias of shared scratch: selected box attribute value
@@ -317,16 +315,6 @@ Operational notes
 .const DIR_LEFT_MASK               = $01    // Encoded facing: left
 .const DIR_DOWN_MASK               = $80    // Encoded facing: down
 .const DIR_UP_MASK                 = $81    // Encoded facing: up
-
-.const CLIP_STAND_RIGHT            = $05    // Standing clip id: facing right
-.const CLIP_STAND_LEFT             = $04    // Standing clip id: facing left
-.const CLIP_STAND_DOWN             = $06    // Standing clip id: facing down
-.const CLIP_STAND_UP               = $07    // Standing clip id: facing up
-
-.const CLIP_WALK_LEFT              = $00    // Walking clip id: left
-.const CLIP_WALK_RIGHT             = $01    // Walking clip id: right
-.const CLIP_WALK_DOWN              = $02    // Walking clip id: down
-.const CLIP_WALK_UP                = $03    // Walking clip id: up
 
 .const BOX_RESULT_UNCHANGED        = $00    // Return A: current box unchanged
 .const BOX_RESULT_CHANGED          = $01    // Return A: current box changed

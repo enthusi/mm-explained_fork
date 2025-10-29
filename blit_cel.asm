@@ -474,9 +474,9 @@ blit_and_mask_cel:
         sta     debug_error_code
         ldy     #MAP_IO_ON
         sty     cpu_port
-hang_loop:
+hang_loop_2:
         sta     vic_border_color          
-        jmp     hang_loop
+        jmp     hang_loop_2
 
 select_blit_variant:
         // Preserve header read index (Y) for later restore
@@ -721,9 +721,9 @@ next_row_to_skip:
         ldx     bytes_per_row
 skip_row_bytes:
         inc     <cel_ptr
-        bne     next_byte
+        bne     next_byte_3
         inc     >cel_ptr
-next_byte:
+next_byte_3:
         dex
         bne     skip_row_bytes
         iny
