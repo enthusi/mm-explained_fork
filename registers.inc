@@ -121,6 +121,30 @@
 // Typical: DDRB = $00 for keyboard/joystick input (all inputs).
 .label cia1_ddrb                       = $DC03
 
+// CIA1 timer B high byte ($DC07).
+// MSB of timer B reload value. Write $DC06 (low) first, then $DC07 (high).
+// Counter loads from the 16-bit latch when LOAD=1 in CRB, or on underflow in one-shot.
+.label cia1_timer_b_hi_reg             = $DC07
+
+// CIA1 interrupt status ($DC0D).
+// Read: pending sources. Write: clear bits by writing 1 to the asserted sources.
+// Bits: b0=TA underflow, b1=TB underflow, b2=TOD alarm, b3=SDR complete,
+//       b4=FLAG pin, b7=IRQ summary (set if any enabled source is pending).
+.label cia1_irq_status_reg             = $DC0D
+
+// CIA1 timer A control ($DC0E).
+// Bits: b0=START, b1=PBON (toggle PB6 on underflow), b2=OUTMODE (toggle/pulse),
+//       b3=RUNMODE (1=one-shot), b4=LOAD (force reload), b5=INMODE (0=ϕ2, 1=CNT).
+// b6,b7 unused for timer A.
+.label cia1_timer_a_ctrl_reg           = $DC0E
+
+// CIA1 timer B control ($DC0F).
+// Bits: b0=START, b1=PBON (toggle PB7 on underflow), b2=OUTMODE (toggle/pulse),
+//       b3=RUNMODE (1=one-shot), b4=LOAD (force reload),
+//       b5–b6=INMODE for timer B:
+//           00=ϕ2, 01=CNT pin, 10=Timer A underflow, 11=TA underflow while CNT=1.
+// b7 reserved.
+.label cia1_timer_b_ctrl_reg           = $DC0F
 
 // ============================================================================
 // CIA #2 — Complex Interface Adapter 2 ($DD00–$DD0F)
@@ -135,4 +159,31 @@
 //   bits5–7 = RS-232 lines or user port.
 // Setting DDRA controls which lines act as outputs.
 .label cia2_pra                        = $DD00
+
+
+// CIA2 Port B data register ($DD01).
+// Reads or writes data on Port B pins. Direction set by DDRB ($DD03).
+// On the C64, used for RS-232 signals, user port, and some cartridge I/O.
+// Bit usage depends on system mode:
+//   bits0–7 → user port lines or serial link (TxD, RTS, DTR, etc.)
+.label cia2_prb                        = $DD01
+
+// CIA2 Port A Data Direction Register ($DD02).
+// Each bit controls Port A line direction: 1=output, 0=input.
+// Port A connects primarily to the IEC serial bus (ATN, CLK, DATA).
+// Typical config: DDRA = %00111111 ($3F) to drive IEC outputs.
+.label cia2_ddra                       = $DD02
+
+// CIA2 Port B Data Direction Register ($DD03).
+// Controls direction of Port B pins (same format as DDRA).
+// Typically left as inputs for user port or RS-232 reception.
+.label cia2_ddrb                       = $DD03
+
+// CIA2 interrupt status register ($DD0D).
+// Read: reports which CIA2 interrupt sources are pending.
+// Write: clear specific sources by writing 1s to their bits.
+// Bits identical to CIA1’s IRQ layout:
+//   b0=Timer A underflow, b1=Timer B underflow,
+//   b2=TOD alarm, b3=Serial data ready, b4=FLAG pin, b7=master IRQ flag.
+.label cia2_irq_status_reg             = $DD0D
 
