@@ -41,9 +41,9 @@ Values observed
 
 .label actor = $D8
 .label print_msg_ptr	   = $DA	// ZP: 16-bit pointer to message to be printed (print_message_wait_for_button)
-.label irq_handler1_section_entry_count = $d9
+.label irq_entry_count = $d9
 .label debug_error_code = $DC
-.label irq_handler1_entry_lock = $e3
+.label irq_entry_lock = $e3
 .label sprite_shape_data_ptr = $8c
 .label video_update_signal = $8e			// synchronization flag - NOT to be confused with vsync
 .label room_bg0_shadow = $8f
@@ -103,19 +103,19 @@ Values observed
 
 .label sprite_shape_cursor = $1669
 .label target_sprite_shapeset = $166a	//0 = no new shapeset, 1 or 2: switch to that shapeset
-.label irq_handler1_video_processed_signal = $166b
+.label video_processed_signal = $166b
 //===========================================================
 //Cursor variables
-.label hide_cursor = $166c	//#01 if cursor needs to be hidden, #00 otherwise
+.label hide_cursor_flag = $166c	//#01 if cursor needs to be hidden, #00 otherwise
 
 //Each time irq_handler1 is executed, the wait counter is decremented
 //As the start value for the counter is #06, the cursor color will be updated 
 //every 6 executions of irq_handler1
-.label cursor_color_wait_counter = $166d
-.label cursor_color_index = $166e
+.label cursor_color_wait_ticks = $166d
+.label cursor_color_idx = $166e
 //The reset value for the wait counter (#06)
-.label cursor_color_wait_start = $166f
-.label first_cursor_color_index = $1670
+.label cursor_color_period = $166f
+.label first_cursor_color_idx = $1670
 
 // ===========================================================
 
@@ -131,9 +131,9 @@ Values observed
 .label cam_pan_goal = $066c				//Position to pan camera to
 .label actor_follow_needs_pan = $066d		
 // ===========================================================
-.label color_ram_data_copied = $1677 //Boolean
-.label general_semaphore = $1678 //Semaphore used to control access to a section in irq_handler1
-.label game_paused = $1679	//#01 if game is paused, #00 otherwise
+.label color_ram_copy_done = $1677 //Boolean
+.label ui_section_semaphore = $1678 //Semaphore used to control access to a section in irq_handler1
+.label game_paused_flag = $1679	//#01 if game is paused, #00 otherwise
 
 
 
@@ -212,7 +212,7 @@ Values observed
 .label script_mem_attrs = $7AD7
 // ===========================================================
 
-.label reload_snd_rsrc_ptrs     = $FE70    // flag: non-zero => refresh sound resource pointers after relocation
+.label reload_sound_ptrs_flag     = $FE70    // flag: non-zero => refresh sound resource pointers after relocation
 .label rsrc_released_flag = $FE4A
 .label saved_script_index  = $FEA6    	// external flag controlling delay init
 
@@ -450,7 +450,7 @@ They were definitely intended as debugging aids.
 */
 .label actor_vars = $fee3
 
-.label room_scene_clicked = $fd77
+.label room_scene_clicked_flag = $fd77
 .label click_trigger_sentence = $fe8e
 //Control mode values
 //#00 - cutscene
