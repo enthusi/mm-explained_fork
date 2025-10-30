@@ -1703,7 +1703,7 @@ next_block_present:
  *   mem_src                        Advanced past the moved used block(s).
  *   mem_dst                   Advanced to the end of the moved region.
  *   mem_free_head              Updated to the rebuilt free block at the new mem_dst.
- *   reload_snd_rsrc_ptrs          Cleared to #$00 before exit.
+ *   reload_sound_ptrs_flag          Cleared to #$00 before exit.
  *
  * Details:
  *   This routine “bubbles” used blocks to the right into the leading free space, thereby
@@ -1712,7 +1712,7 @@ next_block_present:
  * 	For each adjacent used block:
  *
  *     1) Read its size and metadata.
- *     2) Optionally set reload_snd_rsrc_ptrs if a sound block is in-use.
+ *     2) Optionally set reload_sound_ptrs_flag if a sound block is in-use.
  *     3) Call mem_copy_pages to copy the entire block from ‘mem_src’ → ‘mem_dst’.
  *     4) Call rsrc_update_ptr(metadata) so external references follow the move.
  *     5) Advance both pointers (mem_src, mem_dst) by the moved size and loop while more used blocks remain
@@ -1723,7 +1723,7 @@ next_block_present:
  *
  * Notes:
  *   - Copy direction is forward and safe for overlap because mem_dst < mem_src.
- *   - Sound resources: if in use, set 'reload_snd_rsrc_ptrs' during the move; it is consumed
+ *   - Sound resources: if in use, set 'reload_sound_ptrs_flag' during the move; it is consumed
  *     by 'rsrc_update_ptr' and then cleared before the next iteration.
  * ===========================================
  */
@@ -1787,7 +1787,7 @@ mem_bubble_used_left:
 		beq copy_block_data         // 0 → not in use → no reload needed
 
 		lda #$01
-		sta reload_snd_rsrc_ptrs    // mark: reload sound resource pointers later
+		sta reload_sound_ptrs_flag    // mark: reload sound resource pointers later
 
 copy_block_data:
 		/*
@@ -1836,7 +1836,7 @@ copy_block_data:
 
 		// Clear the “reload sound pointers” request flag (consumed).
 		lda #$00
-		sta reload_snd_rsrc_ptrs
+		sta reload_sound_ptrs_flag
 
 		/*
 		 * ----------------------------------------
