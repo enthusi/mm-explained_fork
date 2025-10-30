@@ -670,7 +670,7 @@ cursor_color_wait_ticks = $166d
 cursor_color_idx = $166e
 ;The reset value for the wait counter (#06)
 cursor_color_period = $166f
-first_cursor_color_idx = $1670
+cursor_color_idx_first = $1670
 ;===========================================================
 color_ram_copy_done = $1677
 ui_section_semaphore = $1678 ;Semaphore used to control access to a section in irq_handler1
@@ -5561,7 +5561,7 @@ irq_handler17:
 ;=======================================================
 cursor_color_period:
 .C:166f  06 
-first_cursor_color_idx:
+cursor_color_idx_first:
 .C:1670  05       
 cursor_colors:
 .C:1671  01 0F 0C 0B 0C 0F 
@@ -5821,7 +5821,7 @@ section_entry:
 ;Otherwise, set the color
 .C:17ca  10 06       BPL set_cursor_color
 ;Reset cursor color index to the first one
-.C:17cc  AD 70 16    LDA first_cursor_color_idx
+.C:17cc  AD 70 16    LDA cursor_color_idx_first
 .C:17cf  8D 6E 16    STA cursor_color_idx
 set_cursor_color:
 ;Set cursor color

@@ -115,7 +115,7 @@ Values observed
 .label cursor_color_idx = $166e
 //The reset value for the wait counter (#06)
 .label cursor_color_period = $166f
-.label first_cursor_color_idx = $1670
+.label cursor_color_idx_first = $1670
 
 // ===========================================================
 
