@@ -16,6 +16,12 @@
 .label vic_sprite_x_msb_reg       	  = $D010	// X high bits for all 8 sprites. Bit n = MSB of sprite n X (adds +256 when set).
 												//   bit0→spr0, bit1→spr1, …, bit7→spr7.
 
+// Sprite horizontal expansion control. Bit n doubles the width of sprite n (2×).
+//   0 = normal width, 1 = expanded. Write-only on VIC-II.
+//   bit0→spr0, bit1→spr1, …, bit7→spr7.
+.label vic_sprite_x_expand_reg         = $D01D
+
+
 //======================================
 //Screen control register 1 bits meaning
 //======================================

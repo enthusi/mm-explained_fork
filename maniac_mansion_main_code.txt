@@ -1153,7 +1153,7 @@ vic_screen_control2_reg = $d016
 vic_memory_layout_reg = $d018
 vic_irq_flag_register = $d019
 vic_irq_mask_register = $d01a
-vic_sprite_hor_expansion_reg = $d01d
+vic_sprite_x_expand_reg = $d01d
 vic_border_color_register = $d020
 vic_bkg_color0_register = $d021
 vic_sprite_mcolor0_reg = $d025
@@ -4614,7 +4614,7 @@ irq_handler2:
 .C:1102  8C 0E D0    STY vic_sprite7_x_lo_reg
 ;Set horizontal expansion for sprites
 .C:1105  AC EA 0F    LDY sprite_horizontal_expansion
-.C:1108  8C 1D D0    STY vic_sprite_hor_expansion_reg
+.C:1108  8C 1D D0    STY vic_sprite_x_expand_reg
 ;------------------------------------------------
 ;Update sprite shapes for sprites 0-3
 .C:110b  AE 61 16    LDX sprite_shape_1
@@ -25259,7 +25259,7 @@ clear_sprite_regs_and_sprite_memory:
 .C:84d4  84 01       STY processor_port_register
 ;Initialize sprite registers
 .C:84d6  A9 00       LDA #$00
-.C:84d8  8D 1D D0    STA vic_sprite_hor_expansion_reg		;Sprite double width register
+.C:84d8  8D 1D D0    STA vic_sprite_x_expand_reg		;Sprite double width register
 .C:84db  8D 17 D0    STA $D017		;Sprite double height register
 .C:84de  8D 1B D0    STA $D01B		;Sprite priority register
 .C:84e1  8D 1E D0    STA $D01E		;Sprite-sprite collision register
