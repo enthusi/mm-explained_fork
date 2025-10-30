@@ -12,7 +12,7 @@
  
   Interfaces & Globals:
     Inputs:    (none)
-    Outputs:   game_paused              // 1 = paused, 0 = running
+    Outputs:   game_paused_flag              // 1 = paused, 0 = running
                sprite_shape_cursor      // cursor sprite shape selector
                cursor_sprite_color      // cursor sprite color (set to white on pause)
  ==============================================================================
@@ -40,7 +40,7 @@
  
   Description:
     - sprite_shape_cursor := CURSOR_SNAIL  (visual pause indicator)
-    - game_paused         := 1             (global paused state)
+    - game_paused_flag         := 1             (global paused state)
     - cursor_sprite_color := $01           (white, improves contrast while paused)
 ==============================================================================
 */
@@ -50,10 +50,10 @@ pause_game:
         lda #CURSOR_SNAIL
         sta sprite_shape_cursor
 
-        // Set paused flag (game_paused := 1).
+        // Set paused flag (game_paused_flag := 1).
         // NOTE: We intentionally reuse A=$01 below for the cursor color write.
         lda #$01
-        sta game_paused
+        sta game_paused_flag
 
         // Force cursor color to white ($01) while paused for clarity/contrast.
         sta cursor_sprite_color
@@ -76,7 +76,7 @@ pause_game:
  
   Description:
     - sprite_shape_cursor := CURSOR_CROSS  (normal “arrow/cross” cursor)
-    - game_paused         := 0             (gameplay resumes)
+    - game_paused_flag         := 0             (gameplay resumes)
 ==============================================================================
 */
 * = $18DF
@@ -85,7 +85,7 @@ unpause_game:
         lda #CURSOR_CROSS
         sta sprite_shape_cursor
 
-        // Clear paused flag (game_paused := 0). Cursor color left as-is.
+        // Clear paused flag (game_paused_flag := 0). Cursor color left as-is.
         lda #$00
-        sta game_paused
+        sta game_paused_flag
         rts
