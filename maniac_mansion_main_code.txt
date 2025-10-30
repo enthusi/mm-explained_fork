@@ -626,13 +626,13 @@ sprite_4_color = $0fd6
 sprite_5_color = $0fd7
 sprite_6_color = $0fd8
 cursor_sprite_color = $0FD9
-relative_sprite_0 = $0fda
-relative_sprite_1 = $0fdb
-relative_sprite_2 = $0fdc
-relative_sprite_3 = $0fdd
-relative_sprite_4 = $0fde
-relative_sprite_5 = $0fdf
-relative_sprite_6 = $0fe0
+vic_sprite_idx_0 = $0fda
+vic_sprite_idx_1 = $0fdb
+vic_sprite_idx_2 = $0fdc
+vic_sprite_idx_3 = $0fdd
+vic_sprite_idx_4 = $0fde
+vic_sprite_idx_5 = $0fdf
+vic_sprite_idx_6 = $0fe0
 sprite_horizontal_expansion = $0fea
 sprite_0_x_hi = $0fe1
 sprite_1_x_hi = $0fe2
@@ -4431,7 +4431,7 @@ snap_destination_to_walkbox:
 ; Sprites 0-6 might change their relative position over time.
 ; When this happens, their relative bit positions should be kept in sync.
 ;
-; Variables relative_sprite_0 to relative_sprite_6 track those changes
+; Variables vic_sprite_idx_0 to vic_sprite_idx_6 track those changes
 ; and update their values accordingly.
 ;===========================================
 update_sprites_x_hi_and_chain_handlers:
@@ -4440,7 +4440,7 @@ update_sprites_x_hi_and_chain_handlers:
 ;-----
 ;Load bit8 of X coordinate
 .C:0ff4  AD E1 0F    LDA sprite_0_x_hi
-.C:0ff7  AE DA 0F    LDX relative_sprite_0
+.C:0ff7  AE DA 0F    LDX vic_sprite_idx_0
 ;Is it zero? If so, continue
 .C:0ffa  F0 04       BEQ $1000
 ;It's 1, shift bit into position (based on the relative sprite index)
@@ -4453,7 +4453,7 @@ update_sprites_x_hi_and_chain_handlers:
 ;-----
 ;Repeat for sprites 1-6
 .C:1006  AD E2 0F    LDA sprite_1_x_hi
-.C:1009  AE DB 0F    LDX relative_sprite_1
+.C:1009  AE DB 0F    LDX vic_sprite_idx_1
 .C:100c  F0 04       BEQ $1012
 .C:100e  0A          ASL A
 .C:100f  CA          DEX
@@ -4462,7 +4462,7 @@ update_sprites_x_hi_and_chain_handlers:
 .C:1015  8D E9 0F    STA sprites_x_hi_combined
 ;-----
 .C:1018  AD E3 0F    LDA sprite_2_x_hi
-.C:101b  AE DC 0F    LDX relative_sprite_2
+.C:101b  AE DC 0F    LDX vic_sprite_idx_2
 .C:101e  F0 04       BEQ $1024
 .C:1020  0A          ASL A
 .C:1021  CA          DEX
@@ -4471,7 +4471,7 @@ update_sprites_x_hi_and_chain_handlers:
 .C:1027  8D E9 0F    STA sprites_x_hi_combined
 ;-----
 .C:102a  AD E4 0F    LDA sprite_3_x_hi
-.C:102d  AE DD 0F    LDX relative_sprite_3
+.C:102d  AE DD 0F    LDX vic_sprite_idx_3
 .C:1030  F0 04       BEQ $1036
 .C:1032  0A          ASL A
 .C:1033  CA          DEX
@@ -4480,7 +4480,7 @@ update_sprites_x_hi_and_chain_handlers:
 .C:1039  8D E9 0F    STA sprites_x_hi_combined
 ;-----
 .C:103c  AD E5 0F    LDA sprite_4_x_hi
-.C:103f  AE DE 0F    LDX relative_sprite_4
+.C:103f  AE DE 0F    LDX vic_sprite_idx_4
 .C:1042  F0 04       BEQ $1048
 .C:1044  0A          ASL A
 .C:1045  CA          DEX
@@ -4489,7 +4489,7 @@ update_sprites_x_hi_and_chain_handlers:
 .C:104b  8D E9 0F    STA sprites_x_hi_combined
 ;-----
 .C:104e  AD E6 0F    LDA sprite_5_x_hi
-.C:1051  AE DF 0F    LDX relative_sprite_5
+.C:1051  AE DF 0F    LDX vic_sprite_idx_5
 .C:1054  F0 04       BEQ $105A
 .C:1056  0A          ASL A
 .C:1057  CA          DEX
@@ -4498,7 +4498,7 @@ update_sprites_x_hi_and_chain_handlers:
 .C:105d  8D E9 0F    STA sprites_x_hi_combined
 ;-----
 .C:1060  AD E7 0F    LDA sprite_6_x_hi
-.C:1063  AE E0 0F    LDX relative_sprite_6
+.C:1063  AE E0 0F    LDX vic_sprite_idx_6
 .C:1066  F0 04       BEQ $106C
 .C:1068  0A          ASL A
 .C:1069  CA          DEX
@@ -4569,7 +4569,7 @@ irq_handler2:
 .C:10b0  84 01       STY processor_port_register
 ;------------------------------------------------
 ;Load the relative sprite index
-.C:10b2  AD DA 0F    LDA relative_sprite_0
+.C:10b2  AD DA 0F    LDA vic_sprite_idx_0
 ;Horizontal position registers for each sprite are 2 bytes apart
 ;So multiply by 2 to get the desired register offset
 .C:10b5  0A          ASL A
@@ -4578,32 +4578,32 @@ irq_handler2:
 .C:10b7  AD CA 0F    LDA sprite_0_x_lo
 .C:10ba  99 00 D0    STA vic_sprite0_x_lo_reg,Y
 ;And repeat for each of the remaining sprites 1-6
-.C:10bd  AD DB 0F    LDA relative_sprite_1
+.C:10bd  AD DB 0F    LDA vic_sprite_idx_1
 .C:10c0  0A          ASL A
 .C:10c1  A8          TAY
 .C:10c2  AD CB 0F    LDA sprite_1_x_lo
 .C:10c5  99 00 D0    STA vic_sprite0_x_lo_reg,Y
-.C:10c8  AD DC 0F    LDA relative_sprite_2
+.C:10c8  AD DC 0F    LDA vic_sprite_idx_2
 .C:10cb  0A          ASL A
 .C:10cc  A8          TAY
 .C:10cd  AD CC 0F    LDA sprite_2_x_lo
 .C:10d0  99 00 D0    STA vic_sprite0_x_lo_reg,Y
-.C:10d3  AD DD 0F    LDA relative_sprite_3
+.C:10d3  AD DD 0F    LDA vic_sprite_idx_3
 .C:10d6  0A          ASL A
 .C:10d7  A8          TAY
 .C:10d8  AD CD 0F    LDA sprite_3_x_lo
 .C:10db  99 00 D0    STA vic_sprite0_x_lo_reg,Y
-.C:10de  AD DE 0F    LDA relative_sprite_4
+.C:10de  AD DE 0F    LDA vic_sprite_idx_4
 .C:10e1  0A          ASL A
 .C:10e2  A8          TAY
 .C:10e3  AD CE 0F    LDA sprite_4_x_lo
 .C:10e6  99 00 D0    STA vic_sprite0_x_lo_reg,Y
-.C:10e9  AD DF 0F    LDA relative_sprite_5
+.C:10e9  AD DF 0F    LDA vic_sprite_idx_5
 .C:10ec  0A          ASL A
 .C:10ed  A8          TAY
 .C:10ee  AD CF 0F    LDA sprite_5_x_lo
 .C:10f1  99 00 D0    STA vic_sprite0_x_lo_reg,Y
-.C:10f4  AD E0 0F    LDA relative_sprite_6
+.C:10f4  AD E0 0F    LDA vic_sprite_idx_6
 .C:10f7  0A          ASL A
 .C:10f8  A8          TAY
 .C:10f9  AD D0 0F    LDA sprite_6_x_lo
@@ -4618,19 +4618,19 @@ irq_handler2:
 ;------------------------------------------------
 ;Update sprite shapes for sprites 0-3
 .C:110b  AE 61 16    LDX sprite_shape_1
-.C:110e  AC DA 0F    LDY relative_sprite_0
+.C:110e  AC DA 0F    LDY vic_sprite_idx_0
 .C:1111  8A          TXA
 .C:1112  91 8C       STA (sprite_shape_data_ptr),Y
 .C:1114  E8          INX
-.C:1115  AC DB 0F    LDY relative_sprite_1
+.C:1115  AC DB 0F    LDY vic_sprite_idx_1
 .C:1118  8A          TXA
 .C:1119  91 8C       STA (sprite_shape_data_ptr),Y
 .C:111b  E8          INX
-.C:111c  AC DC 0F    LDY relative_sprite_2
+.C:111c  AC DC 0F    LDY vic_sprite_idx_2
 .C:111f  8A          TXA
 .C:1120  91 8C       STA (sprite_shape_data_ptr),Y
 .C:1122  E8          INX
-.C:1123  AC DD 0F    LDY relative_sprite_3
+.C:1123  AC DD 0F    LDY vic_sprite_idx_3
 .C:1126  8A          TXA
 .C:1127  91 8C       STA (sprite_shape_data_ptr),Y
 ;Update sprite shape for cursor (covering the two possible video memory layouts)
@@ -4645,31 +4645,31 @@ irq_handler2:
 ;Lights normal - set colors accordingly
 ;Each of these colors corresponds to the "Sprite X color register",
 ; which is the color for the bit pair "10"
-.C:1137  AD DA 0F    LDA relative_sprite_0
+.C:1137  AD DA 0F    LDA vic_sprite_idx_0
 .C:113a  A8          TAY
 .C:113b  AD D2 0F    LDA sprite_0_color
 .C:113e  99 27 D0    STA vic_sprite0_color_reg,Y
-.C:1141  AD DB 0F    LDA relative_sprite_1
+.C:1141  AD DB 0F    LDA vic_sprite_idx_1
 .C:1144  A8          TAY
 .C:1145  AD D3 0F    LDA sprite_1_color
 .C:1148  99 27 D0    STA vic_sprite0_color_reg,Y
-.C:114b  AD DC 0F    LDA relative_sprite_2
+.C:114b  AD DC 0F    LDA vic_sprite_idx_2
 .C:114e  A8          TAY
 .C:114f  AD D4 0F    LDA sprite_2_color
 .C:1152  99 27 D0    STA vic_sprite0_color_reg,Y
-.C:1155  AD DD 0F    LDA relative_sprite_3
+.C:1155  AD DD 0F    LDA vic_sprite_idx_3
 .C:1158  A8          TAY
 .C:1159  AD D5 0F    LDA sprite_3_color
 .C:115c  99 27 D0    STA vic_sprite0_color_reg,Y
-.C:115f  AD DE 0F    LDA relative_sprite_4
+.C:115f  AD DE 0F    LDA vic_sprite_idx_4
 .C:1162  A8          TAY
 .C:1163  AD D6 0F    LDA sprite_4_color
 .C:1166  99 27 D0    STA vic_sprite0_color_reg,Y
-.C:1169  AD DF 0F    LDA relative_sprite_5
+.C:1169  AD DF 0F    LDA vic_sprite_idx_5
 .C:116c  A8          TAY
 .C:116d  AD D7 0F    LDA sprite_5_color
 .C:1170  99 27 D0    STA vic_sprite0_color_reg,Y
-.C:1173  AD E0 0F    LDA relative_sprite_6
+.C:1173  AD E0 0F    LDA vic_sprite_idx_6
 .C:1176  A8          TAY
 .C:1177  AD D8 0F    LDA sprite_6_color
 .C:117a  99 27 D0    STA vic_sprite0_color_reg,Y
@@ -4824,19 +4824,19 @@ irq_handler4:
 ;------------------------------------------------
 ;Update sprite shapes for sprites 0-3
 .C:123e  AE 62 16    LDX sprite_shape_2
-.C:1241  AC DA 0F    LDY relative_sprite_0
+.C:1241  AC DA 0F    LDY vic_sprite_idx_0
 .C:1244  8A          TXA
 .C:1245  91 8C       STA (sprite_shape_data_ptr),Y
 .C:1247  E8          INX
-.C:1248  AC DB 0F    LDY relative_sprite_1
+.C:1248  AC DB 0F    LDY vic_sprite_idx_1
 .C:124b  8A          TXA
 .C:124c  91 8C       STA (sprite_shape_data_ptr),Y
 .C:124e  E8          INX
-.C:124f  AC DC 0F    LDY relative_sprite_2
+.C:124f  AC DC 0F    LDY vic_sprite_idx_2
 .C:1252  8A          TXA
 .C:1253  91 8C       STA (sprite_shape_data_ptr),Y
 .C:1255  E8          INX
-.C:1256  AC DD 0F    LDY relative_sprite_3
+.C:1256  AC DD 0F    LDY vic_sprite_idx_3
 .C:1259  8A          TXA
 .C:125a  91 8C       STA (sprite_shape_data_ptr),Y
 ;------------------------------------------------
@@ -4928,19 +4928,19 @@ irq_handler6:
 .C:12d0  8C EC 0F    STY temp_y
 ;------------------------------------------------
 .C:12d3  AE 63 16    LDX sprite_shape_3
-.C:12d6  AC DA 0F    LDY relative_sprite_0
+.C:12d6  AC DA 0F    LDY vic_sprite_idx_0
 .C:12d9  8A          TXA
 .C:12da  91 8C       STA (sprite_shape_data_ptr),Y
 .C:12dc  E8          INX
-.C:12dd  AC DB 0F    LDY relative_sprite_1
+.C:12dd  AC DB 0F    LDY vic_sprite_idx_1
 .C:12e0  8A          TXA
 .C:12e1  91 8C       STA (sprite_shape_data_ptr),Y
 .C:12e3  E8          INX
-.C:12e4  AC DC 0F    LDY relative_sprite_2
+.C:12e4  AC DC 0F    LDY vic_sprite_idx_2
 .C:12e7  8A          TXA
 .C:12e8  91 8C       STA (sprite_shape_data_ptr),Y
 .C:12ea  E8          INX
-.C:12eb  AC DD 0F    LDY relative_sprite_3
+.C:12eb  AC DD 0F    LDY vic_sprite_idx_3
 .C:12ee  8A          TXA
 .C:12ef  91 8C       STA (sprite_shape_data_ptr),Y
 ;------------------------------------------------
@@ -5031,19 +5031,19 @@ irq_handler8:
 .C:1365  8C EC 0F    STY temp_y
 ;------------------------------------------------
 .C:1368  AE 64 16    LDX sprite_shape_4
-.C:136b  AC DA 0F    LDY relative_sprite_0
+.C:136b  AC DA 0F    LDY vic_sprite_idx_0
 .C:136e  8A          TXA
 .C:136f  91 8C       STA (sprite_shape_data_ptr),Y
 .C:1371  E8          INX
-.C:1372  AC DB 0F    LDY relative_sprite_1
+.C:1372  AC DB 0F    LDY vic_sprite_idx_1
 .C:1375  8A          TXA
 .C:1376  91 8C       STA (sprite_shape_data_ptr),Y
 .C:1378  E8          INX
-.C:1379  AC DC 0F    LDY relative_sprite_2
+.C:1379  AC DC 0F    LDY vic_sprite_idx_2
 .C:137c  8A          TXA
 .C:137d  91 8C       STA (sprite_shape_data_ptr),Y
 .C:137f  E8          INX
-.C:1380  AC DD 0F    LDY relative_sprite_3
+.C:1380  AC DD 0F    LDY vic_sprite_idx_3
 .C:1383  8A          TXA
 .C:1384  91 8C       STA (sprite_shape_data_ptr),Y
 ;------------------------------------------------
@@ -5135,19 +5135,19 @@ irq_handler10:
 .C:13fa  8C EC 0F    STY temp_y
 ;------------------------------------------------
 .C:13fd  AE 65 16    LDX sprite_shape_5
-.C:1400  AC DA 0F    LDY relative_sprite_0
+.C:1400  AC DA 0F    LDY vic_sprite_idx_0
 .C:1403  8A          TXA
 .C:1404  91 8C       STA (sprite_shape_data_ptr),Y
 .C:1406  E8          INX
-.C:1407  AC DB 0F    LDY relative_sprite_1
+.C:1407  AC DB 0F    LDY vic_sprite_idx_1
 .C:140a  8A          TXA
 .C:140b  91 8C       STA (sprite_shape_data_ptr),Y
 .C:140d  E8          INX
-.C:140e  AC DC 0F    LDY relative_sprite_2
+.C:140e  AC DC 0F    LDY vic_sprite_idx_2
 .C:1411  8A          TXA
 .C:1412  91 8C       STA (sprite_shape_data_ptr),Y
 .C:1414  E8          INX
-.C:1415  AC DD 0F    LDY relative_sprite_3
+.C:1415  AC DD 0F    LDY vic_sprite_idx_3
 .C:1418  8A          TXA
 .C:1419  91 8C       STA (sprite_shape_data_ptr),Y
 ;------------------------------------------------
@@ -5239,19 +5239,19 @@ irq_handler12:
 .C:148f  8C EC 0F    STY temp_y
 ;------------------------------------------------
 .C:1492  AE 66 16    LDX sprite_shape_6
-.C:1495  AC DA 0F    LDY relative_sprite_0
+.C:1495  AC DA 0F    LDY vic_sprite_idx_0
 .C:1498  8A          TXA
 .C:1499  91 8C       STA (sprite_shape_data_ptr),Y
 .C:149b  E8          INX
-.C:149c  AC DB 0F    LDY relative_sprite_1
+.C:149c  AC DB 0F    LDY vic_sprite_idx_1
 .C:149f  8A          TXA
 .C:14a0  91 8C       STA (sprite_shape_data_ptr),Y
 .C:14a2  E8          INX
-.C:14a3  AC DC 0F    LDY relative_sprite_2
+.C:14a3  AC DC 0F    LDY vic_sprite_idx_2
 .C:14a6  8A          TXA
 .C:14a7  91 8C       STA (sprite_shape_data_ptr),Y
 .C:14a9  E8          INX
-.C:14aa  AC DD 0F    LDY relative_sprite_3
+.C:14aa  AC DD 0F    LDY vic_sprite_idx_3
 .C:14ad  8A          TXA
 .C:14ae  91 8C       STA (sprite_shape_data_ptr),Y
 ;------------------------------------------------
@@ -5343,19 +5343,19 @@ irq_handler14:
 .C:1524  8C EC 0F    STY temp_y
 ;------------------------------------------------
 .C:1527  AE 67 16    LDX sprite_shape_7
-.C:152a  AC DA 0F    LDY relative_sprite_0
+.C:152a  AC DA 0F    LDY vic_sprite_idx_0
 .C:152d  8A          TXA
 .C:152e  91 8C       STA (sprite_shape_data_ptr),Y
 .C:1530  E8          INX
-.C:1531  AC DB 0F    LDY relative_sprite_1
+.C:1531  AC DB 0F    LDY vic_sprite_idx_1
 .C:1534  8A          TXA
 .C:1535  91 8C       STA (sprite_shape_data_ptr),Y
 .C:1537  E8          INX
-.C:1538  AC DC 0F    LDY relative_sprite_2
+.C:1538  AC DC 0F    LDY vic_sprite_idx_2
 .C:153b  8A          TXA
 .C:153c  91 8C       STA (sprite_shape_data_ptr),Y
 .C:153e  E8          INX
-.C:153f  AC DD 0F    LDY relative_sprite_3
+.C:153f  AC DD 0F    LDY vic_sprite_idx_3
 .C:1542  8A          TXA
 .C:1543  91 8C       STA (sprite_shape_data_ptr),Y
 ;------------------------------------------------
@@ -5447,19 +5447,19 @@ irq_handler16:
 .C:15b9  8C EC 0F    STY temp_y
 ;------------------------------------------------
 .C:15bc  AE 68 16    LDX sprite_shape_8
-.C:15bf  AC DA 0F    LDY relative_sprite_0
+.C:15bf  AC DA 0F    LDY vic_sprite_idx_0
 .C:15c2  8A          TXA
 .C:15c3  91 8C       STA (sprite_shape_data_ptr),Y
 .C:15c5  E8          INX
-.C:15c6  AC DB 0F    LDY relative_sprite_1
+.C:15c6  AC DB 0F    LDY vic_sprite_idx_1
 .C:15c9  8A          TXA
 .C:15ca  91 8C       STA (sprite_shape_data_ptr),Y
 .C:15cc  E8          INX
-.C:15cd  AC DC 0F    LDY relative_sprite_2
+.C:15cd  AC DC 0F    LDY vic_sprite_idx_2
 .C:15d0  8A          TXA
 .C:15d1  91 8C       STA (sprite_shape_data_ptr),Y
 .C:15d3  E8          INX
-.C:15d4  AC DD 0F    LDY relative_sprite_3
+.C:15d4  AC DD 0F    LDY vic_sprite_idx_3
 .C:15d7  8A          TXA
 .C:15d8  91 8C       STA (sprite_shape_data_ptr),Y
 ;------------------------------------------------
@@ -5677,13 +5677,13 @@ update_sprites_0_to_3_positions:
 .C:1721  8D CD 0F    STA sprite_3_x_lo
 ;Update relative sprite indexes
 .C:1724  AD 7C FD    LDA relative_sprite_for_actor
-.C:1727  8D DA 0F    STA relative_sprite_0
+.C:1727  8D DA 0F    STA vic_sprite_idx_0
 .C:172a  AD 7D FD    LDA relative_sprite_for_actor + 1
-.C:172d  8D DB 0F    STA relative_sprite_1
+.C:172d  8D DB 0F    STA vic_sprite_idx_1
 .C:1730  AD 7E FD    LDA relative_sprite_for_actor + 2
-.C:1733  8D DC 0F    STA relative_sprite_2
+.C:1733  8D DC 0F    STA vic_sprite_idx_2
 .C:1736  AD 7F FD    LDA relative_sprite_for_actor + 3
-.C:1739  8D DD 0F    STA relative_sprite_3
+.C:1739  8D DD 0F    STA vic_sprite_idx_3
 ;Update X positions hi
 .C:173c  AD 58 FD    LDA actor_sprite_x_hi
 .C:173f  8D E1 0F    STA sprite_0_x_hi
