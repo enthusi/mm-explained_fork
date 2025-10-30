@@ -71,7 +71,7 @@ Values observed
 // Cursor (sprite 7) X low byte.
 .label cursor_sprite_x_lo              = $0FD1
 
-// Per-sprite color nybbles (0–15). Written to $D027..$D02D.
+// Per-sprite color nibbles (0–15). Written to $D027..$D02D.
 .label sprite_0_color                  = $0FD2
 .label sprite_1_color                  = $0FD3
 .label sprite_2_color                  = $0FD4
@@ -80,7 +80,7 @@ Values observed
 .label sprite_5_color                  = $0FD7
 .label sprite_6_color                  = $0FD8
 
-// Cursor (sprite 7) color nybble (0–15). Written to $D02E.
+// Cursor (sprite 7) color nibble (0–15). Written to $D02E.
 .label cursor_sprite_color             = $0FD9
 
 // Hardware sprite slot indices (0–7). Map logical actors → VIC sprite slots.
