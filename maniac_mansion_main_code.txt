@@ -1151,10 +1151,10 @@ vic_screen_control2_reg = $d016
 ; 	First 1024 bytes are screen codes for characters
 ;	Last 8 bytes are pointers to 64-byte blocks for sprites shape data
 vic_memory_layout_reg = $d018
-vic_irq_flag_register = $d019
+vic_irq_flag_reg = $d019
 vic_irq_mask_register = $d01a
 vic_sprite_x_expand_reg = $d01d
-vic_border_color_register = $d020
+vic_border_color_reg_register = $d020
 vic_bkg_color0_register = $d021
 vic_sprite_mcolor0_reg = $d025
 vic_sprite_mcolor1_reg = $d026
@@ -4255,7 +4255,7 @@ next_sentence_index:
 .C:0f10  A0 25       LDY #$25
 .C:0f12  84 01       STY processor_port_register
 hangup_loop:
-.C:0f14  8D 20 D0    STA vic_border_color_register
+.C:0f14  8D 20 D0    STA vic_border_color_reg_register
 .C:0f17  4C 14 0F    JMP hangup_loop
 ;---------------------------------------------
 queue_pickup:
@@ -4525,7 +4525,7 @@ update_sprite_xbit8_bitmask:
 ;-----------------------------------------
 ;Acknowledge raster interrupt
 .C:1089  A0 81       LDY #$81
-.C:108b  8C 19 D0    STY vic_irq_flag_register
+.C:108b  8C 19 D0    STY vic_irq_flag_reg
 ;Set next raster line for interrupt
 .C:108e  A0 29       LDY #$29
 .C:1090  8C 12 D0    STY raster_line_register
@@ -4704,7 +4704,7 @@ set_cursor_color:
 ;------------------------------------------------
 ;Acknowledge raster interrupt
 .C:11ad  A0 81       LDY #$81
-.C:11af  8C 19 D0    STY vic_irq_flag_register
+.C:11af  8C 19 D0    STY vic_irq_flag_reg
 ;Set next raster line for interrupt
 .C:11b2  A0 3A       LDY #$3A
 .C:11b4  8C 12 D0    STY raster_line_register
@@ -4790,7 +4790,7 @@ irq_handler3:
 ;------------------------------------------------
 ;Acknowledge raster interrupt
 .C:1213  A0 81       LDY #$81
-.C:1215  8C 19 D0    STY vic_irq_flag_register
+.C:1215  8C 19 D0    STY vic_irq_flag_reg
 ;Set next raster line for interrupt
 .C:1218  A0 45       LDY #$45
 .C:121a  8C 12 D0    STY raster_line_register
@@ -4855,7 +4855,7 @@ irq_handler4:
 .C:1270  8C FF FF    STY >irq_handler
 ;Acknowledge raster interrupt
 .C:1273  A0 81       LDY #$81
-.C:1275  8C 19 D0    STY vic_irq_flag_register
+.C:1275  8C 19 D0    STY vic_irq_flag_reg
 .C:1278  AC 0D DC    LDY cia1_irq_status_register
 ;Restore processor port register value and general registers
 .C:127b  A4 26       LDY cpu_port_shadow
@@ -4904,7 +4904,7 @@ irq_handler5:
 .C:12b7  8C FF FF    STY >irq_handler
 ;Acknowledge raster interrupt
 .C:12ba  A0 81       LDY #$81
-.C:12bc  8C 19 D0    STY vic_irq_flag_register
+.C:12bc  8C 19 D0    STY vic_irq_flag_reg
 .C:12bf  AC 0D DC    LDY cia1_irq_status_register
 ;Restore processor port register value and general registers
 .C:12c2  A4 26       LDY cpu_port_shadow
@@ -4959,7 +4959,7 @@ irq_handler6:
 .C:1305  8C FF FF    STY >irq_handler
 ;Acknowledge raster interrupt
 .C:1308  A0 81       LDY #$81
-.C:130a  8C 19 D0    STY vic_irq_flag_register
+.C:130a  8C 19 D0    STY vic_irq_flag_reg
 .C:130d  AC 0D DC    LDY cia1_irq_status_register
 ;Restore processor port register value and general registers
 .C:1310  A4 26       LDY cpu_port_shadow
@@ -5007,7 +5007,7 @@ irq_handler7:
 .C:134c  8C FF FF    STY >irq_handler
 ;Acknowledge raster interrupt
 .C:134f  A0 81       LDY #$81
-.C:1351  8C 19 D0    STY vic_irq_flag_register
+.C:1351  8C 19 D0    STY vic_irq_flag_reg
 .C:1354  AC 0D DC    LDY cia1_irq_status_register
 ;Restore processor port register value and general registers
 .C:1357  A4 26       LDY cpu_port_shadow
@@ -5062,7 +5062,7 @@ irq_handler8:
 .C:139a  8C FF FF    STY >irq_handler
 ;Acknowledge raster interrupt
 .C:139d  A0 81       LDY #$81
-.C:139f  8C 19 D0    STY vic_irq_flag_register
+.C:139f  8C 19 D0    STY vic_irq_flag_reg
 .C:13a2  AC 0D DC    LDY cia1_irq_status_register
 ;Restore processor port register value and general registers
 .C:13a5  A4 26       LDY cpu_port_shadow
@@ -5111,7 +5111,7 @@ irq_handler9:
 .C:13e1  8C FF FF    STY >irq_handler
 ;Acknowledge raster interrupt
 .C:13e4  A0 81       LDY #$81
-.C:13e6  8C 19 D0    STY vic_irq_flag_register
+.C:13e6  8C 19 D0    STY vic_irq_flag_reg
 .C:13e9  AC 0D DC    LDY cia1_irq_status_register
 ;Restore processor port register value and general registers
 .C:13ec  A4 26       LDY cpu_port_shadow
@@ -5166,7 +5166,7 @@ irq_handler10:
 .C:142f  8C FF FF    STY >irq_handler
 ;Acknowledge raster interrupt
 .C:1432  A0 81       LDY #$81
-.C:1434  8C 19 D0    STY vic_irq_flag_register
+.C:1434  8C 19 D0    STY vic_irq_flag_reg
 .C:1437  AC 0D DC    LDY cia1_irq_status_register
 ;Restore processor port register value and general registers
 .C:143a  A4 26       LDY cpu_port_shadow
@@ -5215,7 +5215,7 @@ irq_handler11:
 .C:1476  8C FF FF    STY >irq_handler
 ;Acknowledge raster interrupt
 .C:1479  A0 81       LDY #$81
-.C:147b  8C 19 D0    STY vic_irq_flag_register
+.C:147b  8C 19 D0    STY vic_irq_flag_reg
 .C:147e  AC 0D DC    LDY cia1_irq_status_register
 ;Restore processor port register value and general registers
 .C:1481  A4 26       LDY cpu_port_shadow
@@ -5270,7 +5270,7 @@ irq_handler12:
 .C:14c4  8C FF FF    STY >irq_handler
 ;Acknowledge raster interrupt
 .C:14c7  A0 81       LDY #$81
-.C:14c9  8C 19 D0    STY vic_irq_flag_register
+.C:14c9  8C 19 D0    STY vic_irq_flag_reg
 .C:14cc  AC 0D DC    LDY cia1_irq_status_register
 ;Restore processor port register value and general registers
 .C:14cf  A4 26       LDY cpu_port_shadow
@@ -5319,7 +5319,7 @@ irq_handler13:
 .C:150b  8C FF FF    STY >irq_handler
 ;Acknowledge raster interrupt
 .C:150e  A0 81       LDY #$81
-.C:1510  8C 19 D0    STY vic_irq_flag_register
+.C:1510  8C 19 D0    STY vic_irq_flag_reg
 .C:1513  AC 0D DC    LDY cia1_irq_status_register
 ;Restore processor port register value and general registers
 .C:1516  A4 26       LDY cpu_port_shadow
@@ -5374,7 +5374,7 @@ irq_handler14:
 .C:1559  8C FF FF    STY >irq_handler
 ;Acknowledge raster interrupt
 .C:155c  A0 81       LDY #$81
-.C:155e  8C 19 D0    STY vic_irq_flag_register
+.C:155e  8C 19 D0    STY vic_irq_flag_reg
 .C:1561  AC 0D DC    LDY cia1_irq_status_register
 ;Restore processor port register value and general registers
 .C:1564  A4 26       LDY cpu_port_shadow
@@ -5423,7 +5423,7 @@ irq_handler15:
 .C:15a0  8C FF FF    STY >irq_handler
 ;Acknowledge raster interrupt
 .C:15a3  A0 81       LDY #$81
-.C:15a5  8C 19 D0    STY vic_irq_flag_register
+.C:15a5  8C 19 D0    STY vic_irq_flag_reg
 .C:15a8  AC 0D DC    LDY cia1_irq_status_register
 ;Restore processor port register value and general registers
 .C:15ab  A4 26       LDY cpu_port_shadow
@@ -5478,7 +5478,7 @@ irq_handler16:
 .C:15ee  8C FF FF    STY >irq_handler
 ;Acknowledge raster interrupt
 .C:15f1  A0 81       LDY #$81
-.C:15f3  8C 19 D0    STY vic_irq_flag_register
+.C:15f3  8C 19 D0    STY vic_irq_flag_reg
 .C:15f6  AC 0D DC    LDY cia1_irq_status_register
 ;Restore processor port register value and general registers
 .C:15f9  A4 26       LDY cpu_port_shadow
@@ -5542,7 +5542,7 @@ irq_handler17:
 ;------------------------------------------------
 ;Acknowledge raster interrupt
 .C:163f  A0 81       LDY #$81
-.C:1641  8C 19 D0    STY vic_irq_flag_register
+.C:1641  8C 19 D0    STY vic_irq_flag_reg
 ;Set next raster line for interrupt
 .C:1644  A0 FB       LDY #$FB
 .C:1646  8C 12 D0    STY raster_line_register
@@ -7881,7 +7881,7 @@ blit_and_mask_limb:
 .C:1eba  A0 25       LDY #$25
 .C:1ebc  84 01       STY processor_port_register
 hang_loop:
-.C:1ebe  8D 20 D0    STA vic_border_color_register
+.C:1ebe  8D 20 D0    STA vic_border_color_reg_register
 .C:1ec1  4C BE 1E    JMP hang_loop
 ;--------------------------------------------
 ; Blit function selection
@@ -11255,7 +11255,7 @@ set_layer_3_as_3:
 .C:2e5e  84 01       STY processor_port_register
 loop:
 .C:2e60  A9 05       LDA #$05
-.C:2e62  8D 20 D0    STA vic_border_color_register
+.C:2e62  8D 20 D0    STA vic_border_color_reg_register
 ;Wait for semaphore to be clear
 .C:2e65  A5 2F       LDA debug_semaphore
 .C:2e67  F0 F7       BEQ loop
@@ -12498,7 +12498,7 @@ wait_for_irq_handler_entry:
 .C:33fe  8D 15 D0    STA vic_sprite_enable_register
 ;Set border color to black
 .C:3401  A9 00       LDA #$00
-.C:3403  8D 20 D0    STA vic_border_color_register
+.C:3403  8D 20 D0    STA vic_border_color_reg_register
 ;???
 .C:3406  AD 0C 48    LDA voices_executing_instruction
 .C:3409  8D 65 34    STA $3465
@@ -12541,14 +12541,14 @@ raster_setup:
 .C:343a  8D 12 D0    STA raster_line_register
 ;Acknowledge raster interrupt (in case one triggered before)
 .C:343d  A9 81       LDA #$81	
-.C:343f  8D 19 D0    STA vic_irq_flag_register
+.C:343f  8D 19 D0    STA vic_irq_flag_reg
 ;Set raster interrupt as the only VIC interrupt enabled
 .C:3442  8D 1A D0    STA vic_irq_mask_register
 .C:3445  AD 0D DC    LDA cia1_irq_status_register
 .C:3448  AD 00 DD    LDA cia2_port_a_data_register
 ;Set border color to black
 .C:344b  A9 00       LDA BLACK_COLOR
-.C:344d  8D 20 D0    STA vic_border_color_register
+.C:344d  8D 20 D0    STA vic_border_color_reg_register
 .C:3450  AD 65 34    LDA $3465
 .C:3453  F0 06       BEQ finalize_setup
 ;Reset the SID volume control
@@ -14696,7 +14696,7 @@ assign_sprite_to_visible_actor:
 .C:3f3a  A0 25       LDY #$25
 .C:3f3c  84 01       STY processor_port_register
 infinite_loop:
-.C:3f3e  8D 20 D0    STA vic_border_color_register
+.C:3f3e  8D 20 D0    STA vic_border_color_reg_register
 .C:3f41  4C 3E 3F    JMP infinite_loop
 ;----------------------------------------------------------------
 ; There's a visible actor without a sprite assigned - assign an available sprite
@@ -16113,7 +16113,7 @@ equality_check:
 .C:44a9  A0 25       LDY #$25
 .C:44ab  84 01       STY processor_port_register
 hangup_loop:
-.C:44ad  8D 20 D0    STA vic_border_color_register
+.C:44ad  8D 20 D0    STA vic_border_color_reg_register
 .C:44b0  4C AD 44    JMP hangup_loop
 ;-------------------------------------------------
 next:
@@ -16552,7 +16552,7 @@ command_success:
 hang_loop:
 ;Set screen border color to green
 .C:46ba  A9 05       LDA GREEN_COLOR
-.C:46bc  8D 20 D0    STA vic_border_color_register
+.C:46bc  8D 20 D0    STA vic_border_color_reg_register
 ;Loop forever
 .C:46bf  4C BA 46    JMP hang_loop
 ;===========================================
@@ -19615,7 +19615,7 @@ disk_id_check:
 .C:565a  A0 25       LDY #$25		
 .C:565c  84 01       STY processor_port_register
 infinite_loop:
-.C:565e  8D 20 D0    STA vic_border_color_register
+.C:565e  8D 20 D0    STA vic_border_color_reg_register
 .C:5661  4C 5E 56    JMP infinite_loop	
 ;Unreachable code
 ;.C:5664  4C 6D 56    JMP $566D
@@ -19691,7 +19691,7 @@ next_costume_2:
 .C:56ba  A0 25       LDY #$25
 .C:56bc  84 01       STY processor_port_register
 hangup_loop:
-.C:56be  8D 20 D0    STA vic_border_color_register
+.C:56be  8D 20 D0    STA vic_border_color_reg_register
 .C:56c1  4C BE 56    JMP hangup_loop
 ;===========================================
 ; Coalesces all adjacent free blocks
@@ -21227,7 +21227,7 @@ handle_script_relocation:
 .C:5dca  84 01       STY processor_port_register
 wait_for_semaphore:
 .C:5dcc  A9 01       LDA #$01
-.C:5dce  8D 20 D0    STA vic_border_color_register
+.C:5dce  8D 20 D0    STA vic_border_color_reg_register
 ;Wait for semaphore to be set
 .C:5dd1  A5 2F       LDA debug_semaphore
 .C:5dd3  F0 F7       BEQ wait_for_semaphore
@@ -24973,7 +24973,7 @@ init_memory_sound_and_video:
 .C:835a  8D 12 D0    STA raster_line_register
 ;Set bits 7 and 1 - acknowledge pending screen interrupts - bit 7 ignored?
 .C:835d  A9 81       LDA #$81		
-.C:835f  8D 19 D0    STA vic_irq_flag_register
+.C:835f  8D 19 D0    STA vic_irq_flag_reg
 ;Enable raster interrupt - bit 7 is ignored?
 .C:8362  8D 1A D0    STA vic_irq_mask_register
 ;Read out pending interrupts on CIA #1
@@ -25241,7 +25241,7 @@ setup_border_and_sprite_colors:
 .C:84bc  84 01       STY processor_port_register
 ;Set border color to black
 .C:84be  A9 00       LDA #$00
-.C:84c0  8D 20 D0    STA vic_border_color_register
+.C:84c0  8D 20 D0    STA vic_border_color_reg_register
 ;Set sprite multicolors to #00 and #0A (black and light red/skin tone)
 ;These correspond to the bit pairs "11" and "01" respectively (mcolor1 and mcolor0)
 .C:84c3  A9 00       LDA #$00
