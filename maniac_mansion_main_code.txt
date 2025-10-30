@@ -1198,10 +1198,10 @@ cia1_timer_b_ctrl_reg = $dc0f
 ; The game engine sets these bits to #00 (at Program Counter 836B)
 ; which means the range C000-FFFF
 cia2_port_a_data_register = $dd00
-cia2_port_b_data_register = $dd01
-cia2_port_a_data_direction_reg = $dd02
-cia2_port_b_data_direction_reg = $dd03
-cia2_irq_status_register = $dd0d
+cia2_prb = $dd01
+cia2_ddra = $dd02
+cia2_ddrb = $dd03
+cia2_irq_status_reg = $dd0d
 
 ;===========================================================
 ; Game engine constants
@@ -24661,13 +24661,13 @@ setup_vectors_and_drive_code:
 ;
 ; To sum up, all five sources of interrupts are enabled
 .C:8026  A9 FF       LDA #$FF
-.C:8028  8D 0D DD    STA cia2_irq_status_register
+.C:8028  8D 0D DD    STA cia2_irq_status_reg
 ;Clear all port B direction bits except for bit 5
 ;This means: keep User port pin J direction (input or output) unchanged
 ;Set pins C,D,E,F,H,K,L of User Port for input
-.C:802b  AD 03 DD    LDA cia2_port_b_data_direction_reg
+.C:802b  AD 03 DD    LDA cia2_ddrb
 .C:802e  29 20       AND #$20
-.C:8030  8D 03 DD    STA cia2_port_b_data_direction_reg
+.C:8030  8D 03 DD    STA cia2_ddrb
 ;----------------------------------------------------------------
 ; Drive code setup
 ;
@@ -24689,7 +24689,7 @@ setup_vectors_and_drive_code:
 ;Set DATA IN and CLOCK IN bits 7-6 as input
 ;Set the rest as output
 .C:8038  A9 3F       LDA #$3F		;0011 1111
-.C:803a  8D 02 DD    STA cia2_port_a_data_direction_reg
+.C:803a  8D 02 DD    STA cia2_ddra
 ;Issue a drive Initialize command
 .C:803d  20 C9 80    JSR drive_initialize_cmd
 ;Copy data in $8121-8321 to the drive's memory and execute it
@@ -24869,14 +24869,14 @@ setup_serial_communication:
 ; CIA 2 Port A data direction
 ; Bit set = bit used for output
 ; Bit clear = bit used for input
-.C:8101  AD 02 DD    LDA cia2_port_a_data_direction_reg
+.C:8101  AD 02 DD    LDA cia2_ddra
 ; Set DATA IN, CLOCK IN for input
 ; Set ATN OUT, DATA OUT, CLOCK OUT for output
 ;Clear bits 7-2, leave bits 1-0 unchanged 
 .C:8104  29 03       AND #$03		;0000 0011
 ;Set bits 5-2 - I think bit 2 was not really necessary to set
 .C:8106  09 3C       ORA #$3C		;0011 1100
-.C:8108  8D 02 DD    STA cia2_port_a_data_direction_reg
+.C:8108  8D 02 DD    STA cia2_ddra
 ;Now clear/set bits on the port's signal lines
 ;Clear DATA IN and CLOCK IN
 ;Set ATN OUT, DATA OUT, CLOCK OUT, TXD
