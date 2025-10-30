@@ -528,7 +528,7 @@ video_setup_mode = $22
 ;#01 - frame_buffer_base = CC28, #02 = C828 (yes, they are not in numerical order)
 frame_buffer = $23
 frame_buffer_base = $24		;Base address of frame buffer
-processor_port_reg_copy = $26
+cpu_port_shadow = $26
 kbd_keycode = $30
 joy_state = $33
 
@@ -4563,7 +4563,7 @@ irq_handler2:
 .C:10a7  8C EC 0F    STY temp_y
 ;Save processor port register value
 .C:10aa  A4 01       LDY processor_port_register
-.C:10ac  84 26       STY processor_port_reg_copy
+.C:10ac  84 26       STY cpu_port_shadow
 ;map_in_io
 .C:10ae  A0 25       LDY #$25
 .C:10b0  84 01       STY processor_port_register
@@ -4716,7 +4716,7 @@ set_cursor_color:
 .C:11c1  8C FF FF    STY >irq_handler
 ;------------------------------------------------
 ;Restore processor port register value
-.C:11c4  A4 26       LDY processor_port_reg_copy
+.C:11c4  A4 26       LDY cpu_port_shadow
 .C:11c6  84 01       STY processor_port_register
 ;Restore .A, .X and .Y
 .C:11c8  AD ED 0F    LDA temp_a
@@ -4746,7 +4746,7 @@ irq_handler3:
 .C:11d5  8D ED 0F    STA temp_a
 ;Save processor port register value
 .C:11d8  A4 01       LDY processor_port_register
-.C:11da  84 26       STY processor_port_reg_copy
+.C:11da  84 26       STY cpu_port_shadow
 ;map_in_io
 .C:11dc  A0 25       LDY #$25
 .C:11de  84 01       STY processor_port_register
@@ -4801,7 +4801,7 @@ irq_handler3:
 .C:1225  A0 12       LDY >irq_handler4
 .C:1227  8C FF FF    STY >irq_handler
 ;Restore processor port register value and general registers
-.C:122a  A4 26       LDY processor_port_reg_copy
+.C:122a  A4 26       LDY cpu_port_shadow
 .C:122c  84 01       STY processor_port_register
 .C:122e  AC EC 0F    LDY temp_y
 .C:1231  AD ED 0F    LDA temp_a
@@ -4841,7 +4841,7 @@ irq_handler4:
 .C:125a  91 8C       STA (sprite_shape_data_ptr),Y
 ;------------------------------------------------
 .C:125c  A4 01       LDY processor_port_register
-.C:125e  84 26       STY processor_port_reg_copy
+.C:125e  84 26       STY cpu_port_shadow
 ;map_in_io
 .C:1260  A0 25       LDY #$25
 .C:1262  84 01       STY processor_port_register
@@ -4858,7 +4858,7 @@ irq_handler4:
 .C:1275  8C 19 D0    STY vic_irq_flag_register
 .C:1278  AC 0D DC    LDY cia1_irq_status_register
 ;Restore processor port register value and general registers
-.C:127b  A4 26       LDY processor_port_reg_copy
+.C:127b  A4 26       LDY cpu_port_shadow
 .C:127d  84 01       STY processor_port_register
 .C:127f  AD ED 0F    LDA temp_a
 .C:1282  AE EE 0F    LDX temp_x
@@ -4879,7 +4879,7 @@ irq_handler5:
 ;Save .Y
 .C:1289  8C EC 0F    STY temp_y
 .C:128c  A4 01       LDY processor_port_register
-.C:128e  84 26       STY processor_port_reg_copy
+.C:128e  84 26       STY cpu_port_shadow
 ;map_in_io
 .C:1290  A0 25       LDY #$25
 .C:1292  84 01       STY processor_port_register
@@ -4907,7 +4907,7 @@ irq_handler5:
 .C:12bc  8C 19 D0    STY vic_irq_flag_register
 .C:12bf  AC 0D DC    LDY cia1_irq_status_register
 ;Restore processor port register value and general registers
-.C:12c2  A4 26       LDY processor_port_reg_copy
+.C:12c2  A4 26       LDY cpu_port_shadow
 .C:12c4  84 01       STY processor_port_register
 .C:12c6  AC EC 0F    LDY temp_y
 .C:12c9  40          RTI
@@ -4945,7 +4945,7 @@ irq_handler6:
 .C:12ef  91 8C       STA (sprite_shape_data_ptr),Y
 ;------------------------------------------------
 .C:12f1  A4 01       LDY processor_port_register
-.C:12f3  84 26       STY processor_port_reg_copy
+.C:12f3  84 26       STY cpu_port_shadow
 ;map_in_io
 .C:12f5  A0 25       LDY #$25
 .C:12f7  84 01       STY processor_port_register
@@ -4962,7 +4962,7 @@ irq_handler6:
 .C:130a  8C 19 D0    STY vic_irq_flag_register
 .C:130d  AC 0D DC    LDY cia1_irq_status_register
 ;Restore processor port register value and general registers
-.C:1310  A4 26       LDY processor_port_reg_copy
+.C:1310  A4 26       LDY cpu_port_shadow
 .C:1312  84 01       STY processor_port_register
 .C:1314  AD ED 0F    LDA temp_a
 .C:1317  AE EE 0F    LDX temp_x
@@ -4982,7 +4982,7 @@ irq_handler6:
 irq_handler7:
 .C:131e  8C EC 0F    STY temp_y
 .C:1321  A4 01       LDY processor_port_register
-.C:1323  84 26       STY processor_port_reg_copy
+.C:1323  84 26       STY cpu_port_shadow
 ;map_in_io
 .C:1325  A0 25       LDY #$25
 .C:1327  84 01       STY processor_port_register
@@ -5010,7 +5010,7 @@ irq_handler7:
 .C:1351  8C 19 D0    STY vic_irq_flag_register
 .C:1354  AC 0D DC    LDY cia1_irq_status_register
 ;Restore processor port register value and general registers
-.C:1357  A4 26       LDY processor_port_reg_copy
+.C:1357  A4 26       LDY cpu_port_shadow
 .C:1359  84 01       STY processor_port_register
 .C:135b  AC EC 0F    LDY temp_y
 .C:135e  40          RTI
@@ -5048,7 +5048,7 @@ irq_handler8:
 .C:1384  91 8C       STA (sprite_shape_data_ptr),Y
 ;------------------------------------------------
 .C:1386  A4 01       LDY processor_port_register
-.C:1388  84 26       STY processor_port_reg_copy
+.C:1388  84 26       STY cpu_port_shadow
 ;map_in_io
 .C:138a  A0 25       LDY #$25
 .C:138c  84 01       STY processor_port_register
@@ -5065,7 +5065,7 @@ irq_handler8:
 .C:139f  8C 19 D0    STY vic_irq_flag_register
 .C:13a2  AC 0D DC    LDY cia1_irq_status_register
 ;Restore processor port register value and general registers
-.C:13a5  A4 26       LDY processor_port_reg_copy
+.C:13a5  A4 26       LDY cpu_port_shadow
 .C:13a7  84 01       STY processor_port_register
 .C:13a9  AD ED 0F    LDA temp_a
 .C:13ac  AE EE 0F    LDX temp_x
@@ -5086,7 +5086,7 @@ irq_handler9:
 ;Save .Y
 .C:13b3  8C EC 0F    STY temp_y
 .C:13b6  A4 01       LDY processor_port_register
-.C:13b8  84 26       STY processor_port_reg_copy
+.C:13b8  84 26       STY cpu_port_shadow
 ;map_in_io
 .C:13ba  A0 25       LDY #$25
 .C:13bc  84 01       STY processor_port_register
@@ -5114,7 +5114,7 @@ irq_handler9:
 .C:13e6  8C 19 D0    STY vic_irq_flag_register
 .C:13e9  AC 0D DC    LDY cia1_irq_status_register
 ;Restore processor port register value and general registers
-.C:13ec  A4 26       LDY processor_port_reg_copy
+.C:13ec  A4 26       LDY cpu_port_shadow
 .C:13ee  84 01       STY processor_port_register
 .C:13f0  AC EC 0F    LDY temp_y
 .C:13f3  40          RTI
@@ -5152,7 +5152,7 @@ irq_handler10:
 .C:1419  91 8C       STA (sprite_shape_data_ptr),Y
 ;------------------------------------------------
 .C:141b  A4 01       LDY processor_port_register
-.C:141d  84 26       STY processor_port_reg_copy
+.C:141d  84 26       STY cpu_port_shadow
 ;map_in_io
 .C:141f  A0 25       LDY #$25
 .C:1421  84 01       STY processor_port_register
@@ -5169,7 +5169,7 @@ irq_handler10:
 .C:1434  8C 19 D0    STY vic_irq_flag_register
 .C:1437  AC 0D DC    LDY cia1_irq_status_register
 ;Restore processor port register value and general registers
-.C:143a  A4 26       LDY processor_port_reg_copy
+.C:143a  A4 26       LDY cpu_port_shadow
 .C:143c  84 01       STY processor_port_register
 .C:143e  AD ED 0F    LDA temp_a
 .C:1441  AE EE 0F    LDX temp_x
@@ -5190,7 +5190,7 @@ irq_handler11:
 ;Save .Y
 .C:1448  8C EC 0F    STY temp_y
 .C:144b  A4 01       LDY processor_port_register
-.C:144d  84 26       STY processor_port_reg_copy
+.C:144d  84 26       STY cpu_port_shadow
 ;map_in_io
 .C:144f  A0 25       LDY #$25
 .C:1451  84 01       STY processor_port_register
@@ -5218,7 +5218,7 @@ irq_handler11:
 .C:147b  8C 19 D0    STY vic_irq_flag_register
 .C:147e  AC 0D DC    LDY cia1_irq_status_register
 ;Restore processor port register value and general registers
-.C:1481  A4 26       LDY processor_port_reg_copy
+.C:1481  A4 26       LDY cpu_port_shadow
 .C:1483  84 01       STY processor_port_register
 .C:1485  AC EC 0F    LDY temp_y
 .C:1488  40          RTI
@@ -5256,7 +5256,7 @@ irq_handler12:
 .C:14ae  91 8C       STA (sprite_shape_data_ptr),Y
 ;------------------------------------------------
 .C:14b0  A4 01       LDY processor_port_register
-.C:14b2  84 26       STY processor_port_reg_copy
+.C:14b2  84 26       STY cpu_port_shadow
 ;map_in_io
 .C:14b4  A0 25       LDY #$25
 .C:14b6  84 01       STY processor_port_register
@@ -5273,7 +5273,7 @@ irq_handler12:
 .C:14c9  8C 19 D0    STY vic_irq_flag_register
 .C:14cc  AC 0D DC    LDY cia1_irq_status_register
 ;Restore processor port register value and general registers
-.C:14cf  A4 26       LDY processor_port_reg_copy
+.C:14cf  A4 26       LDY cpu_port_shadow
 .C:14d1  84 01       STY processor_port_register
 .C:14d3  AD ED 0F    LDA temp_a
 .C:14d6  AE EE 0F    LDX temp_x
@@ -5294,7 +5294,7 @@ irq_handler13:
 ;Save .Y
 .C:14dd  8C EC 0F    STY temp_y
 .C:14e0  A4 01       LDY processor_port_register
-.C:14e2  84 26       STY processor_port_reg_copy
+.C:14e2  84 26       STY cpu_port_shadow
 ;map_in_io
 .C:14e4  A0 25       LDY #$25
 .C:14e6  84 01       STY processor_port_register
@@ -5322,7 +5322,7 @@ irq_handler13:
 .C:1510  8C 19 D0    STY vic_irq_flag_register
 .C:1513  AC 0D DC    LDY cia1_irq_status_register
 ;Restore processor port register value and general registers
-.C:1516  A4 26       LDY processor_port_reg_copy
+.C:1516  A4 26       LDY cpu_port_shadow
 .C:1518  84 01       STY processor_port_register
 .C:151a  AC EC 0F    LDY temp_y
 .C:151d  40          RTI
@@ -5360,7 +5360,7 @@ irq_handler14:
 .C:1543  91 8C       STA (sprite_shape_data_ptr),Y
 ;------------------------------------------------
 .C:1545  A4 01       LDY processor_port_register
-.C:1547  84 26       STY processor_port_reg_copy
+.C:1547  84 26       STY cpu_port_shadow
 ;map_in_io
 .C:1549  A0 25       LDY #$25
 .C:154b  84 01       STY processor_port_register
@@ -5377,7 +5377,7 @@ irq_handler14:
 .C:155e  8C 19 D0    STY vic_irq_flag_register
 .C:1561  AC 0D DC    LDY cia1_irq_status_register
 ;Restore processor port register value and general registers
-.C:1564  A4 26       LDY processor_port_reg_copy
+.C:1564  A4 26       LDY cpu_port_shadow
 .C:1566  84 01       STY processor_port_register
 .C:1568  AD ED 0F    LDA temp_a
 .C:156b  AE EE 0F    LDX temp_x
@@ -5398,7 +5398,7 @@ irq_handler15:
 ;Save .Y
 .C:1572  8C EC 0F    STY temp_y
 .C:1575  A4 01       LDY processor_port_register
-.C:1577  84 26       STY processor_port_reg_copy
+.C:1577  84 26       STY cpu_port_shadow
 ;map_in_io
 .C:1579  A0 25       LDY #$25
 .C:157b  84 01       STY processor_port_register
@@ -5426,7 +5426,7 @@ irq_handler15:
 .C:15a5  8C 19 D0    STY vic_irq_flag_register
 .C:15a8  AC 0D DC    LDY cia1_irq_status_register
 ;Restore processor port register value and general registers
-.C:15ab  A4 26       LDY processor_port_reg_copy
+.C:15ab  A4 26       LDY cpu_port_shadow
 .C:15ad  84 01       STY processor_port_register
 .C:15af  AC EC 0F    LDY temp_y
 .C:15b2  40          RTI
@@ -5464,7 +5464,7 @@ irq_handler16:
 .C:15d8  91 8C       STA (sprite_shape_data_ptr),Y
 ;------------------------------------------------
 .C:15da  A4 01       LDY processor_port_register
-.C:15dc  84 26       STY processor_port_reg_copy
+.C:15dc  84 26       STY cpu_port_shadow
 ;map_in_io
 .C:15de  A0 25       LDY #$25
 .C:15e0  84 01       STY processor_port_register
@@ -5481,7 +5481,7 @@ irq_handler16:
 .C:15f3  8C 19 D0    STY vic_irq_flag_register
 .C:15f6  AC 0D DC    LDY cia1_irq_status_register
 ;Restore processor port register value and general registers
-.C:15f9  A4 26       LDY processor_port_reg_copy
+.C:15f9  A4 26       LDY cpu_port_shadow
 .C:15fb  84 01       STY processor_port_register
 .C:15fd  AD ED 0F    LDA temp_a
 .C:1600  AE EE 0F    LDX temp_x
@@ -5508,7 +5508,7 @@ irq_handler17:
 .C:1607  8C EC 0F    STY temp_y
 .C:160a  8D ED 0F    STA temp_a
 .C:160d  A4 01       LDY processor_port_register
-.C:160f  84 26       STY processor_port_reg_copy
+.C:160f  84 26       STY cpu_port_shadow
 ;map_in_io
 .C:1611  A0 25       LDY #$25
 .C:1613  84 01       STY processor_port_register
@@ -5553,7 +5553,7 @@ irq_handler17:
 .C:1651  A0 16       LDY >irq_handler1
 .C:1653  8C FF FF    STY >irq_handler
 ;Restore processor port register value and general registers
-.C:1656  A4 26       LDY processor_port_reg_copy
+.C:1656  A4 26       LDY cpu_port_shadow
 .C:1658  84 01       STY processor_port_register
 .C:165a  AC EC 0F    LDY temp_y
 .C:165d  AD ED 0F    LDA temp_a
