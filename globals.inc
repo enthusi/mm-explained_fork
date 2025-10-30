@@ -49,73 +49,109 @@ Values observed
 .label room_bg0_shadow = $8f
 .label room_bg1_shadow = $90
 
+.label video_processed_signal = $166b
 
 /*
 ===========================================================
  Sprite variables
 ===========================================================
 */
-.label sprite_bank_sel = $fd14		//Sprite buffer index (#00 or #01)
-.label sprite_0_x_lo = $0fca
-.label sprite_1_x_lo = $0fcb
-.label sprite_2_x_lo = $0fcc
-.label sprite_3_x_lo = $0fcd
-.label sprite_4_x_lo = $0fce
-.label sprite_5_x_lo = $0fcf
-.label sprite_6_x_lo = $0fd0
-.label cursor_sprite_x_lo = $0fd1
-.label sprite_0_color = $0fd2
-.label sprite_1_color = $0fd3
-.label sprite_2_color = $0fd4
-.label sprite_3_color = $0fd5
-.label sprite_4_color = $0fd6
-.label sprite_5_color = $0fd7
-.label sprite_6_color = $0fd8
-.label cursor_sprite_color = $0FD9
-.label vic_sprite_idx_0 = $0fda
-.label vic_sprite_idx_1 = $0fdb
-.label vic_sprite_idx_2 = $0fdc
-.label vic_sprite_idx_3 = $0fdd
-.label vic_sprite_idx_4 = $0fde
-.label vic_sprite_idx_5 = $0fdf
-.label vic_sprite_idx_6 = $0fe0
-.label sprite_horizontal_expansion = $0fea
-.label sprite_0_x_hi = $0fe1
-.label sprite_1_x_hi = $0fe2
-.label sprite_2_x_hi = $0fe3
-.label sprite_3_x_hi = $0fe4
-.label sprite_4_x_hi = $0fe5
-.label sprite_5_x_hi = $0fe6
-.label sprite_6_x_hi = $0fe7
-.label cursor_sprite_x_hi = $0fe8
-.label sprites_x_hi_combined = $0fe9
-.label cursor_sprite_y = $0FEB
+// Double-buffer selector for sprite attribute buffers. #$00 or #$01.
+.label sprite_bank_sel                 = $FD14
 
-//These are the sprite shapes to be used by the successive raster IRQ handlers
-.label sprite_shape_1 = $1661
-.label sprite_shape_2 = $1662
-.label sprite_shape_3 = $1663
-.label sprite_shape_4 = $1664
-.label sprite_shape_5 = $1665
-.label sprite_shape_6 = $1666
-.label sprite_shape_7 = $1667
-.label sprite_shape_8 = $1668
+// X low byte (bits 0–7) per actor-assigned sprite slot.
+.label sprite_0_x_lo                   = $0FCA
+.label sprite_1_x_lo                   = $0FCB
+.label sprite_2_x_lo                   = $0FCC
+.label sprite_3_x_lo                   = $0FCD
+.label sprite_4_x_lo                   = $0FCE
+.label sprite_5_x_lo                   = $0FCF
+.label sprite_6_x_lo                   = $0FD0
 
-.label sprite_shape_cursor = $1669
-.label target_sprite_shapeset = $166a	//0 = no new shapeset, 1 or 2: switch to that shapeset
-.label video_processed_signal = $166b
+// Cursor (sprite 7) X low byte.
+.label cursor_sprite_x_lo              = $0FD1
+
+// Per-sprite color nybbles (0–15). Written to $D027..$D02D.
+.label sprite_0_color                  = $0FD2
+.label sprite_1_color                  = $0FD3
+.label sprite_2_color                  = $0FD4
+.label sprite_3_color                  = $0FD5
+.label sprite_4_color                  = $0FD6
+.label sprite_5_color                  = $0FD7
+.label sprite_6_color                  = $0FD8
+
+// Cursor (sprite 7) color nybble (0–15). Written to $D02E.
+.label cursor_sprite_color             = $0FD9
+
+// Hardware sprite slot indices (0–7). Map logical actors → VIC sprite slots.
+.label vic_sprite_idx_0                = $0FDA
+.label vic_sprite_idx_1                = $0FDB
+.label vic_sprite_idx_2                = $0FDC
+.label vic_sprite_idx_3                = $0FDD
+.label vic_sprite_idx_4                = $0FDE
+.label vic_sprite_idx_5                = $0FDF
+.label vic_sprite_idx_6                = $0FE0
+
+// Shadow of $D01D horizontal expansion control. Bit n expands sprite n (2× width).
+.label sprite_horizontal_expansion     = $0FEA
+
+// X high bit (bit 8) per sprite as 0/1 bytes. Mirrors packed version below.
+.label sprite_0_x_hi                   = $0FE1
+.label sprite_1_x_hi                   = $0FE2
+.label sprite_2_x_hi                   = $0FE3
+.label sprite_3_x_hi                   = $0FE4
+.label sprite_4_x_hi                   = $0FE5
+.label sprite_5_x_hi                   = $0FE6
+.label sprite_6_x_hi                   = $0FE7
+
+// Cursor (sprite 7) X high bit (bit 8) as 0/1 byte.
+.label cursor_sprite_x_hi              = $0FE8
+
+// Packed X high bits mirror of $D010. Bit n = MSB of sprite n X.
+.label sprites_x_hi_combined           = $0FE9
+
+// Cursor (sprite 7) Y position.
+.label cursor_sprite_y                 = $0FEB
+
+
+// -----------------------------------------------------------------------------
+// Shape indices for successive raster IRQ handlers (per-scanline strip control)
+// Each byte is a shape index written into the sprite shape table for that pass.
+// -----------------------------------------------------------------------------
+.label sprite_shape_1                  = $1661
+.label sprite_shape_2                  = $1662
+.label sprite_shape_3                  = $1663
+.label sprite_shape_4                  = $1664
+.label sprite_shape_5                  = $1665
+.label sprite_shape_6                  = $1666
+.label sprite_shape_7                  = $1667
+.label sprite_shape_8                  = $1668
+
+// Cursor shape index used across screen banks.
+.label sprite_shape_cursor             = $1669
+
+// Pending shapeset switch flag. 0 = no change; 1 or 2 = switch to that set.
+.label target_sprite_shapeset          = $166A
+
 //===========================================================
-//Cursor variables
-.label hide_cursor_flag = $166c	//#01 if cursor needs to be hidden, #00 otherwise
+// Cursor state
+//===========================================================
+// Hide cursor flag. #$01 = hidden, #$00 = visible.
+.label hide_cursor_flag               = $166C
 
-//Each time irq_handler1 is executed, the wait counter is decremented
-//As the start value for the counter is #06, the cursor color will be updated 
-//every 6 executions of irq_handler1
-.label cursor_color_wait_ticks = $166d
-.label cursor_color_idx = $166e
-//The reset value for the wait counter (#06)
-.label cursor_color_period = $166f
-.label cursor_color_idx_first = $1670
+// Down-counter for cursor color update cadence.
+// Decremented by irq_handler1 each run. When it reaches 0, color advances and
+// the counter is reloaded from cursor_color_period.
+.label cursor_color_wait_ticks        = $166D
+
+// Current cursor color table index (0..N-1). Advanced when wait counter expires.
+.label cursor_color_idx               = $166E
+
+// Reload value for wait counter (ticks per color step). Example: #$06.
+.label cursor_color_period            = $166F
+
+// Initial color index used when resetting the cursor color cycle.
+.label cursor_color_idx_first         = $1670
 
 // ===========================================================
 
