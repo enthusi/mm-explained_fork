@@ -1,8 +1,19 @@
 #importonce
 
-.label cpu_port = $0001		// CPU I/O port: map I/O/KERNAL/BASIC
+// ============================================================================
+// 6510 CPU I/O port ($0001)
+// ============================================================================
+// Controls memory configuration and I/O mapping:
+//   bit0 = LORAM  → enable BASIC ROM ($A000–$BFFF) when 1
+//   bit1 = HIRAM  → enable KERNAL ROM ($E000–$FFFF) when 1
+//   bit2 = CHAREN → enable character ROM/I/O at $D000–$DFFF when 0 = char ROM, 1 = I/O
+//   bits3–5 = Cassette motor/sense/output lines
+.label cpu_port                        = $0001
 
 
+// ============================================================================
+// VIC-II registers
+// ============================================================================
 .label vic_sprite0_x_lo_reg           = $D000	// Sprite 0 X low byte (bits 0–7). Bit 8 lives in vic_sprite_x_msb_reg bit 0.
 .label vic_sprite0_y_reg              = $D001	// Sprite 0 Y position (0–255). Top-left origin, increases downward.
 .label vic_sprite1_y_reg              = $D003	// Sprite 1 Y position (0–255).
@@ -16,53 +27,112 @@
 .label vic_sprite_x_msb_reg       	  = $D010	// X high bits for all 8 sprites. Bit n = MSB of sprite n X (adds +256 when set).
 												//   bit0→spr0, bit1→spr1, …, bit7→spr7.
 
+// ----------------------------------------------------------------------------
+// Screen control register 1 ($D011)  vertical scroll and display configuration
+// ----------------------------------------------------------------------------
+// Bit layout:
+//   bit7 = High bit (bit8) of raster compare register ($D012)
+//   bit6 = Extended color mode enable (ECM)         1 = on, 0 = off
+//   bit5 = Bitmap graphics mode enable               1 = bitmap, 0 = text
+//   bit4 = Display enable                            1 = visible, 0 = blanked
+//   bit3 = Row select                                1 = 25 rows, 0 = 24 rows
+//   bits0–2 = Vertical fine scroll (0–7 scanlines)
+//
+// Combined, this register controls vertical timing, display enable, and modes.
+// ----------------------------------------------------------------------------
+.label vic_screen_control_reg_1        = $D011
+
+// Current raster line (low 8 bits). Range 0–255; combined with $D011 bit7 for 9-bit beam position.
+// Used for raster interrupts and beam-synced effects.
+.label vic_raster_line_reg             = $D012
+
+// Video memory layout register ($D018).
+// Bits 1–3 select character generator base (in 2 KB blocks).
+// Bits 4–7 select screen matrix base (in 1 KB blocks).
+// Defines which RAM regions VIC reads for screen codes and glyphs.
+.label vic_memory_layout_reg           = $D018
+
+// VIC-II interrupt flag register ($D019).
+// Read: current interrupt sources. Write: acknowledge (clear) bits by writing 1s.
+// Bit layout:
+//   bit0 = raster compare hit
+//   bit1 = sprite-background collision
+//   bit2 = sprite-sprite collision
+//   bit3 = lightpen trigger
+//   bit7 = master IRQ flag (set if any enabled source triggered)
+.label vic_irq_flag_reg                = $D019
+
 // Sprite horizontal expansion control. Bit n doubles the width of sprite n (2×).
 //   0 = normal width, 1 = expanded. Write-only on VIC-II.
 //   bit0→spr0, bit1→spr1, …, bit7→spr7.
 .label vic_sprite_x_expand_reg         = $D01D
 
+// Border color register ($D020). Lower 4 bits select color index (0–15).
+// Sets the color for screen border and background when display is blanked.
+.label vic_border_color_reg_reg        = $D020
 
-//======================================
-//Screen control register 1 bits meaning
-//======================================
-//	Bit 7		High bit of raster compare register (D012)
-//	Bit 6		Enable extended color mode
-//	Bit 5 		Enable bitmap graphics mode
-//	Bit 4		Blank entire screen to same color as border (0 = blank)
-//	Bit 3		1 = 25 row display, 0 = 24 rows
-//	Bits 0-2	Fine scroll display vertically by X scan lines (0-7)
-.label vic_screen_control_reg_1 = $D011    // Vertical scroll + 25/24 row select + raster high bit + display enable
-.label vic_raster_line_reg = $D012    // Current raster line (0–255); low 8 bits of beam position
-.label vic_memory_layout_reg = $D018    // Screen and character memory base select (video matrix + char set)
-.label vic_border_color  = $D020
-.label vic_bg0_reg = $D021
+// Background color register 0 ($D021).
+// Primary background color used in text, bitmap, or multicolor modes.
+// In multicolor modes, acts as "color 0" for shared background pixels.
+.label vic_bg0_reg                     = $D021
+
+// Sprite color registers base ($D027–$D02E). Each byte sets color for sprite n.
+// Only lower 4 bits are used (0–15). Bit pair “10” in bitmap selects this color.
+.label vic_sprite0_color_reg           = $D027
+.label vic_sprite1_color_reg           = $D028
+.label vic_sprite2_color_reg           = $D029
+.label vic_sprite3_color_reg           = $D02A
+.label vic_sprite4_color_reg           = $D02B
+.label vic_sprite5_color_reg           = $D02C
+.label vic_sprite6_color_reg           = $D02D
+.label vic_sprite7_color_reg           = $D02E
 
 
-.label cia1_pra        	= $DC00   	// PRA — CIA1 Port A data register
-                                /*
-                                 * Holds current output values when bits are set as outputs,
-                                 * or reads inputs when bits are configured as inputs.
-                                 * Used for keyboard column drive and joystick sense.
-                                 */
+// ============================================================================
+// CIA ports
+// ============================================================================
+// CIA #1 — Complex Interface Adapter 1 ($DC00–$DC0F)
+// Handles keyboard matrix, joystick #2, timers, TOD clock, and interrupts.
+// ============================================================================
 
-.label cia1_prb        	= $DC01   	// PRB — CIA1 Port B data register
-                                /*
-                                 * Reads the current logic levels on Port B input lines.
-                                 * On the C64, bits 0–4 correspond to joystick #2 inputs (active low),
-                                 * and all 8 bits participate in the keyboard matrix scan.
-                                 */
+// Port A data register ($DC00).
+// Reads/writes data on CIA1 Port A pins depending on DDRA settings.
+// - When a bit in DDRA = 1 → output latch (drives keyboard column lines).
+// - When a bit in DDRA = 0 → input buffer (reads keyboard row states).
+// Used in combination with Port B for keyboard scanning and joystick sensing.
+.label cia1_pra                        = $DC00
 
-.label cia1_ddra   		= $DC02   	// DDRA — CIA1 Port A Data Direction Register
-                                /*
-                                 * Each bit controls the direction of the corresponding line:
-                                 *   1 = output, 0 = input.
-                                 * Setting DDRA=$FF makes all Port A lines outputs.
-                                 */
+// Port B data register ($DC01).
+// Reads logic levels on CIA1 Port B pins (or drives them if configured as outputs).
+// On the C64:
+//   bits0–4 = joystick #2 inputs (active low)
+//   bits0–7 = also part of keyboard matrix readback
+//   bit7    = cassette read line
+.label cia1_prb                        = $DC01
 
-.label cia1_ddrb   		= $DC03   	// DDRB — CIA1 Port B Data Direction Register
-                                /*
-                                 * Works like DDRA, but for Port B.
-                                 * Setting DDRB=$00 makes all Port B lines inputs.
-                                 */
+// Data Direction Register A ($DC02).
+// Controls I/O direction of each Port A line:
+//   bit=1 → output, bit=0 → input.
+// Typical: DDRA = $FF for keyboard column drive (all outputs).
+.label cia1_ddra                       = $DC02
 
-.label cia2_pra 			= $DD00      			// CIA2 Port A (PRA). Read to sample inputs; write masks to drive IEC outputs.
+// Data Direction Register B ($DC03).
+// Controls I/O direction of Port B lines (same format as DDRA).
+// Typical: DDRB = $00 for keyboard/joystick input (all inputs).
+.label cia1_ddrb                       = $DC03
+
+
+// ============================================================================
+// CIA #2 — Complex Interface Adapter 2 ($DD00–$DD0F)
+// Handles serial IEC bus, RS-232, user port, and interrupt timing.
+// ============================================================================
+
+// Port A data register ($DD00).
+// - On write: drives IEC bus control lines (ATN, CLK, DATA) and user port bits.
+// - On read: samples IEC bus state and RS-232 signals.
+// Bit mapping varies by mode:
+//   bits0–2 = IEC DATA/CLK/ATN (open drain, active low)
+//   bits5–7 = RS-232 lines or user port.
+// Setting DDRA controls which lines act as outputs.
+.label cia2_pra                        = $DD00
+
