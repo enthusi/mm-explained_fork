@@ -465,6 +465,13 @@ They were definitely intended as debugging aids.
 .label music_to_start_ptr = $fea1
 .label music_index = $fea3
 
+//===========================================================
+// Interrupt handlers
+//===========================================================
+.label nmi_handler_lo = $fffa
+.label nmi_handler_hi = $fffb
+.label irq_handler = $fffe
+
 //Placeholders for routines not modularized yet
 .label print_message_wait_for_button = $0 // UI: print message pointed by msg_to_print_ptr, wait for button
 .label release_one_costume = $0
@@ -475,3 +482,4 @@ They were definitely intended as debugging aids.
 .label init_sprites_sound = $0
 .label raster_setup = $0
 .label prepare_video_for_new_room = $0
+
