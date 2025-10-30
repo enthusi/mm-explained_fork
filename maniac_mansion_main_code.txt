@@ -577,12 +577,12 @@ current_message_delay = $CB
 standard_message_delay = $CD
 text_delay = $CF
 actor = $d8
-irq_handler1_section_entry_count = $d9
+irq_entry_count = $d9
 debug_error_code = $dc
 random_1 = $dd
 random_2 = $de
 random_3 = $df
-irq_handler1_entry_lock = $e3
+irq_entry_lock = $e3
 
 decomp_dict4 = $0100
 ;Base address for message bar source buffers
@@ -1976,7 +1976,7 @@ main_loop:
 ;Reset the irq_handler1 entry count to #00
 ;We will execute the main loop once every 4 entries of the irq1_handler
 .C:0500  A9 00       LDA #$00
-.C:0502  85 D9       STA irq_handler1_section_entry_count
+.C:0502  85 D9       STA irq_entry_count
 ;--------------------------------------------------
 ; Key press handling
 ;--------------------------------------------------
@@ -2252,7 +2252,7 @@ next_costume:
 .C:0658  8D 67 06    STA camera_current_position
 wait_for_handler_entry_count:
 ;Wait for 4 executions of the IRQ handlers before looping again
-.C:065b  A5 D9       LDA irq_handler1_section_entry_count
+.C:065b  A5 D9       LDA irq_entry_count
 .C:065d  C9 04       CMP #$04
 .C:065f  90 FA       BCC wait_for_handler_entry_count
 .C:0661  4C FD 04    JMP main_loop
@@ -5581,12 +5581,12 @@ irq_handler1:
 .C:1682  A0 25       LDY #$25
 .C:1684  84 01       STY processor_port_register
 ;Check if irq lock is clear - if so, continue
-.C:1686  A5 E3       LDA irq_handler1_entry_lock
+.C:1686  A5 E3       LDA irq_entry_lock
 .C:1688  F0 07       BEQ entry_enabled
 ;IRQ lock is set - clear it and return
 ;Another part of the code was waiting for this lock to be cleared
 .C:168a  A9 00       LDA #$00
-.C:168c  85 E3       STA irq_handler1_entry_lock
+.C:168c  85 E3       STA irq_entry_lock
 .C:168e  4C 4B 18    JMP exit
 ;--------------------------------------------------
 entry_enabled:
@@ -5597,7 +5597,7 @@ entry_enabled:
 .C:1696  A9 00       LDA #$00		
 .C:1698  8D 21 D0    STA vic_bkg_color0_register
 ;Increment the handler entry count
-.C:169b  E6 D9       INC irq_handler1_section_entry_count
+.C:169b  E6 D9       INC irq_entry_count
 ;Mark that we haven't copied color RAM data yet
 .C:169d  A9 00       LDA #$00
 .C:169f  8D 77 16    STA color_ram_data_copied
@@ -12483,9 +12483,9 @@ check_raster_setup_needed:
 ;Wait for irq_handler1 to be executed at least once
 ;Set the synchronization flag and wait for the IRQ handler to clear it
 .C:33ee  A9 01       LDA #$01
-.C:33f0  85 E3       STA irq_handler1_entry_lock
+.C:33f0  85 E3       STA irq_entry_lock
 wait_for_irq_handler_entry:
-.C:33f2  A5 E3       LDA irq_handler1_entry_lock
+.C:33f2  A5 E3       LDA irq_entry_lock
 .C:33f4  D0 FC       BNE wait_for_irq_handler_entry
 ;At this point, we're sure the IRQ handler has just exited
 ;Disable interrupts
