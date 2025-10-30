@@ -1184,10 +1184,10 @@ cia1_port_a_data_register = $dc00
 cia1_port_b_data_register = $dc01
 cia1_port_a_data_direction_reg = $dc02
 cia1_port_b_data_direction_reg = $dc03
-cia1_timer_b_hi_register = $dc07
-cia1_irq_status_register = $dc0d
-cia1_control_timer_a_reg = $dc0e
-cia1_control_timer_b_reg = $dc0f
+cia1_timer_b_hi_reg = $dc07
+cia1_irq_status_reg = $dc0d
+cia1_timer_a_ctrl_reg = $dc0e
+cia1_timer_b_ctrl_reg = $dc0f
 
 ;CIA #2 Port A bits 0-1 control the base VIC-II address space (which is 16K long)
 ; Bits		Address space
@@ -4530,7 +4530,7 @@ update_sprite_xbit8_bitmask:
 .C:108e  A0 29       LDY #$29
 .C:1090  8C 12 D0    STY raster_line_register
 ;Read CIA 1 interrupt status register to acknowledge interupts
-.C:1093  AC 0D DC    LDY cia1_irq_status_register		
+.C:1093  AC 0D DC    LDY cia1_irq_status_reg		
 ;Set next IRQ handler
 .C:1096  A0 A1       LDY <irq_handler2
 .C:1098  8C FE FF    STY <irq_handler
@@ -4708,7 +4708,7 @@ set_cursor_color:
 ;Set next raster line for interrupt
 .C:11b2  A0 3A       LDY #$3A
 .C:11b4  8C 12 D0    STY raster_line_register
-.C:11b7  AC 0D DC    LDY cia1_irq_status_register
+.C:11b7  AC 0D DC    LDY cia1_irq_status_reg
 ;Set IRQ handler to irq_handler3
 .C:11ba  A0 D2       LDY <irq_handler3
 .C:11bc  8C FE FF    STY <irq_handler
@@ -4794,7 +4794,7 @@ irq_handler3:
 ;Set next raster line for interrupt
 .C:1218  A0 45       LDY #$45
 .C:121a  8C 12 D0    STY raster_line_register
-.C:121d  AC 0D DC    LDY cia1_irq_status_register
+.C:121d  AC 0D DC    LDY cia1_irq_status_reg
 ;Set IRQ handler to irq_handler4
 .C:1220  A0 35       LDY <irq_handler4
 .C:1222  8C FE FF    STY <irq_handler
@@ -4856,7 +4856,7 @@ irq_handler4:
 ;Acknowledge raster interrupt
 .C:1273  A0 81       LDY #$81
 .C:1275  8C 19 D0    STY vic_irq_flag_reg
-.C:1278  AC 0D DC    LDY cia1_irq_status_register
+.C:1278  AC 0D DC    LDY cia1_irq_status_reg
 ;Restore processor port register value and general registers
 .C:127b  A4 26       LDY cpu_port_shadow
 .C:127d  84 01       STY processor_port_register
@@ -4905,7 +4905,7 @@ irq_handler5:
 ;Acknowledge raster interrupt
 .C:12ba  A0 81       LDY #$81
 .C:12bc  8C 19 D0    STY vic_irq_flag_reg
-.C:12bf  AC 0D DC    LDY cia1_irq_status_register
+.C:12bf  AC 0D DC    LDY cia1_irq_status_reg
 ;Restore processor port register value and general registers
 .C:12c2  A4 26       LDY cpu_port_shadow
 .C:12c4  84 01       STY processor_port_register
@@ -4960,7 +4960,7 @@ irq_handler6:
 ;Acknowledge raster interrupt
 .C:1308  A0 81       LDY #$81
 .C:130a  8C 19 D0    STY vic_irq_flag_reg
-.C:130d  AC 0D DC    LDY cia1_irq_status_register
+.C:130d  AC 0D DC    LDY cia1_irq_status_reg
 ;Restore processor port register value and general registers
 .C:1310  A4 26       LDY cpu_port_shadow
 .C:1312  84 01       STY processor_port_register
@@ -5008,7 +5008,7 @@ irq_handler7:
 ;Acknowledge raster interrupt
 .C:134f  A0 81       LDY #$81
 .C:1351  8C 19 D0    STY vic_irq_flag_reg
-.C:1354  AC 0D DC    LDY cia1_irq_status_register
+.C:1354  AC 0D DC    LDY cia1_irq_status_reg
 ;Restore processor port register value and general registers
 .C:1357  A4 26       LDY cpu_port_shadow
 .C:1359  84 01       STY processor_port_register
@@ -5063,7 +5063,7 @@ irq_handler8:
 ;Acknowledge raster interrupt
 .C:139d  A0 81       LDY #$81
 .C:139f  8C 19 D0    STY vic_irq_flag_reg
-.C:13a2  AC 0D DC    LDY cia1_irq_status_register
+.C:13a2  AC 0D DC    LDY cia1_irq_status_reg
 ;Restore processor port register value and general registers
 .C:13a5  A4 26       LDY cpu_port_shadow
 .C:13a7  84 01       STY processor_port_register
@@ -5112,7 +5112,7 @@ irq_handler9:
 ;Acknowledge raster interrupt
 .C:13e4  A0 81       LDY #$81
 .C:13e6  8C 19 D0    STY vic_irq_flag_reg
-.C:13e9  AC 0D DC    LDY cia1_irq_status_register
+.C:13e9  AC 0D DC    LDY cia1_irq_status_reg
 ;Restore processor port register value and general registers
 .C:13ec  A4 26       LDY cpu_port_shadow
 .C:13ee  84 01       STY processor_port_register
@@ -5167,7 +5167,7 @@ irq_handler10:
 ;Acknowledge raster interrupt
 .C:1432  A0 81       LDY #$81
 .C:1434  8C 19 D0    STY vic_irq_flag_reg
-.C:1437  AC 0D DC    LDY cia1_irq_status_register
+.C:1437  AC 0D DC    LDY cia1_irq_status_reg
 ;Restore processor port register value and general registers
 .C:143a  A4 26       LDY cpu_port_shadow
 .C:143c  84 01       STY processor_port_register
@@ -5216,7 +5216,7 @@ irq_handler11:
 ;Acknowledge raster interrupt
 .C:1479  A0 81       LDY #$81
 .C:147b  8C 19 D0    STY vic_irq_flag_reg
-.C:147e  AC 0D DC    LDY cia1_irq_status_register
+.C:147e  AC 0D DC    LDY cia1_irq_status_reg
 ;Restore processor port register value and general registers
 .C:1481  A4 26       LDY cpu_port_shadow
 .C:1483  84 01       STY processor_port_register
@@ -5271,7 +5271,7 @@ irq_handler12:
 ;Acknowledge raster interrupt
 .C:14c7  A0 81       LDY #$81
 .C:14c9  8C 19 D0    STY vic_irq_flag_reg
-.C:14cc  AC 0D DC    LDY cia1_irq_status_register
+.C:14cc  AC 0D DC    LDY cia1_irq_status_reg
 ;Restore processor port register value and general registers
 .C:14cf  A4 26       LDY cpu_port_shadow
 .C:14d1  84 01       STY processor_port_register
@@ -5320,7 +5320,7 @@ irq_handler13:
 ;Acknowledge raster interrupt
 .C:150e  A0 81       LDY #$81
 .C:1510  8C 19 D0    STY vic_irq_flag_reg
-.C:1513  AC 0D DC    LDY cia1_irq_status_register
+.C:1513  AC 0D DC    LDY cia1_irq_status_reg
 ;Restore processor port register value and general registers
 .C:1516  A4 26       LDY cpu_port_shadow
 .C:1518  84 01       STY processor_port_register
@@ -5375,7 +5375,7 @@ irq_handler14:
 ;Acknowledge raster interrupt
 .C:155c  A0 81       LDY #$81
 .C:155e  8C 19 D0    STY vic_irq_flag_reg
-.C:1561  AC 0D DC    LDY cia1_irq_status_register
+.C:1561  AC 0D DC    LDY cia1_irq_status_reg
 ;Restore processor port register value and general registers
 .C:1564  A4 26       LDY cpu_port_shadow
 .C:1566  84 01       STY processor_port_register
@@ -5424,7 +5424,7 @@ irq_handler15:
 ;Acknowledge raster interrupt
 .C:15a3  A0 81       LDY #$81
 .C:15a5  8C 19 D0    STY vic_irq_flag_reg
-.C:15a8  AC 0D DC    LDY cia1_irq_status_register
+.C:15a8  AC 0D DC    LDY cia1_irq_status_reg
 ;Restore processor port register value and general registers
 .C:15ab  A4 26       LDY cpu_port_shadow
 .C:15ad  84 01       STY processor_port_register
@@ -5479,7 +5479,7 @@ irq_handler16:
 ;Acknowledge raster interrupt
 .C:15f1  A0 81       LDY #$81
 .C:15f3  8C 19 D0    STY vic_irq_flag_reg
-.C:15f6  AC 0D DC    LDY cia1_irq_status_register
+.C:15f6  AC 0D DC    LDY cia1_irq_status_reg
 ;Restore processor port register value and general registers
 .C:15f9  A4 26       LDY cpu_port_shadow
 .C:15fb  84 01       STY processor_port_register
@@ -5546,7 +5546,7 @@ irq_handler17:
 ;Set next raster line for interrupt
 .C:1644  A0 FB       LDY #$FB
 .C:1646  8C 12 D0    STY raster_line_register
-.C:1649  AC 0D DC    LDY cia1_irq_status_register
+.C:1649  AC 0D DC    LDY cia1_irq_status_reg
 ;Set IRQ handler back to irq_handler1
 .C:164c  A0 7A       LDY <irq_handler1
 .C:164e  8C FE FF    STY <irq_handler
@@ -12544,7 +12544,7 @@ raster_setup:
 .C:343f  8D 19 D0    STA vic_irq_flag_reg
 ;Set raster interrupt as the only VIC interrupt enabled
 .C:3442  8D 1A D0    STA vic_irq_mask_register
-.C:3445  AD 0D DC    LDA cia1_irq_status_register
+.C:3445  AD 0D DC    LDA cia1_irq_status_reg
 .C:3448  AD 00 DD    LDA cia2_port_a_data_register
 ;Set border color to black
 .C:344b  A9 00       LDA BLACK_COLOR
@@ -24977,7 +24977,7 @@ init_memory_sound_and_video:
 ;Enable raster interrupt - bit 7 is ignored?
 .C:8362  8D 1A D0    STA vic_irq_mask_register
 ;Read out pending interrupts on CIA #1
-.C:8365  AD 0D DC    LDA cia1_irq_status_register
+.C:8365  AD 0D DC    LDA cia1_irq_status_reg
 ;Clear out bits 0-1 - Set VIC bank base to C000
 .C:8368  AD 00 DD    LDA cia2_port_a_data_register
 .C:836b  29 FC       AND #$FC		;11111100
@@ -24985,9 +24985,9 @@ init_memory_sound_and_video:
 .C:836f  8D 00 DD    STA cia2_port_a_data_register
 ;Set Timers A and B to stop timer on underflow
 .C:8372  A9 08       LDA #$08
-.C:8374  8D 0E DC    STA cia1_control_timer_a_reg
+.C:8374  8D 0E DC    STA cia1_timer_a_ctrl_reg
 .C:8377  A9 08       LDA #$08
-.C:8379  8D 0F DC    STA cia1_control_timer_b_reg
+.C:8379  8D 0F DC    STA cia1_timer_b_ctrl_reg
 ;Set all sprites to enable drawing them on screen
 .C:837c  A9 FF       LDA #$FF
 .C:837e  8D 15 D0    STA vic_sprite_enable_register
