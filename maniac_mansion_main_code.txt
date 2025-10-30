@@ -657,24 +657,24 @@ sprite_shape_8 = $1668
 ;===========================================================
 sprite_shape_cursor = $1669
 target_sprite_shapeset = $166a
-irq_handler1_video_processed_signal = $166b
+video_processed_signal = $166b
 
 ;===========================================================
 ;Cursor variables
-hide_cursor = $166c	;#01 if cursor needs to be hidden, #00 otherwise
+hide_cursor_flag = $166c	;#01 if cursor needs to be hidden, #00 otherwise
 
 ;Each time irq_handler1 is executed, the wait counter is decremented
 ;As the start value for the counter is #06, the cursor color will be updated 
 ;every 6 executions of irq_handler1
-cursor_color_wait_counter = $166d
-cursor_color_index = $166e
+cursor_color_wait_ticks = $166d
+cursor_color_idx = $166e
 ;The reset value for the wait counter (#06)
-cursor_color_wait_start = $166f
-first_cursor_color_index = $1670
+cursor_color_period = $166f
+first_cursor_color_idx = $1670
 ;===========================================================
 color_ram_copy_done = $1677
-general_semaphore = $1678 ;Semaphore used to control access to a section in irq_handler1
-game_paused = $1679	;#01 if game is paused, #00 otherwise
+ui_section_semaphore = $1678 ;Semaphore used to control access to a section in irq_handler1
+game_paused_flag = $1679	;#01 if game is paused, #00 otherwise
 
 disk_error_msg = $3b81
 
@@ -1321,7 +1321,7 @@ actor_sprite_x_lo = $fd60
 actor_motion_state = $fd68
 room_scene_mask_layer_ptr = $fd6d
 actor_visible = $fd6f
-room_scene_clicked = $fd77
+room_scene_clicked_flag = $fd77
 relative_sprite_for_actor = $fd7c
 
 ;===========================================================
@@ -1412,7 +1412,7 @@ item_index_saved = $fe52
 costume_for_actor = $fe53			;#FF = actor not in use
 actor_for_costume = $fe57		;Bit 7 set - actor moving, clear - not moving
 
-reload_snd_rsrc_ptrs = $FE70	;#01 if the sound resource needs to be reloaded, #00 otherwise
+reload_sound_ptrs_flag = $FE70	;#01 if the sound resource needs to be reloaded, #00 otherwise
 new_sound_instructions_allowed = $fe71	;#00 = not allowed, nonzero = allowed
 walkbox_room = $FE74
 actor_search_depth = $fe75	
@@ -2157,7 +2157,7 @@ show_cursor:
 .C:05d6  A9 00       LDA #$00
 .C:05d8  8D 6E 06    STA open_shutter_flag
 ;Show cursor
-.C:05db  8D 6C 16    STA hide_cursor
+.C:05db  8D 6C 16    STA hide_cursor_flag
 ;--------------------------------------------------
 ; Walking sounds generation
 ;--------------------------------------------------
@@ -5559,9 +5559,9 @@ irq_handler17:
 .C:165d  AD ED 0F    LDA temp_a
 .C:1660  40          RTI
 ;=======================================================
-cursor_color_wait_start:
+cursor_color_period:
 .C:166f  06 
-first_cursor_color_index:
+first_cursor_color_idx:
 .C:1670  05       
 cursor_colors:
 .C:1671  01 0F 0C 0B 0C 0F 
@@ -5779,22 +5779,22 @@ video_update_finished:
 clear_video_processed_signal:
 ;Clear the video_processed signal (as the main code might be blocked waiting for it)
 .C:17a1  A9 00       LDA #$00
-.C:17a3  8D 6B 16    STA irq_handler1_video_processed_signal
+.C:17a3  8D 6B 16    STA video_processed_signal
 ;There's a kind of semaphore controlling access to the next part of the code
 ;This includes: message bar updates, paused scripts, cursor color change,
 ; keyboard scan, cursor show/hide, sound resource reload.
 ;
 ; If the semaphore is clear, continue and set it (thus disallowing reexecution)
 ; If it's set, skip the section and exit
-.C:17a6  AD 78 16    LDA general_semaphore
+.C:17a6  AD 78 16    LDA ui_section_semaphore
 .C:17a9  F0 03       BEQ section_entry
 .C:17ab  4C 4B 18    JMP exit
 ;--------------------------------------------------
 section_entry:
 ;Set the semaphore (thus disallowing reexecution)
-.C:17ae  EE 78 16    INC general_semaphore
+.C:17ae  EE 78 16    INC ui_section_semaphore
 ;Is the game paused?
-.C:17b1  AD 79 16    LDA game_paused
+.C:17b1  AD 79 16    LDA game_paused_flag
 ;If the game is not paused (#00), then:
 ;
 ;	-update top bar messages
@@ -5809,23 +5809,23 @@ section_entry:
 ; Cursor color change
 ;--------------------------------------------------
 ;Decrement cursor color wait counter
-.C:17bc  CE 6D 16    DEC cursor_color_wait_counter
+.C:17bc  CE 6D 16    DEC cursor_color_wait_ticks
 ;If wait counter is still positive, don't change the cursor color
 ;If counter reached negative, reset it - and change the cursor color
 .C:17bf  10 1A       BPL do_keyboard
-.C:17c1  AD 6F 16    LDA cursor_color_wait_start
-.C:17c4  8D 6D 16    STA cursor_color_wait_counter
+.C:17c1  AD 6F 16    LDA cursor_color_period
+.C:17c4  8D 6D 16    STA cursor_color_wait_ticks
 ;Switch to next cursor color index
-.C:17c7  CE 6E 16    DEC cursor_color_index
+.C:17c7  CE 6E 16    DEC cursor_color_idx
 ;If we reached a negative color index, reset it 
 ;Otherwise, set the color
 .C:17ca  10 06       BPL set_cursor_color
 ;Reset cursor color index to the first one
-.C:17cc  AD 70 16    LDA first_cursor_color_index
-.C:17cf  8D 6E 16    STA cursor_color_index
+.C:17cc  AD 70 16    LDA first_cursor_color_idx
+.C:17cf  8D 6E 16    STA cursor_color_idx
 set_cursor_color:
 ;Set cursor color
-.C:17d2  AE 6E 16    LDX cursor_color_index
+.C:17d2  AE 6E 16    LDX cursor_color_idx
 .C:17d5  BD 71 16    LDA cursor_colors,X
 .C:17d8  8D D9 0F    STA cursor_sprite_color
 ;--------------------------------------------------
@@ -5836,7 +5836,7 @@ do_keyboard:
 .C:17de  A0 25       LDY #$25
 .C:17e0  84 01       STY processor_port_register
 .C:17e2  A9 00       LDA #$00
-.C:17e4  8D 77 FD    STA room_scene_clicked
+.C:17e4  8D 77 FD    STA room_scene_clicked_flag
 .C:17e7  AD 77 16    LDA color_ram_copy_done
 .C:17ea  D0 24       BNE $1810
 .C:17ec  AD A8 FE    LDA control_mode
@@ -5849,7 +5849,7 @@ do_keyboard:
 .C:17f9  8D E8 0F    STA cursor_sprite_x_hi
 .C:17fc  8E D1 0F    STX cursor_sprite_x_lo
 .C:17ff  8C EB 0F    STY cursor_sprite_y
-.C:1802  4C 10 18    JMP check_hide_cursor
+.C:1802  4C 10 18    JMP check_hide_cursor_flag
 ;--------------------------------------------------
 cutscene_mode:
 ;Move cursor off-screen to hide it
@@ -5858,9 +5858,9 @@ cutscene_mode:
 .C:180a  8D D1 0F    STA cursor_sprite_x_lo
 .C:180d  8D EB 0F    STA cursor_sprite_y
 ;--------------------------------------------------
-check_hide_cursor:
+check_hide_cursor_flag:
 ;Cursor needs to be hidden?
-.C:1810  AD 6C 16    LDA hide_cursor
+.C:1810  AD 6C 16    LDA hide_cursor_flag
 .C:1813  F0 0B       BEQ $1820
 ;Yes - move cursor off-screen to hide it
 .C:1815  A9 00       LDA #$00
@@ -5873,7 +5873,7 @@ check_hide_cursor:
 .C:1820  AD 8E FE    LDA click_trigger_sentence
 .C:1823  C9 01       CMP #$01
 .C:1825  F0 06       BEQ handle_sound
-.C:1827  AD 77 FD    LDA room_scene_clicked	
+.C:1827  AD 77 FD    LDA room_scene_clicked_flag	
 .C:182a  8D 8E FE    STA click_trigger_sentence
 ;--------------------------------------------------
 handle_sound:
@@ -5881,7 +5881,7 @@ handle_sound:
 .C:182d  A0 25       LDY #$25
 .C:182f  84 01       STY processor_port_register
 ;Do we need to reload the sound resource address? If not, continue
-.C:1831  AD 70 FE    LDA reload_snd_rsrc_ptrs
+.C:1831  AD 70 FE    LDA reload_sound_ptrs_flag
 .C:1834  D0 12       BNE clear_semaphore
 ;Reload the current music pointers
 .C:1836  AE A3 FE    LDX music_index
@@ -5894,7 +5894,7 @@ handle_sound:
 ;--------------------------------------------------
 ;Clear the semaphore to allow re-execution
 clear_semaphore:
-.C:1848  CE 78 16    DEC general_semaphore
+.C:1848  CE 78 16    DEC ui_section_semaphore
 ;--------------------------------------------------
 exit:
 ;Restore registers from stack
@@ -5976,7 +5976,7 @@ pause_game:
 .C:18d3  8D 69 16    STA sprite_shape_cursor
 ;Mark game as paused
 .C:18d6  A9 01       LDA #$01
-.C:18d8  8D 79 16    STA game_paused
+.C:18d8  8D 79 16    STA game_paused_flag
 ;Set cursor color to white
 .C:18db  8D D9 0F    STA cursor_sprite_color
 .C:18de  60          RTS
@@ -5987,7 +5987,7 @@ unpause_game:
 .C:18e1  8D 69 16    STA sprite_shape_cursor
 ;Mark game as unpaused
 .C:18e4  A9 00       LDA #$00
-.C:18e6  8D 79 16    STA game_paused
+.C:18e6  8D 79 16    STA game_paused_flag
 .C:18e9  60          RTS
 ;===========================================
 ;NMI handler - return immediately
@@ -10105,11 +10105,11 @@ check_space:
 .C:28fc  20 D1 18    JSR pause_game
 ;Print the paused game message on the command bar
 .C:28ff  A0 27       LDY #$27	;Game pause message string length
-copy_game_paused_msg:
-.C:2901  B9 A6 3B    LDA game_paused_msg,Y
+copy_game_paused_flag_msg:
+.C:2901  B9 A6 3B    LDA game_paused_flag_msg,Y
 .C:2904  99 D0 CE    STA SENTENCE_BAR_BASE,Y
 .C:2907  88          DEY
-.C:2908  10 F7       BPL copy_game_paused_msg
+.C:2908  10 F7       BPL copy_game_paused_flag_msg
 ;map_in_io
 .C:290a  A0 25       LDY #$25
 .C:290c  84 01       STY processor_port_register
@@ -10144,11 +10144,11 @@ wait_for_space_key:
 .C:2933  8D 49 FE    STA refresh_sentence_bar_flag
 ;Clear out the paused game message from the command bar
 .C:2936  A0 27       LDY #$27
-clear_game_paused_msg:
+clear_game_paused_flag_msg:
 .C:2938  A9 00       LDA #$00
 .C:293a  99 D0 CE    STA SENTENCE_BAR_BASE,Y
 .C:293d  88          DEY
-.C:293e  10 F8       BPL clear_game_paused_msg
+.C:293e  10 F8       BPL clear_game_paused_flag_msg
 .C:2940  60          RTS
 ;---------------------------------
 check_f8_key:
@@ -13940,7 +13940,7 @@ disk_error_msg:
 74 6F 6E 20 74 6F 20 63 6F 6E 
 74 69 6E 75 65 2E 00 
 
-game_paused_msg:
+game_paused_flag_msg:
 3ba6 ; "Game paused, press SPACE to continue.  "
 47 61 6D 65 20 70 61 75 73 65 
 64 2C 20 70 72 65 73 73 20 53 
@@ -20399,7 +20399,7 @@ move_to_back:
 .C:5a08  F0 05       BEQ copy_block_data
 ;It's a sound possibly in use - reload sound resource pointers
 .C:5a0a  A9 01       LDA #$01
-.C:5a0c  8D 70 FE    STA reload_snd_rsrc_ptrs
+.C:5a0c  8D 70 FE    STA reload_sound_ptrs_flag
 ;-------------------
 copy_block_data:
 ;Setup arguments for mem_copy_memory ($5B-$60)
@@ -20428,7 +20428,7 @@ copy_block_data:
 .C:5a32  20 89 5A    JSR rsrc_update_ptr
 ;Don't reload the sound resource pointers
 .C:5a35  A9 00       LDA #$00
-.C:5a37  8D 70 FE    STA reload_snd_rsrc_ptrs
+.C:5a37  8D 70 FE    STA reload_sound_ptrs_flag
 ;Add the used block size to both source and destination
 ;Before the copy, they were spaced apart exactly as the free block size, and they still are
 ;Source now points to the used block's adjacent block (pre-copy)
@@ -24920,7 +24920,7 @@ init_memory_sound_and_video:
 .C:8305  20 18 85    JSR clear_gfx_memory	
 .C:8308  20 67 84    JSR clear_zero_page_vars
 .C:830b  20 72 84    JSR clear_game_and_engine_vars ;Also clears CAD0-CB90
-.C:830e  20 0E 85    JSR init_video_setup_mode_and_fd77	;Set video_setup_mode = #00 and room_scene_clicked to #01
+.C:830e  20 0E 85    JSR init_video_setup_mode_and_fd77	;Set video_setup_mode = #00 and room_scene_clicked_flag to #01
 .C:8311  20 18 85    JSR clear_gfx_memory
 .C:8314  20 BA 84    JSR setup_border_and_sprite_colors
 .C:8317  20 D2 84    JSR clear_sprite_regs_and_sprite_memory
@@ -25155,7 +25155,7 @@ relocate_memory:
 .C:845a  20 DA F7    JSR set_cursor_physics
 ;Hide cursor
 .C:845d  A9 01       LDA #$01
-.C:845f  8D 6C 16    STA hide_cursor
+.C:845f  8D 6C 16    STA hide_cursor_flag
 ;Enable interrupts
 .C:8462  58          CLI
 ;Setup the raster IRQ handlers
@@ -25288,13 +25288,13 @@ clear_sprite_regs_and_sprite_memory:
 .C:850a  20 8A 84    JSR mem_fill_x_3
 .C:850d  60          RTS
 ;===========================================
-; video_setup_mode = #00, room_scene_clicked = #01
+; video_setup_mode = #00, room_scene_clicked_flag = #01
 ;===========================================
 init_video_setup_mode_and_fd77:
 .C:850e  A9 00       LDA #$00
 .C:8510  85 22       STA video_setup_mode
 .C:8512  A9 01       LDA #$01
-.C:8514  8D 77 FD    STA room_scene_clicked
+.C:8514  8D 77 FD    STA room_scene_clicked_flag
 .C:8517  60          RTS
 ;===========================================
 ;Clears the two "frame buffers" used for
@@ -25866,7 +25866,7 @@ shutter_direction_flag = $b7
 prepare_video_for_new_room:
 ;Hide cursor
 .C:d69d  A9 01       LDA #$01
-.C:d69f  8D 6C 16    STA hide_cursor
+.C:d69f  8D 6C 16    STA hide_cursor_flag
 ;Make all actors not visible
 .C:d6a2  20 CE 3B    JSR hide_all_actors_and_release_sprites
 .C:d6a5  A9 41       LDA #$41
@@ -25893,7 +25893,7 @@ open_shutter:
 .C:d6ca  20 34 D7    JSR do_shutter_effect
 ;Show cursor
 .C:d6cd  A9 00       LDA #$00
-.C:d6cf  8D 6C 16    STA hide_cursor
+.C:d6cf  8D 6C 16    STA hide_cursor_flag
 .C:d6d2  60          RTS
 ;===========================================
 setup_buffer_and_color_for_shutter_effect:
@@ -26059,9 +26059,9 @@ raster_setup_check:
 .C:d7c3  4C BC D7    JMP raster_setup_check
 set_irq_handler1_signal:
 .C:d7c6  A9 01       LDA #$01
-.C:d7c8  8D 6B 16    STA irq_handler1_video_processed_signal
+.C:d7c8  8D 6B 16    STA video_processed_signal
 wait_for_irq_handler1_signal_to_clear:
-.C:d7cb  AD 6B 16    LDA irq_handler1_video_processed_signal
+.C:d7cb  AD 6B 16    LDA video_processed_signal
 .C:d7ce  D0 FB       BNE wait_for_irq_handler1_signal_to_clear
 .C:d7d0  CA          DEX
 .C:d7d1  10 F3       BPL set_irq_handler1_signal
@@ -26620,7 +26620,7 @@ handle_action_bar_region_entry:
 ;===================================================
 handle_click_on_upper_half_region:
 .C:f427  A9 01       LDA #$01
-.C:f429  8D 77 FD    STA room_scene_clicked
+.C:f429  8D 77 FD    STA room_scene_clicked_flag
 .C:f42c  60          RTS
 ;===================================================
 handle_click_on_verb:
