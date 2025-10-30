@@ -672,7 +672,7 @@ cursor_color_index = $166e
 cursor_color_wait_start = $166f
 first_cursor_color_index = $1670
 ;===========================================================
-color_ram_data_copied = $1677
+color_ram_copy_done = $1677
 general_semaphore = $1678 ;Semaphore used to control access to a section in irq_handler1
 game_paused = $1679	;#01 if game is paused, #00 otherwise
 
@@ -5600,7 +5600,7 @@ entry_enabled:
 .C:169b  E6 D9       INC irq_entry_count
 ;Mark that we haven't copied color RAM data yet
 .C:169d  A9 00       LDA #$00
-.C:169f  8D 77 16    STA color_ram_data_copied
+.C:169f  8D 77 16    STA color_ram_copy_done
 ;Check if video needs to be updated
 .C:16a2  A5 8E       LDA video_update_signal
 .C:16a4  D0 07       BNE signal_set
@@ -5837,7 +5837,7 @@ do_keyboard:
 .C:17e0  84 01       STY processor_port_register
 .C:17e2  A9 00       LDA #$00
 .C:17e4  8D 77 FD    STA room_scene_clicked
-.C:17e7  AD 77 16    LDA color_ram_data_copied
+.C:17e7  AD 77 16    LDA color_ram_copy_done
 .C:17ea  D0 24       BNE $1810
 .C:17ec  AD A8 FE    LDA control_mode
 .C:17ef  C9 00       CMP #$00
@@ -5967,7 +5967,7 @@ loop:
 .C:18c9  10 97       BPL loop
 ;Use the flag to set that we already copied color RAM
 .C:18cb  A9 01       LDA #$01
-.C:18cd  8D 77 16    STA color_ram_data_copied
+.C:18cd  8D 77 16    STA color_ram_copy_done
 .C:18d0  60          RTS
 ;===========================================
 pause_game:
