@@ -1384,7 +1384,7 @@ costume_cache_miss:
  *                (dest_x,dest_y) := (COSTUME_DFLT_X_DEST,COSTUME_DFLT_Y_DEST);
  *                actor_room_idx_tbl[X] := COSTUME_HOLDING_ROOM; RTS.
  *   3) Failure:
- *        diag_code := #$05; cpu_port := CPU_PORT_MAP_IO; loop on vic_border_color.
+ *        diag_code := #$05; cpu_port := CPU_PORT_MAP_IO; loop on vic_border_color_reg.
  *===========================================*/
 * = $567B
 rsrc_unlock_or_unassign_costume:
@@ -1469,7 +1469,7 @@ advance_costume_evict_scan:
         sty cpu_port      
 
 costume_evict_hangup:
-        sta vic_border_color      		// set border color
+        sta vic_border_color_reg      		// set border color
         jmp costume_evict_hangup        // infinite loop by design
 
 		

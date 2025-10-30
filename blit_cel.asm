@@ -475,7 +475,7 @@ blit_and_mask_cel:
         ldy     #MAP_IO_ON
         sty     cpu_port
 hang_loop_2:
-        sta     vic_border_color          
+        sta     vic_border_color_reg          
         jmp     hang_loop_2
 
 select_blit_variant:

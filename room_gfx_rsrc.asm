@@ -763,14 +763,14 @@ consume_column_bytes:
 
   Returns:
     A,Y,flags                  ─ clobbered on success; X preserved
-    (no return on failure)     ─ infinite loop writes vic_border_color after flagging error
+    (no return on failure)     ─ infinite loop writes vic_border_color_reg after flagging error
 
   Description:
     - Walk both byte tables in lockstep for y ∈ [0, CMP_LEN); require exact equality.
     - On first mismatch:
         • Store 1 to debug_error_code (latched failure indicator).
         • Map I/O via cpu_port := MAP_IO so VIC registers are visible.
-        • Enter a tight loop writing vic_border_color to signal a hard halt.
+        • Enter a tight loop writing vic_border_color_reg to signal a hard halt.
     - On full match:
         • Return normally with Y == CMP_LEN (Z=1 from the final CPY).
 
@@ -814,10 +814,10 @@ compare_next:
         lda     #$01                          // prepare error code and border color value (=1)
         sta     debug_error_code              // debug_error_code := 1 (latched failure indicator)
         ldy     #MAP_IO_ON                      // Y := mapping value for $01 (I/O enabled)
-        sty     cpu_port       				  // ensure address of vic_border_color targets VIC, not RAM/ROM
+        sty     cpu_port       				  // ensure address of vic_border_color_reg targets VIC, not RAM/ROM
 
 mismatch_halt_loop:
-        sta     vic_border_color              // border := 1 (visible hang); A remains 1
+        sta     vic_border_color_reg              // border := 1 (visible hang); A remains 1
         jmp     mismatch_halt_loop                   // infinite loop (no return on failure)
 
 advance_or_return:

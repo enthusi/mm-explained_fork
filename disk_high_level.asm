@@ -18,7 +18,7 @@
  *
  * Hardware / Memory Map:
  *   • cpu_port ($0001): maps I/O in/out around IEC calls.
- *   • vic_border_color ($D020): set green on fatal protocol error (debug).
+ *   • vic_border_color_reg ($D020): set green on fatal protocol error (debug).
  *   • SECTOR_BUFFER ($0300..$03FF): fixed 256-byte read buffer (page-aligned).
  *   • Must execute from RAM: routines rely on self-modifying code (patch abs operands).
  *
@@ -1076,7 +1076,7 @@ command_success:
 hang_loop:
         // Fatal/unknown sequence: mark screen border, spin forever
         lda #DISK_FAULT_BORDER
-        sta vic_border_color
+        sta vic_border_color_reg
         jmp hang_loop
 
 /*===========================================

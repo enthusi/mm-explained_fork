@@ -1315,7 +1315,7 @@ assign_or_refresh_visible_actor_sprite:
         ldy     #MAP_IO_ON                        // Y := $25 → enable I/O map
         sty     cpu_port                          // map in hardware registers
 debug_halt_no_sprites_left:
-        sta     vic_border_color                  // flash border with code
+        sta     vic_border_color_reg                  // flash border with code
         jmp     debug_halt_no_sprites_left        // infinite loop (halt)
 
 

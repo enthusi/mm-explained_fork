@@ -2360,7 +2360,7 @@ Description
 	- X := actor; actor_box_fg_masking[X] := FG_OCCLUDED.
 	- If dbg_gate.bit7=1 → skip debug section and return.
 	- Else: dbg_gate := $00; cpu_port := MAP_IO_ON.
-	Loop: set vic_border_color := BORDER_WAIT_FG_MASK_COLOR; poll dbg_gate until ≠0.
+	Loop: set vic_border_color_reg := BORDER_WAIT_FG_MASK_COLOR; poll dbg_gate until ≠0.
 	After release: cpu_port := MAP_IO_OFF; return.
 
 Notes
@@ -2399,7 +2399,7 @@ set_box_masked_by_fg:
 debug_wait_loop:
 		//Set border color
 		lda     #BORDER_WAIT_FG_MASK_COLOR
-		sta     vic_border_color              // visual cue while paused
+		sta     vic_border_color_reg              // visual cue while paused
 
         // ------------------------------------------------------------
 		// Spin until external agent sets dbg_gate != 0
