@@ -2,6 +2,20 @@
 
 .label cpu_port = $0001		// CPU I/O port: map I/O/KERNAL/BASIC
 
+
+.label vic_sprite0_x_lo_reg           = $D000	// Sprite 0 X low byte (bits 0–7). Bit 8 lives in vic_sprite_x_msb_reg bit 0.
+.label vic_sprite0_y_reg              = $D001	// Sprite 0 Y position (0–255). Top-left origin, increases downward.
+.label vic_sprite1_y_reg              = $D003	// Sprite 1 Y position (0–255).
+.label vic_sprite2_y_reg              = $D005	// Sprite 2 Y position (0–255).
+.label vic_sprite3_y_reg              = $D007	// Sprite 3 Y position (0–255).
+.label vic_sprite4_y_reg              = $D009   // Sprite 4 Y position (0–255).
+.label vic_sprite5_y_reg              = $D00B	// Sprite 5 Y position (0–255).
+.label vic_sprite6_y_reg              = $D00D	// Sprite 6 Y position (0–255).
+.label vic_sprite7_y_reg              = $D00F	// Sprite 7 Y position (0–255). In this codebase, sprite 7 is the cursor.
+.label vic_sprite7_x_lo_reg           = $D00E	// Sprite 7 X low byte (bits 0–7) for the cursor. Bit 8 at vic_sprite_x_msb_reg bit 7.
+.label vic_sprite_x_msb_reg       	  = $D010	// X high bits for all 8 sprites. Bit n = MSB of sprite n X (adds +256 when set).
+												//   bit0→spr0, bit1→spr1, …, bit7→spr7.
+
 //======================================
 //Screen control register 1 bits meaning
 //======================================

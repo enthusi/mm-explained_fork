@@ -1039,20 +1039,20 @@ opcode_handlers_hi = $d100
 ; I/O Video registers
 ;===========================================================
 ;Sprite 7 is always the cursor
-sprite0_x_lo_register = $d000
-sprite0_y_register = $d001
-sprite1_y_register = $d003
-sprite2_y_register = $d005
-sprite3_y_register = $d007
-sprite4_y_register = $d009
-sprite5_y_register = $d00b
-sprite6_y_register = $d00d
-sprite7_y_register = $d00f
-sprite7_x_lo_register = $d00e
+vic_sprite0_x_lo_reg = $d000
+vic_sprite0_y_reg = $d001
+vic_sprite1_y_reg = $d003
+vic_sprite2_y_reg = $d005
+vic_sprite3_y_reg = $d007
+vic_sprite4_y_reg = $d009
+vic_sprite5_y_reg = $d00b
+vic_sprite6_y_reg = $d00d
+vic_sprite7_y_reg = $d00f
+vic_sprite7_x_lo_reg = $d00e
 ;This register controls bit 8 of ALL 8 sprites
 ;Each bit corresponds to each of the 8 sprites
 ;Bit 4 set means that sprite 4 has the bit 8 of its X coordinate set to 1
-sprites_x_hi_combined_reg = $d010
+vic_sprite_x_msb_reg = $d010
 
 ;======================================
 ;Screen control register 1 bits meaning
@@ -4419,7 +4419,7 @@ snap_destination_to_walkbox:
 ;
 ; To make more efficient use of storage, the VIC-II chip combines all the "bit 8"s of all sprites into a single register.
 ; There are also 8 sprites in total, so there are 8 bit 8s.
-; We labelled this register "sprites_x_hi_combined_reg", which can be a bit cryptic if this explanation is not present.
+; We labelled this register "vic_sprite_x_msb_reg", which can be a bit cryptic if this explanation is not present.
 ; 
 ; So, for each of the sprites, whenever the bit8 of a given sprite needs to be set or cleared, 
 ; the corresponding bit in the "bit8" register needs to be set or cleared.
@@ -4519,9 +4519,9 @@ bit8_left_shift_loop:
 update_sprite_xbit8_bitmask:
 ;Set/clear the bitmask of "bit 8 of X coordinates" accordingly
 .C:107d  0D E9 0F    ORA sprites_x_hi_combined		
-.C:1080  8D 10 D0    STA sprites_x_hi_combined_reg		
+.C:1080  8D 10 D0    STA vic_sprite_x_msb_reg		
 .C:1083  AC D1 0F    LDY cursor_sprite_x_lo
-.C:1086  8C 0E D0    STY sprite7_x_lo_register	
+.C:1086  8C 0E D0    STY vic_sprite7_x_lo_reg	
 ;-----------------------------------------
 ;Acknowledge raster interrupt
 .C:1089  A0 81       LDY #$81
@@ -4576,42 +4576,42 @@ irq_handler2:
 .C:10b6  A8          TAY
 ;Load the horizontal position (bits 0-7) and set it in the desired register
 .C:10b7  AD CA 0F    LDA sprite_0_x_lo
-.C:10ba  99 00 D0    STA sprite0_x_lo_register,Y
+.C:10ba  99 00 D0    STA vic_sprite0_x_lo_reg,Y
 ;And repeat for each of the remaining sprites 1-6
 .C:10bd  AD DB 0F    LDA relative_sprite_1
 .C:10c0  0A          ASL A
 .C:10c1  A8          TAY
 .C:10c2  AD CB 0F    LDA sprite_1_x_lo
-.C:10c5  99 00 D0    STA sprite0_x_lo_register,Y
+.C:10c5  99 00 D0    STA vic_sprite0_x_lo_reg,Y
 .C:10c8  AD DC 0F    LDA relative_sprite_2
 .C:10cb  0A          ASL A
 .C:10cc  A8          TAY
 .C:10cd  AD CC 0F    LDA sprite_2_x_lo
-.C:10d0  99 00 D0    STA sprite0_x_lo_register,Y
+.C:10d0  99 00 D0    STA vic_sprite0_x_lo_reg,Y
 .C:10d3  AD DD 0F    LDA relative_sprite_3
 .C:10d6  0A          ASL A
 .C:10d7  A8          TAY
 .C:10d8  AD CD 0F    LDA sprite_3_x_lo
-.C:10db  99 00 D0    STA sprite0_x_lo_register,Y
+.C:10db  99 00 D0    STA vic_sprite0_x_lo_reg,Y
 .C:10de  AD DE 0F    LDA relative_sprite_4
 .C:10e1  0A          ASL A
 .C:10e2  A8          TAY
 .C:10e3  AD CE 0F    LDA sprite_4_x_lo
-.C:10e6  99 00 D0    STA sprite0_x_lo_register,Y
+.C:10e6  99 00 D0    STA vic_sprite0_x_lo_reg,Y
 .C:10e9  AD DF 0F    LDA relative_sprite_5
 .C:10ec  0A          ASL A
 .C:10ed  A8          TAY
 .C:10ee  AD CF 0F    LDA sprite_5_x_lo
-.C:10f1  99 00 D0    STA sprite0_x_lo_register,Y
+.C:10f1  99 00 D0    STA vic_sprite0_x_lo_reg,Y
 .C:10f4  AD E0 0F    LDA relative_sprite_6
 .C:10f7  0A          ASL A
 .C:10f8  A8          TAY
 .C:10f9  AD D0 0F    LDA sprite_6_x_lo
-.C:10fc  99 00 D0    STA sprite0_x_lo_register,Y
+.C:10fc  99 00 D0    STA vic_sprite0_x_lo_reg,Y
 ;------------------------------------------------
 ;Sprite 7 is fixed (the cursor), so just copy the value directly
 .C:10ff  AC D1 0F    LDY cursor_sprite_x_lo
-.C:1102  8C 0E D0    STY sprite7_x_lo_register
+.C:1102  8C 0E D0    STY vic_sprite7_x_lo_reg
 ;Set horizontal expansion for sprites
 .C:1105  AC EA 0F    LDY sprite_horizontal_expansion
 .C:1108  8C 1D D0    STY vic_sprite_hor_expansion_reg
@@ -4691,16 +4691,16 @@ set_cursor_color:
 ;------------------------------------------------
 ;Set cursor Y coordinate
 .C:1190  AC EB 0F    LDY cursor_sprite_y
-.C:1193  8C 0F D0    STY sprite7_y_register
+.C:1193  8C 0F D0    STY vic_sprite7_y_reg
 ;Set Y coordinate of sprites 0-6 to #32
 .C:1196  A0 32       LDY #$32
-.C:1198  8C 01 D0    STY sprite0_y_register
-.C:119b  8C 03 D0    STY sprite1_y_register
-.C:119e  8C 05 D0    STY sprite2_y_register
-.C:11a1  8C 07 D0    STY sprite3_y_register
-.C:11a4  8C 09 D0    STY sprite4_y_register
-.C:11a7  8C 0B D0    STY sprite5_y_register
-.C:11aa  8C 0D D0    STY sprite6_y_register
+.C:1198  8C 01 D0    STY vic_sprite0_y_reg
+.C:119b  8C 03 D0    STY vic_sprite1_y_reg
+.C:119e  8C 05 D0    STY vic_sprite2_y_reg
+.C:11a1  8C 07 D0    STY vic_sprite3_y_reg
+.C:11a4  8C 09 D0    STY vic_sprite4_y_reg
+.C:11a7  8C 0B D0    STY vic_sprite5_y_reg
+.C:11aa  8C 0D D0    STY vic_sprite6_y_reg
 ;------------------------------------------------
 ;Acknowledge raster interrupt
 .C:11ad  A0 81       LDY #$81
@@ -4780,13 +4780,13 @@ irq_handler3:
 .C:11fb  EA          NOP
 ;Set Y coordinate of sprites 0-6 to #47
 .C:11fc  A0 47       LDY #$47
-.C:11fe  8C 01 D0    STY sprite0_y_register
-.C:1201  8C 03 D0    STY sprite1_y_register
-.C:1204  8C 05 D0    STY sprite2_y_register
-.C:1207  8C 07 D0    STY sprite3_y_register
-.C:120a  8C 09 D0    STY sprite4_y_register
-.C:120d  8C 0B D0    STY sprite5_y_register
-.C:1210  8C 0D D0    STY sprite6_y_register
+.C:11fe  8C 01 D0    STY vic_sprite0_y_reg
+.C:1201  8C 03 D0    STY vic_sprite1_y_reg
+.C:1204  8C 05 D0    STY vic_sprite2_y_reg
+.C:1207  8C 07 D0    STY vic_sprite3_y_reg
+.C:120a  8C 09 D0    STY vic_sprite4_y_reg
+.C:120d  8C 0B D0    STY vic_sprite5_y_reg
+.C:1210  8C 0D D0    STY vic_sprite6_y_reg
 ;------------------------------------------------
 ;Acknowledge raster interrupt
 .C:1213  A0 81       LDY #$81
@@ -4886,13 +4886,13 @@ irq_handler5:
 ;------------------------------------------------
 ;Set Y coordinate of sprites 0-6 to #5C
 .C:1294  A0 5C       LDY #$5C
-.C:1296  8C 01 D0    STY sprite0_y_register
-.C:1299  8C 03 D0    STY sprite1_y_register
-.C:129c  8C 05 D0    STY sprite2_y_register
-.C:129f  8C 07 D0    STY sprite3_y_register
-.C:12a2  8C 09 D0    STY sprite4_y_register
-.C:12a5  8C 0B D0    STY sprite5_y_register
-.C:12a8  8C 0D D0    STY sprite6_y_register
+.C:1296  8C 01 D0    STY vic_sprite0_y_reg
+.C:1299  8C 03 D0    STY vic_sprite1_y_reg
+.C:129c  8C 05 D0    STY vic_sprite2_y_reg
+.C:129f  8C 07 D0    STY vic_sprite3_y_reg
+.C:12a2  8C 09 D0    STY vic_sprite4_y_reg
+.C:12a5  8C 0B D0    STY vic_sprite5_y_reg
+.C:12a8  8C 0D D0    STY vic_sprite6_y_reg
 ;------------------------------------------------
 ;Set next raster line for interrupt
 .C:12ab  A0 59       LDY #$59
@@ -4989,13 +4989,13 @@ irq_handler7:
 ;------------------------------------------------
 ;Set Y coordinate of sprites 0-6 to #71
 .C:1329  A0 71       LDY #$71
-.C:132b  8C 01 D0    STY sprite0_y_register
-.C:132e  8C 03 D0    STY sprite1_y_register
-.C:1331  8C 05 D0    STY sprite2_y_register
-.C:1334  8C 07 D0    STY sprite3_y_register
-.C:1337  8C 09 D0    STY sprite4_y_register
-.C:133a  8C 0B D0    STY sprite5_y_register
-.C:133d  8C 0D D0    STY sprite6_y_register
+.C:132b  8C 01 D0    STY vic_sprite0_y_reg
+.C:132e  8C 03 D0    STY vic_sprite1_y_reg
+.C:1331  8C 05 D0    STY vic_sprite2_y_reg
+.C:1334  8C 07 D0    STY vic_sprite3_y_reg
+.C:1337  8C 09 D0    STY vic_sprite4_y_reg
+.C:133a  8C 0B D0    STY vic_sprite5_y_reg
+.C:133d  8C 0D D0    STY vic_sprite6_y_reg
 ;------------------------------------------------
 ;Set next raster line for interrupt
 .C:1340  A0 6D       LDY #$6D
@@ -5093,13 +5093,13 @@ irq_handler9:
 ;------------------------------------------------
 ;Set Y coordinate of sprites 0-6 to #86
 .C:13be  A0 86       LDY #$86
-.C:13c0  8C 01 D0    STY sprite0_y_register
-.C:13c3  8C 03 D0    STY sprite1_y_register
-.C:13c6  8C 05 D0    STY sprite2_y_register
-.C:13c9  8C 07 D0    STY sprite3_y_register
-.C:13cc  8C 09 D0    STY sprite4_y_register
-.C:13cf  8C 0B D0    STY sprite5_y_register
-.C:13d2  8C 0D D0    STY sprite6_y_register
+.C:13c0  8C 01 D0    STY vic_sprite0_y_reg
+.C:13c3  8C 03 D0    STY vic_sprite1_y_reg
+.C:13c6  8C 05 D0    STY vic_sprite2_y_reg
+.C:13c9  8C 07 D0    STY vic_sprite3_y_reg
+.C:13cc  8C 09 D0    STY vic_sprite4_y_reg
+.C:13cf  8C 0B D0    STY vic_sprite5_y_reg
+.C:13d2  8C 0D D0    STY vic_sprite6_y_reg
 ;------------------------------------------------
 ;Set next raster line for interrupt
 .C:13d5  A0 81       LDY #$81
@@ -5197,13 +5197,13 @@ irq_handler11:
 ;------------------------------------------------
 ;Set Y coordinate of sprites 0-6 to #9B
 .C:1453  A0 9B       LDY #$9B
-.C:1455  8C 01 D0    STY sprite0_y_register
-.C:1458  8C 03 D0    STY sprite1_y_register
-.C:145b  8C 05 D0    STY sprite2_y_register
-.C:145e  8C 07 D0    STY sprite3_y_register
-.C:1461  8C 09 D0    STY sprite4_y_register
-.C:1464  8C 0B D0    STY sprite5_y_register
-.C:1467  8C 0D D0    STY sprite6_y_register
+.C:1455  8C 01 D0    STY vic_sprite0_y_reg
+.C:1458  8C 03 D0    STY vic_sprite1_y_reg
+.C:145b  8C 05 D0    STY vic_sprite2_y_reg
+.C:145e  8C 07 D0    STY vic_sprite3_y_reg
+.C:1461  8C 09 D0    STY vic_sprite4_y_reg
+.C:1464  8C 0B D0    STY vic_sprite5_y_reg
+.C:1467  8C 0D D0    STY vic_sprite6_y_reg
 ;------------------------------------------------
 ;Set next raster line for interrupt
 .C:146a  A0 95       LDY #$95
@@ -5301,13 +5301,13 @@ irq_handler13:
 ;------------------------------------------------
 ;Set Y coordinate of sprites 0-6 to #B0
 .C:14e8  A0 B0       LDY #$B0
-.C:14ea  8C 01 D0    STY sprite0_y_register
-.C:14ed  8C 03 D0    STY sprite1_y_register
-.C:14f0  8C 05 D0    STY sprite2_y_register
-.C:14f3  8C 07 D0    STY sprite3_y_register
-.C:14f6  8C 09 D0    STY sprite4_y_register
-.C:14f9  8C 0B D0    STY sprite5_y_register
-.C:14fc  8C 0D D0    STY sprite6_y_register
+.C:14ea  8C 01 D0    STY vic_sprite0_y_reg
+.C:14ed  8C 03 D0    STY vic_sprite1_y_reg
+.C:14f0  8C 05 D0    STY vic_sprite2_y_reg
+.C:14f3  8C 07 D0    STY vic_sprite3_y_reg
+.C:14f6  8C 09 D0    STY vic_sprite4_y_reg
+.C:14f9  8C 0B D0    STY vic_sprite5_y_reg
+.C:14fc  8C 0D D0    STY vic_sprite6_y_reg
 ;------------------------------------------------
 ;Set next raster line for interrupt
 .C:14ff  A0 A9       LDY #$A9
@@ -5405,13 +5405,13 @@ irq_handler15:
 ;------------------------------------------------
 ;Set Y coordinate of sprites 0-6 to #C5
 .C:157d  A0 C5       LDY #$C5
-.C:157f  8C 01 D0    STY sprite0_y_register
-.C:1582  8C 03 D0    STY sprite1_y_register
-.C:1585  8C 05 D0    STY sprite2_y_register
-.C:1588  8C 07 D0    STY sprite3_y_register
-.C:158b  8C 09 D0    STY sprite4_y_register
-.C:158e  8C 0B D0    STY sprite5_y_register
-.C:1591  8C 0D D0    STY sprite6_y_register
+.C:157f  8C 01 D0    STY vic_sprite0_y_reg
+.C:1582  8C 03 D0    STY vic_sprite1_y_reg
+.C:1585  8C 05 D0    STY vic_sprite2_y_reg
+.C:1588  8C 07 D0    STY vic_sprite3_y_reg
+.C:158b  8C 09 D0    STY vic_sprite4_y_reg
+.C:158e  8C 0B D0    STY vic_sprite5_y_reg
+.C:1591  8C 0D D0    STY vic_sprite6_y_reg
 ;------------------------------------------------
 ;Set next raster line for interrupt
 .C:1594  A0 BD       LDY #$BD
@@ -5532,13 +5532,13 @@ irq_handler17:
 ;------------------------------------------------
 ;Set Y coordinate of sprites 0-6 to #FD (effectively moving them offscreen)
 .C:1628  A0 FD       LDY #$FD
-.C:162a  8C 01 D0    STY sprite0_y_register
-.C:162d  8C 03 D0    STY sprite1_y_register
-.C:1630  8C 05 D0    STY sprite2_y_register
-.C:1633  8C 07 D0    STY sprite3_y_register
-.C:1636  8C 09 D0    STY sprite4_y_register
-.C:1639  8C 0B D0    STY sprite5_y_register
-.C:163c  8C 0D D0    STY sprite6_y_register
+.C:162a  8C 01 D0    STY vic_sprite0_y_reg
+.C:162d  8C 03 D0    STY vic_sprite1_y_reg
+.C:1630  8C 05 D0    STY vic_sprite2_y_reg
+.C:1633  8C 07 D0    STY vic_sprite3_y_reg
+.C:1636  8C 09 D0    STY vic_sprite4_y_reg
+.C:1639  8C 0B D0    STY vic_sprite5_y_reg
+.C:163c  8C 0D D0    STY vic_sprite6_y_reg
 ;------------------------------------------------
 ;Acknowledge raster interrupt
 .C:163f  A0 81       LDY #$81
