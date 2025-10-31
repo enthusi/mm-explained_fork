@@ -94,7 +94,7 @@
 
 // Border color register ($D020). Lower 4 bits select color index (0–15).
 // Sets the color for screen border and background when display is blanked.
-.label vic_border_color_reg_reg        = $D020
+.label vic_border_color_reg            = $D020
 
 // Background color register 0 ($D021).
 // Primary background color used in text, bitmap, or multicolor modes.
