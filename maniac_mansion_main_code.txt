@@ -1004,15 +1004,15 @@ saved_actor_path_update_flag = $cb5f
 ; Cursor variables
 ;===========================================================
 ;Multicolor bitmap mode has a resolution of 160x200
-cursor_h_xor_mask = $cb7b
-cursor_v_xor_mask = $cb7c
-cursor_drag_power = $cb7d
-cursor_x_pixel = $cb7f		;Range: 00-9F (00-159 dec)
-cursor_y_pixel = $cb81		;Range: 08-BF (08-191 dec)
-cursor_x_speed_lo = $cb82
-cursor_x_speed_hi = $cb83
-cursor_y_speed_lo = $cb84
-cursor_y_speed_hi = $cb85
+accel_h_mask = $cb7b
+accel_v_mask = $cb7c
+drag_shift_count = $cb7d
+cursor_x_pos = $cb7f		;Range: 00-9F (00-159 dec)
+cursor_y_pos = $cb81		;Range: 08-BF (08-191 dec)
+cursor_x_vel_frac = $cb82
+cursor_x_vel_int = $cb83
+cursor_y_vel_frac = $cb84
+cursor_y_vel_int = $cb85
 cursor_x_grid = $cb86		
 cursor_y_grid = $cb87		;Range: 01-17 (01-23 decimal)
 
@@ -1214,9 +1214,9 @@ preposition_pointers_hi = $f22a
 preposition_pointers_lo = $f22e
 click_handlers = $f2f2
 region_dehighlight_handlers = $f2fc
-joy_direction_indexes = $f694
-joy_direction_hdeltas = $f6a4
-joy_direction_vdeltas = $f6ad
+joy_dir_idx_tbl = $f694
+joy_dir_dx_tbl = $f6a4
+joy_dir_dy_tbl = $f6ad
 
 ;===========================================================
 ; Actor limb variables
@@ -1420,10 +1420,10 @@ actor_search_depth = $fe75
 ;Flashlight beam coordinates (used for checking if the beam of light moved when in flashlight mode)
 flashlight_beam_x = $fe79
 flashlight_beam_y = $fe7a
-cursor_y_pixel_half = $fe7d				;Vertical range #08-63 (08-99)
-cursor_x_pixel_quarter_relative = $fe7e			;Horizontal range #00-27 (00-39)			
-cursor_y_pixel_half_off_by_8 = $fe7f	;Vertical range #00-5B (00-91)
-cursor_x_pixel_quarter_absolute = $fe80	;Horizontal range #07-2E (07-46)
+cursor_y_pos_half = $fe7d				;Vertical range #08-63 (08-99)
+cursor_x_pos_quarter_relative = $fe7e			;Horizontal range #00-27 (00-39)			
+cursor_y_pos_half_off_by_8 = $fe7f	;Vertical range #00-5B (00-91)
+cursor_x_pos_quarter_absolute = $fe80	;Horizontal range #07-2E (07-46)
 current_script_slot = $fe89			;Script engine's slot index for script being executed
 current_script_rsrc_base_lo = $fe8a			;Resource base address of script being executed
 current_script_rsrc_base_hi = $fe8b
@@ -2001,14 +2001,14 @@ main_loop:
 ;--------------------------------------------------
 ;Convert relative cursor coordinate (relative to the screen's left edge)
 ; to absolute cursor coordinates (relative to the room's left edge)
-.C:0524  AD 7E FE    LDA cursor_x_pixel_quarter_relative
+.C:0524  AD 7E FE    LDA cursor_x_pos_quarter_relative
 .C:0527  18          CLC
 .C:0528  6D 64 06    ADC room_scene_left_edge
-.C:052b  8D 80 FE    STA cursor_x_pixel_quarter_absolute
-.C:052e  AD 7D FE    LDA cursor_y_pixel_half
+.C:052b  8D 80 FE    STA cursor_x_pos_quarter_absolute
+.C:052e  AD 7D FE    LDA cursor_y_pos_half
 .C:0531  38          SEC
 .C:0532  E9 08       SBC #$08
-.C:0534  8D 7F FE    STA cursor_y_pixel_half_off_by_8
+.C:0534  8D 7F FE    STA cursor_y_pos_half_off_by_8
 ;--------------------------------------------------
 ; Script execution
 ;--------------------------------------------------
@@ -2177,10 +2177,10 @@ make_walk_sounds:
 .C:05ea  C9 C8       CMP #$C8
 .C:05ec  D0 13       BNE flashlight_coords_changed
 ;Have the flashlight beam coordinates changed?
-.C:05ee  AD 7E FE    LDA cursor_x_pixel_quarter_relative
+.C:05ee  AD 7E FE    LDA cursor_x_pos_quarter_relative
 .C:05f1  CD 79 FE    CMP flashlight_beam_x
 .C:05f4  D0 0B       BNE flashlight_coords_changed
-.C:05f6  AD 7D FE    LDA cursor_y_pixel_half
+.C:05f6  AD 7D FE    LDA cursor_y_pos_half
 .C:05f9  CD 7A FE    CMP flashlight_beam_y
 .C:05fc  D0 03       BNE flashlight_coords_changed
 ;If not, skip to next section
@@ -2191,9 +2191,9 @@ flashlight_coords_changed:
 ;Clear the current flashlight area
 .C:0601  20 73 32    JSR clear_flashlight_area
 ;Update the beam's coordinates based on the cursor's coordinates
-.C:0604  AD 7E FE    LDA cursor_x_pixel_quarter_relative
+.C:0604  AD 7E FE    LDA cursor_x_pos_quarter_relative
 .C:0607  8D 79 FE    STA flashlight_beam_x
-.C:060a  AD 7D FE    LDA cursor_y_pixel_half
+.C:060a  AD 7D FE    LDA cursor_y_pos_half
 .C:060d  8D 7A FE    STA flashlight_beam_y
 ;Redraw the flashlight area
 .C:0610  20 7F 32    JSR draw_flashlight_area
@@ -3004,7 +3004,7 @@ handle_new_kid_verb:
 .C:09a0  D0 2B       BNE set_walk_and_exit
 ;Kid change allowed
 ;Use the cursor's X position to find which kid was selected in the sentence bar
-.C:09a2  AD 7E FE    LDA cursor_x_pixel_quarter_relative
+.C:09a2  AD 7E FE    LDA cursor_x_pos_quarter_relative
 .C:09a5  C9 0B       CMP SECOND_KID_NAME_COLUMN
 .C:09a7  B0 05       BCS third_kid_check
 ;--------------------------------------
@@ -3417,9 +3417,9 @@ is_verb_walk_to:
 .C:0b1a  AA          TAX
 .C:0b1b  86 D8       STX actor
 ;Get destination coordinates from cursor's coordinates
-.C:0b1d  AD 80 FE    LDA cursor_x_pixel_quarter_absolute
+.C:0b1d  AD 80 FE    LDA cursor_x_pos_quarter_absolute
 .C:0b20  8D E6 FD    STA dest_x
-.C:0b23  AD 7F FE    LDA cursor_y_pixel_half_off_by_8
+.C:0b23  AD 7F FE    LDA cursor_y_pos_half_off_by_8
 .C:0b26  8D E7 FD    STA dest_y
 ;Adjust destination based on boundary boxes
 .C:0b29  20 9B 1A    JSR snap_coords_to_walkbox
@@ -12215,7 +12215,7 @@ destination = $17
 source = $19
 
 update_flashlight_area:
-;Beam Y coordinate is the actual vertical line divided by 2 (cursor_y_pixel_half)
+;Beam Y coordinate is the actual vertical line divided by 2 (cursor_y_pos_half)
 .C:328b  85 1B       STA mode
 ;Y = (Y * 4) - 3
 .C:328d  98          TYA
@@ -14005,18 +14005,18 @@ check_actor_boundaries:
 ;-----------------------------------
 ;Check if the cursor's X coordinate falls within the actor's X range
 .C:3c04  BD 41 FD    LDA actor_x_pos,X
-.C:3c07  CD 80 FE    CMP cursor_x_pixel_quarter_absolute
+.C:3c07  CD 80 FE    CMP cursor_x_pos_quarter_absolute
 .C:3c0a  F0 02       BEQ check_right_edge
 .C:3c0c  B0 2A       BCS next_actor
 check_right_edge:
 .C:3c0e  18          CLC
 .C:3c0f  69 03       ADC #$03
-.C:3c11  CD 80 FE    CMP cursor_x_pixel_quarter_absolute
+.C:3c11  CD 80 FE    CMP cursor_x_pos_quarter_absolute
 .C:3c14  90 22       BCC next_actor
 ;-----------------------------------
 ;The X coordinate is in range, now check the Y coordinate
 .C:3c16  BD 3D FD    LDA actor_y_pos,X
-.C:3c19  CD 7F FE    CMP cursor_y_pixel_half_off_by_8
+.C:3c19  CD 7F FE    CMP cursor_y_pos_half_off_by_8
 .C:3c1c  90 1A       BCC next_actor
 ;Subtract one row
 .C:3c1e  38          SEC
@@ -14026,7 +14026,7 @@ check_right_edge:
 .C:3c23  A9 01       LDA #$01
 ;-----------------------------------
 compare_height:
-.C:3c25  CD 7F FE    CMP cursor_y_pixel_half_off_by_8
+.C:3c25  CD 7F FE    CMP cursor_y_pos_half_off_by_8
 .C:3c28  F0 02       BEQ cursor_within_actor_box
 .C:3c2a  B0 0C       BCS next_actor
 ;-----------------------------------
@@ -14200,12 +14200,12 @@ cursor_y = $15
 cursor_x = $17
 check_cursor_contained_within_object:
 ;Compute cursor Y
-.C:3ce8  AD 7F FE    LDA cursor_y_pixel_half_off_by_8
+.C:3ce8  AD 7F FE    LDA cursor_y_pos_half_off_by_8
 .C:3ceb  4A          LSR A
 .C:3cec  4A          LSR A
 .C:3ced  85 15       STA cursor_y
 ;Compute cursor X
-.C:3cef  AD 80 FE    LDA cursor_x_pixel_quarter_absolute
+.C:3cef  AD 80 FE    LDA cursor_x_pos_quarter_absolute
 .C:3cf2  85 17       STA cursor_x
 ;-------------------------------------------
 ; Check if the cursor's X position is contained
@@ -25147,12 +25147,12 @@ relocate_memory:
 .C:8448  20 A3 83    JSR copy_memory
 ;Set initial cursor settings
 .C:844b  A9 0D       LDA #$0D
-.C:844d  8D 7F CB    STA cursor_x_pixel
+.C:844d  8D 7F CB    STA cursor_x_pos
 .C:8450  A9 1C       LDA #$1C
-.C:8452  8D 81 CB    STA cursor_y_pixel
+.C:8452  8D 81 CB    STA cursor_y_pos
 .C:8455  A9 00       LDA #$00
 .C:8457  8D 88 CB    STA interaction_region
-.C:845a  20 DA F7    JSR set_cursor_physics
+.C:845a  20 DA F7    JSR update_cursor_physics_from_region
 ;Hide cursor
 .C:845d  A9 01       LDA #$01
 .C:845f  8D 6C 16    STA hide_cursor_flag
@@ -26437,14 +26437,14 @@ h_acceleration_masks:
 f310: FA FA
 v_acceleration_masks:
 f312: FF FF
-cursor_drag_powers:
+drag_shift_counts:
 f314: 07 07
 
 OUT_OF_BOUNDS_REGION = #$8A
 ;===========================================
 handle_cursor_and_interaction_area:
-.C:f316  20 B6 F6    JSR update_cursor_speed
-.C:f319  20 49 F6    JSR update_cursor_fraction_coords
+.C:f316  20 B6 F6    JSR cursor_physics_step
+.C:f319  20 49 F6    JSR update_cursor_grid_coords
 .C:f31c  20 5C F6    JSR get_interaction_region
 .C:f31f  EC 88 CB    CPX interaction_region
 .C:f322  F0 44       BEQ check_for_click
@@ -26471,7 +26471,7 @@ inlined_dehighlight_handler = $f344
 .C:f347  8D 88 CB    STA interaction_region
 ;---------------------------------------
 ;Handle region's cursor physics (acceleration and drag) 
-.C:f34a  20 DA F7    JSR set_cursor_physics
+.C:f34a  20 DA F7    JSR update_cursor_physics_from_region
 ;---------------------------------------
 ;Handle region entry to highlight text
 .C:f34d  AE 88 CB    LDX interaction_region
@@ -26490,7 +26490,7 @@ inlined_highlight_handler = $f366
 ;---------------------------------------
 ;Handle button click
 check_for_click:
-.C:f368  20 CB F7    JSR handle_joystick_button
+.C:f368  20 CB F7    JSR detect_fire_press_edge
 .C:f36b  F0 1E       BEQ exit
 .C:f36d  AE 88 CB    LDX interaction_region
 .C:f370  E0 8A       CPX OUT_OF_BOUNDS_REGION
@@ -26542,17 +26542,17 @@ next_region:
 ;If we reached the end, exit to the cursor physics routine
 .C:f3b5  C9 8A       CMP OUT_OF_BOUNDS_REGION
 .C:f3b7  D0 D8       BNE draw_region
-.C:f3b9  4C DA F7    JMP set_cursor_physics
+.C:f3b9  4C DA F7    JMP update_cursor_physics_from_region
 ;===========================================
 ; Returns:
 ;		.A
 ;		.X
 ;		.Y
 ;===========================================
-; If cursor_y_pixel >= 90, cursor_y_pixel++
-; If cursor_y_pixel >= 8, cursor_y_pixel++
-; Y = cursor_y_pixel + 28
-.C:f3bc  AD 81 CB    LDA cursor_y_pixel
+; If cursor_y_pos >= 90, cursor_y_pos++
+; If cursor_y_pos >= 8, cursor_y_pos++
+; Y = cursor_y_pos + 28
+.C:f3bc  AD 81 CB    LDA cursor_y_pos
 .C:f3bf  C9 90       CMP #$90
 .C:f3c1  69 00       ADC #$00
 .C:f3c3  C9 08       CMP #$08
@@ -26564,8 +26564,8 @@ next_region:
 .C:f3cb  AD 7E CB    LDA $cb7e
 .C:f3ce  69 80       ADC #$80
 .C:f3d0  8D 8C CB    STA $cb8c
-;$cb8d = cursor_x_pixel + 6
-.C:f3d3  AD 7F CB    LDA cursor_x_pixel
+;$cb8d = cursor_x_pos + 6
+.C:f3d3  AD 7F CB    LDA cursor_x_pos
 .C:f3d6  69 06       ADC #$06
 .C:f3d8  8D 8D CB    STA $cb8d
 ; X = cursor_x * 2
@@ -27057,36 +27057,36 @@ inlined_max_row = $f645
 .C:f646  D0 D9       BNE set_color_in_row
 .C:f648  60          RTS
 ;===================================================
-update_cursor_fraction_coords:
-;cursor_x_pixel_quarter_relative = cursor_x_pixel / 4
-.C:f649  AD 7F CB    LDA cursor_x_pixel
+update_cursor_grid_coords:
+;cursor_x_pos_quarter_relative = cursor_x_pos / 4
+.C:f649  AD 7F CB    LDA cursor_x_pos
 .C:f64c  4A          LSR A
 .C:f64d  4A          LSR A
-.C:f64e  8D 7E FE    STA cursor_x_pixel_quarter_relative
-;cursor_y_pixel_half = (cursor_y_pixel + 8) / 2
+.C:f64e  8D 7E FE    STA cursor_x_pos_quarter_relative
+;cursor_y_pos_half = (cursor_y_pos + 8) / 2
 .C:f651  18          CLC
-.C:f652  AD 81 CB    LDA cursor_y_pixel
+.C:f652  AD 81 CB    LDA cursor_y_pos
 .C:f655  69 08       ADC #$08
 .C:f657  4A          LSR A
-.C:f658  8D 7D FE    STA cursor_y_pixel_half
+.C:f658  8D 7D FE    STA cursor_y_pos_half
 .C:f65b  60          RTS
 ;===================================================
 ; Gets the interaction region index for the current cursor position
 ;
-; Arguments:	cursor_x_pixel
-;				cursor_y_pixel
+; Arguments:	cursor_x_pos
+;				cursor_y_pos
 ;
 ; Returns:		.X	the interaction region index
 ;	If no region could be matched, .X = #8A
 ;===================================================
 get_interaction_region:
-;cursor_x_grid = cursor_x_pixel / 4
-.C:f65c  AD 7F CB    LDA cursor_x_pixel
+;cursor_x_grid = cursor_x_pos / 4
+.C:f65c  AD 7F CB    LDA cursor_x_pos
 .C:f65f  4A          LSR A
 .C:f660  4A          LSR A
 .C:f661  8D 86 CB    STA cursor_x_grid
-;cursor_y_grid = cursor_y_pixel / 8
-.C:f664  AD 81 CB    LDA cursor_y_pixel
+;cursor_y_grid = cursor_y_pos / 8
+.C:f664  AD 81 CB    LDA cursor_y_pos
 .C:f667  4A          LSR A
 .C:f668  4A          LSR A
 .C:f669  4A          LSR A
@@ -27139,7 +27139,7 @@ next_region:
 ;7				0111		7		right
 ;6				0110		8		up-right
 ;===================================================
-joy_direction_indexes:
+joy_dir_idx_tbl:
 f694  
 00 00 00 00 00 ;0-4
 06 08 07 00 04 ;5-9
@@ -27148,29 +27148,29 @@ f694
 
 ;Deltas for each joystick direction
 ;The possible delta values are: 0, +1 or -1 (#FF)
-joy_direction_hdeltas:
+joy_dir_dx_tbl:
 f6a4 00 00 FF FF FF 00 01 01 01 
-joy_direction_vdeltas:
+joy_dir_dy_tbl:
 f6ad 00 FF FF 00 01 01 01 00 FF 
 ;===================================================
 drag = $cb8c
-drag_upper = $cb8e
+drag_sub_hi = $cb8e
 
-update_cursor_speed:
+cursor_physics_step:
 ;Calculate drag 
 ;Copy the 16-bit speed into a 16-bit drag value
-.C:f6b6  AD 82 CB    LDA cursor_x_speed_lo
+.C:f6b6  AD 82 CB    LDA cursor_x_vel_frac
 .C:f6b9  8D 8C CB    STA <drag
-.C:f6bc  AD 83 CB    LDA cursor_x_speed_hi
+.C:f6bc  AD 83 CB    LDA cursor_x_vel_int
 .C:f6bf  8D 8D CB    STA >drag
 ;Compute half of drag's value - but taking only the hi-word
 ;This will be achieved by shifting left 7 times to imitate a shift right one time
 ;
 ;Set up how many times we'll shift left
-;Note: cursor_drag_power is always 7
-.C:f6c2  AE 7D CB    LDX cursor_drag_power
+;Note: drag_shift_count is always 7
+.C:f6c2  AE 7D CB    LDX drag_shift_count
 .C:f6c5  F0 09       BEQ adjust_drag_sign
-;Perform cursor_drag_power (7 in total) 16-bit shift left operations on drag
+;Perform drag_shift_count (7 in total) 16-bit shift left operations on drag
 ;				Drag_hi							Drag_lo
 ; Pre shift		15 14 13 12 11 10 09 08 | 07 06 05 04 03 02 01 00
 ; Post shift 7 times
@@ -27196,7 +27196,7 @@ shift_16bit_left:
 ;Repeat until we exhaust the power value
 .C:f6cd  CA          DEX
 .C:f6ce  D0 F7       BNE shift_16_left
-;Set carry and drag_upper based on the speed's sign
+;Set carry and drag_sub_hi based on the speed's sign
 ;
 ; If speed is positive, and as speed_hi can't exceed #01 in magnitude,
 ; then bits 15-09 of speed will be zero. Specifically, bit 9 will be 0.
@@ -27208,30 +27208,30 @@ shift_16bit_left:
 adjust_drag_sign:
 .C:f6d0  90 04       BCC speed_is_positive
 ;Negative speed - decrement .X from #00 to #FF, carry remains set
-;drag_upper will use the value in .X and will then be #FF
+;drag_sub_hi will use the value in .X and will then be #FF
 .C:f6d2  CA          DEX
-.C:f6d3  4C D9 F6    JMP set_drag_upper
+.C:f6d3  4C D9 F6    JMP set_drag_sub_hi
 speed_is_positive:
 ;Positive speed - leave .X unchanged at #00
 ;Compare X with drag. If drag is 0, carry will be set. Otherwise, carry will be clear.
-;drag_upper will use the value in .X and will then be #00
+;drag_sub_hi will use the value in .X and will then be #00
 .C:f6d6  EC 8C CB    CPX <drag
-set_drag_upper:
-.C:f6d9  8E 8E CB    STX drag_upper
-;Subtract drag/drag_upper from speed, using the carry previously set
-.C:f6dc  AD 82 CB    LDA cursor_x_speed_lo
+set_drag_sub_hi:
+.C:f6d9  8E 8E CB    STX drag_sub_hi
+;Subtract drag/drag_sub_hi from speed, using the carry previously set
+.C:f6dc  AD 82 CB    LDA cursor_x_vel_frac
 .C:f6df  ED 8D CB    SBC >drag
-.C:f6e2  8D 82 CB    STA cursor_x_speed_lo
-.C:f6e5  AD 83 CB    LDA cursor_x_speed_hi
-.C:f6e8  ED 8E CB    SBC drag_upper
-.C:f6eb  8D 83 CB    STA cursor_x_speed_hi
+.C:f6e2  8D 82 CB    STA cursor_x_vel_frac
+.C:f6e5  AD 83 CB    LDA cursor_x_vel_int
+.C:f6e8  ED 8E CB    SBC drag_sub_hi
+.C:f6eb  8D 83 CB    STA cursor_x_vel_int
 ;-------------------
 ;Repeat the same logic with the vertical speed and drag
-.C:f6ee  AD 84 CB    LDA cursor_y_speed_lo
+.C:f6ee  AD 84 CB    LDA cursor_y_vel_frac
 .C:f6f1  8D 8C CB    STA <drag
-.C:f6f4  AD 85 CB    LDA cursor_y_speed_hi
+.C:f6f4  AD 85 CB    LDA cursor_y_vel_int
 .C:f6f7  8D 8D CB    STA >drag
-.C:f6fa  AE 7D CB    LDX cursor_drag_power
+.C:f6fa  AE 7D CB    LDX drag_shift_count
 .C:f6fd  F0 09       BEQ adjust_drag_sign_2
 shift_16bit_left_2:
 .C:f6ff  0E 8C CB    ASL <drag
@@ -27241,17 +27241,17 @@ shift_16bit_left_2:
 adjust_drag_sign_2:
 .C:f708  90 04       BCC speed_is_positive_2
 .C:f70a  CA          DEX
-.C:f70b  4C 11 F7    JMP set_drag_upper_2
+.C:f70b  4C 11 F7    JMP set_drag_sub_hi_2
 speed_is_positive_2:
 .C:f70e  EC 8C CB    CPX <drag
-set_drag_upper_2:
-.C:f711  8E 8E CB    STX drag_upper
-.C:f714  AD 84 CB    LDA cursor_y_speed_lo
+set_drag_sub_hi_2:
+.C:f711  8E 8E CB    STX drag_sub_hi
+.C:f714  AD 84 CB    LDA cursor_y_vel_frac
 .C:f717  ED 8D CB    SBC >drag
-.C:f71a  8D 84 CB    STA cursor_y_speed_lo
-.C:f71d  AD 85 CB    LDA cursor_y_speed_hi
-.C:f720  ED 8E CB    SBC drag_upper
-.C:f723  8D 85 CB    STA cursor_y_speed_hi
+.C:f71a  8D 84 CB    STA cursor_y_vel_frac
+.C:f71d  AD 85 CB    LDA cursor_y_vel_int
+.C:f720  ED 8E CB    SBC drag_sub_hi
+.C:f723  8D 85 CB    STA cursor_y_vel_int
 ;--------------------------
 ;Read joystick inputs
 .C:f726  A5 33       LDA joy_state
@@ -27259,10 +27259,10 @@ set_drag_upper_2:
 .C:f728  29 0F       AND #$0F
 .C:f72a  AA          TAX
 ;Read the direction index for this input
-.C:f72b  BC 94 F6    LDY joy_direction_indexes,X
+.C:f72b  BC 94 F6    LDY joy_dir_idx_tbl,X
 ;--------------------------
 ;Read the horizontal delta to be applied for this input
-.C:f72e  B9 A4 F6    LDA joy_direction_hdeltas,Y
+.C:f72e  B9 A4 F6    LDA joy_dir_dx_tbl,Y
 ;If it's zero, skip to the vertical delta section
 .C:f731  F0 16       BEQ check_vertical_delta
 ;Set carry if delta is #FF
@@ -27280,18 +27280,18 @@ set_drag_upper_2:
 ;Note: the mask is always #FA
 ;So #FF ^ #FA = 05
 ;And #00 ^ #FA = FA
-.C:f739  4D 7B CB    EOR cursor_h_xor_mask
+.C:f739  4D 7B CB    EOR accel_h_mask
 ;Add acceleration to speed lo
-.C:f73c  6D 82 CB    ADC cursor_x_speed_lo
-.C:f73f  8D 82 CB    STA cursor_x_speed_lo
+.C:f73c  6D 82 CB    ADC cursor_x_vel_frac
+.C:f73f  8D 82 CB    STA cursor_x_vel_frac
 ;Restore A, add it with carry to speed hi
 .C:f742  68          PLA
-.C:f743  6D 83 CB    ADC cursor_x_speed_hi
-.C:f746  8D 83 CB    STA cursor_x_speed_hi
+.C:f743  6D 83 CB    ADC cursor_x_vel_int
+.C:f746  8D 83 CB    STA cursor_x_vel_int
 ;--------------------------
 check_vertical_delta:
 ;Read the vertical delta to be applied for this input
-.C:f749  B9 AD F6    LDA joy_direction_vdeltas,Y
+.C:f749  B9 AD F6    LDA joy_dir_dy_tbl,Y
 ;If it's zero, skip to the speed application section
 .C:f74c  F0 16       BEQ apply_horizontal_speed
 ;Set carry if delta is #FF
@@ -27309,27 +27309,27 @@ check_vertical_delta:
 ;Note: the mask is always #Ff
 ;So #FF ^ #FF = 00
 ;And #00 ^ #FF = FF
-.C:f754  4D 7C CB    EOR cursor_v_xor_mask
+.C:f754  4D 7C CB    EOR accel_v_mask
 ;Add acceleration to speed lo
-.C:f757  6D 84 CB    ADC cursor_y_speed_lo
-.C:f75a  8D 84 CB    STA cursor_y_speed_lo
+.C:f757  6D 84 CB    ADC cursor_y_vel_frac
+.C:f75a  8D 84 CB    STA cursor_y_vel_frac
 ;Restore A, add it with carry to speed hi
 .C:f75d  68          PLA
-.C:f75e  6D 85 CB    ADC cursor_y_speed_hi
-.C:f761  8D 85 CB    STA cursor_y_speed_hi
+.C:f75e  6D 85 CB    ADC cursor_y_vel_int
+.C:f761  8D 85 CB    STA cursor_y_vel_int
 ;--------------------------
 apply_horizontal_speed:
 ; .X = x_speed_lo + previous speed
 .C:f764  18          CLC
 .C:f765  AD 7E CB    LDA $cb7e
-.C:f768  6D 82 CB    ADC cursor_x_speed_lo
+.C:f768  6D 82 CB    ADC cursor_x_vel_frac
 .C:f76b  AA          TAX
 ;Add x_speed_hi with carry to the X coordinate
 ;The result will be stored back as the new coordinate
 ;This means that only when the hi-byte is non-zero does the coordinate change
 ;The lo-byte is thus used to ramp up speed until it overflows into the hi-byte
-.C:f76c  AD 7F CB    LDA cursor_x_pixel
-.C:f76f  6D 83 CB    ADC cursor_x_speed_hi
+.C:f76c  AD 7F CB    LDA cursor_x_pos
+.C:f76f  6D 83 CB    ADC cursor_x_vel_int
 ;Check if new coordinate is out of bounds
 ; Anything >= A0 is past the "right edge"
 ; Anything < 0 is past the "left edge"
@@ -27339,10 +27339,10 @@ apply_horizontal_speed:
 .C:f774  90 15       BCC update_x_coordinate
 ;Coordinate is out of bounds - load the speed to evaluate its sign
 .C:f776  A2 00       LDX #$00
-.C:f778  AD 83 CB    LDA cursor_x_speed_hi
+.C:f778  AD 83 CB    LDA cursor_x_vel_int
 ;Set X speed to 0 to stop movement
-.C:f77b  8E 82 CB    STX cursor_x_speed_lo
-.C:f77e  8E 83 CB    STX cursor_x_speed_hi
+.C:f77b  8E 82 CB    STX cursor_x_vel_frac
+.C:f77e  8E 83 CB    STX cursor_x_vel_int
 ;Set boundary value depending on speed sign (and thus direction)
 .C:f781  10 05       BPL hspeed_positive
 ;Speed is negative, set boundary as #00
@@ -27355,7 +27355,7 @@ hspeed_positive:
 .C:f78a  CA          DEX
 update_x_coordinate:
 ;Update the X coordinate (either with a boundary or with the new valid position)
-.C:f78b  8D 7F CB    STA cursor_x_pixel
+.C:f78b  8D 7F CB    STA cursor_x_pos
 ;Update previous speed?
 .C:f78e  8E 7E CB    STX $cb7e
 ;--------------------------
@@ -27363,20 +27363,20 @@ update_x_coordinate:
 ; .X = y_speed_lo + previous speed
 .C:f791  18          CLC
 .C:f792  AD 80 CB    LDA $CB80
-.C:f795  6D 84 CB    ADC cursor_y_speed_lo
+.C:f795  6D 84 CB    ADC cursor_y_vel_frac
 .C:f798  AA          TAX
 ;Add y_speed_hi with carry to the Y coordinate
-.C:f799  AD 81 CB    LDA cursor_y_pixel
-.C:f79c  6D 85 CB    ADC cursor_y_speed_hi
+.C:f799  AD 81 CB    LDA cursor_y_pos
+.C:f79c  6D 85 CB    ADC cursor_y_vel_int
 ;Check if new coordinate is out of bounds
 .C:f79f  C9 C0       CMP #$C0
 .C:f7a1  90 15       BCC update_y_coordinate
 ;Coordinate is out of bounds - load the speed to evaluate its sign
 .C:f7a3  A2 00       LDX #$00
-.C:f7a5  AD 85 CB    LDA cursor_y_speed_hi
+.C:f7a5  AD 85 CB    LDA cursor_y_vel_int
 ;Set Y speed to 0 to stop movement
-.C:f7a8  8E 84 CB    STX cursor_y_speed_lo
-.C:f7ab  8E 85 CB    STX cursor_y_speed_hi
+.C:f7a8  8E 84 CB    STX cursor_y_vel_frac
+.C:f7ab  8E 85 CB    STX cursor_y_vel_int
 ;Set boundary value depending on speed sign (and thus direction)
 .C:f7ae  10 05       BPL vspeed_positive
 .C:f7b0  A9 00       LDA #$00
@@ -27386,19 +27386,19 @@ vspeed_positive:
 .C:f7b7  CA          DEX
 update_y_coordinate:
 ;Update the Y coordinate (either with a boundary or with the new valid position)
-.C:f7b8  8D 81 CB    STA cursor_y_pixel
+.C:f7b8  8D 81 CB    STA cursor_y_pos
 ;Update previous speed?
 .C:f7bb  8E 80 CB    STX $CB80
 ;The lower boundary is capped at #08 - adjust if needed
-.C:f7be  AD 81 CB    LDA cursor_y_pixel
+.C:f7be  AD 81 CB    LDA cursor_y_pos
 .C:f7c1  C9 08       CMP #$08
 .C:f7c3  B0 05       BCS exit
 .C:f7c5  A9 08       LDA #$08
-.C:f7c7  8D 81 CB    STA cursor_y_pixel
+.C:f7c7  8D 81 CB    STA cursor_y_pos
 exit:
 .C:f7ca  60          RTS
 ;===================================================
-handle_joystick_button:
+detect_fire_press_edge:
 .C:f7cb  A5 33       LDA joy_state
 .C:f7cd  29 10       AND #$10
 .C:f7cf  AA          TAX
@@ -27415,11 +27415,11 @@ handle_joystick_button:
 ;
 ; On exit, these values will be updated:
 ;
-;		cursor_h_xor_mask
-;		cursor_v_xor_mask
-;		cursor_drag_power
+;		accel_h_mask
+;		accel_v_mask
+;		drag_shift_count
 ;===================================================
-set_cursor_physics:
+update_cursor_physics_from_region:
 .C:f7da  AE 88 CB    LDX interaction_region
 .C:f7dd  E0 8A       CPX OUT_OF_BOUNDS_REGION
 .C:f7df  D0 05       BNE get_region_index
@@ -27431,11 +27431,11 @@ get_region_index:
 .C:f7e9  BE D7 F2    LDX cursor_physics_for_region,Y	;X will be #1 for upper half, 0 for everything else
 get_constants:
 .C:f7ec  BD 10 F3    LDA h_acceleration_masks,X
-.C:f7ef  8D 7B CB    STA cursor_h_xor_mask
+.C:f7ef  8D 7B CB    STA accel_h_mask
 .C:f7f2  BD 12 F3    LDA v_acceleration_masks,X
-.C:f7f5  8D 7C CB    STA cursor_v_xor_mask
-.C:f7f8  BD 14 F3    LDA cursor_drag_powers,X
-.C:f7fb  8D 7D CB    STA cursor_drag_power
+.C:f7f5  8D 7C CB    STA accel_v_mask
+.C:f7f8  BD 14 F3    LDA drag_shift_counts,X
+.C:f7fb  8D 7D CB    STA drag_shift_count
 .C:f7fe  60          RTS
 ;===================================================
 
