@@ -156,21 +156,24 @@ Values observed
 // Cursor physics
 //===========================================================
 //Multicolor bitmap mode has a resolution of 160x200
-.label cursor_h_xor_mask = $cb7b
-.label cursor_v_xor_mask = $cb7c
-.label cursor_drag_power = $cb7d
-.label cursor_x_pixel = $cb7f		//Range: 00-9F (00-159 dec)
-.label cursor_y_pixel = $cb81		//Range: 08-BF (08-191 dec)
-.label cursor_x_speed_lo = $cb82
-.label cursor_x_speed_hi = $cb83
-.label cursor_y_speed_lo = $cb84
-.label cursor_y_speed_hi = $cb85
+
+.label  cursor_x_pos                   = $CB7F   // cursor X position (pixels, 0..$9F)
+.label  cursor_y_pos                   = $CB81   // cursor Y position (pixels, $08..$BF)
+
+.label  cursor_x_vel_frac              = $CB82   // X velocity, fractional byte (8.8 fixed-point)
+.label  cursor_x_vel_int               = $CB83   // X velocity, integer byte   (adds to X position)
+.label  cursor_y_vel_frac              = $CB84   // Y velocity, fractional byte
+.label  cursor_y_vel_int               = $CB85   // Y velocity, integer byte
+.label  drag_shift_count        = $CB7D   // expected 7 (build drag via 7× ASL/ROL)
+
+.label  accel_h_mask            = $CB7B   // horizontal acceleration mask (expects $FA)
+.label  accel_v_mask            = $CB7C   // vertical   acceleration mask (expects $FF)
 .label cursor_x_grid = $cb86		
 .label cursor_y_grid = $cb87		//Range: 01-17 (01-23 decimal)
-.label cursor_y_pixel_half = $fe7d				//Vertical range #08-63 (08-99)
-.label cursor_x_pixel_quarter_relative = $fe7e			//Horizontal range #00-27 (00-39)			
-.label cursor_y_pixel_half_off_by_8 = $fe7f	//Vertical range #00-5B (00-91)
-.label cursor_x_pixel_quarter_absolute = $fe80	//Horizontal range #07-2E (07-46)
+.label cursor_y_pos_half = $fe7d				//Vertical range #08-63 (08-99)
+.label cursor_x_pos_quarter_relative = $fe7e			//Horizontal range #00-27 (00-39)			
+.label cursor_y_pos_half_off_by_8 = $fe7f	//Vertical range #00-5B (00-91)
+.label cursor_x_pos_quarter_absolute = $fe80	//Horizontal range #07-2E (07-46)
 
 
 // ===========================================================
@@ -538,3 +541,11 @@ They were definitely intended as debugging aids.
 .label raster_setup = $0
 .label prepare_video_for_new_room = $0
 
+//===========================================================
+// Interaction region variables
+//===========================================================
+.label interaction_region = $cb88
+.label joystick_button_pressed = $cb89
+.label button_presses = $cb8a
+.label inv_display_item_offset = $cb8b
+.label region_text_color = $cb8f
