@@ -510,7 +510,6 @@ They were definitely intended as debugging aids.
 
 //Placeholders for routines not modularized yet
 .label print_message_wait_for_button = $0 // UI: print message pointed by msg_to_print_ptr, wait for button
-.label release_one_costume = $0
 .label reset_sentence_queue_system = $0
 .label execute_room_exit_script = $0
 .label execute_room_entry_script = $0
