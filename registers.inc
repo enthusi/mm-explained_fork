@@ -46,6 +46,31 @@
 // Used for raster interrupts and beam-synced effects.
 .label vic_raster_line_reg             = $D012
 
+// ============================================================================
+// VIC-II screen control register 2 ($D016) — horizontal scroll & mode control
+// ----------------------------------------------------------------------------
+// Bit layout:
+//   bits0–2 = Horizontal fine scroll (0–7 pixels)
+//   bit3    = Text display column width (1=40 cols, 0=38 cols)
+//   bit4    = Multicolor mode enable (1=on, 0=off)
+//   bit5    = Video chip reset (normally 0)
+//   bits6–7 = Unused
+//
+//   Controls horizontal fine scrolling, column width, and text/bitmap
+//   multicolor enable. Changing bits 0–2 mid-frame shifts the display left
+//   or right by up to 7 pixels. Setting bit4 enables multicolor interpretation
+//   for character and bitmap modes.
+//
+// Common values used in this codebase:
+//   #$18 → %00011000 → multicolor on, 40 columns, scroll 0
+//   #$09 → %00001001 → multicolor off, 40 columns, scroll 1
+//
+// References:
+//   - Set to #$18 in irq_handler3 and init_memory_sound_and_video.
+//   - Set to #$09 in irq_handler17.
+// ============================================================================
+.label vic_screen_control_reg_2         = $D016
+
 // Video memory layout register ($D018).
 // Bits 1–3 select character generator base (in 2 KB blocks).
 // Bits 4–7 select screen matrix base (in 1 KB blocks).
