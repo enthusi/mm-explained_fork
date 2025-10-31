@@ -1091,7 +1091,7 @@ vic_sprite_enable_register = $d015
 ;
 ;#18	0001 1000		Multicolor on, 40 columns, fine scroll 0
 ;#09	0000 1001		Multicolor off, 40 columns, fine scroll 1
-vic_screen_control2_reg = $d016
+vic_screen_control_reg_2 = $d016
 
 
 ;============================================
@@ -4765,7 +4765,7 @@ irq_handler3:
 ;Set the current multicolor memory layout for the VIC-II
 .C:11ec  8C 18 D0    STY vic_memory_layout_reg
 ;Set Multicolor on, 40 columns, horizontal fine scroll 0
-.C:11ef  8D 16 D0    STA vic_screen_control2_reg
+.C:11ef  8D 16 D0    STA vic_screen_control_reg_2
 ;------------------------------------------------
 ;Wait for the right moment to move the sprites coordinates downwards
 .C:11f2  EA          NOP
@@ -5528,7 +5528,7 @@ irq_handler17:
 ;Set video matrix: CC00
 .C:1622  8D 18 D0    STA vic_memory_layout_reg
 ;Set Multicolor off, 40 columns, horizontal fine scroll 1
-.C:1625  8C 16 D0    STY vic_screen_control2_reg
+.C:1625  8C 16 D0    STY vic_screen_control_reg_2
 ;------------------------------------------------
 ;Set Y coordinate of sprites 0-6 to #FD (effectively moving them offscreen)
 .C:1628  A0 FD       LDY #$FD
@@ -13896,7 +13896,7 @@ print_message_wait_for_button:
 .C:3b25  A9 3E       LDA #$3E		
 .C:3b27  A0 09       LDY #$09		
 .C:3b29  8D 18 D0    STA vic_memory_layout_reg
-.C:3b2c  8C 16 D0    STY vic_screen_control2_reg
+.C:3b2c  8C 16 D0    STY vic_screen_control_reg_2
 clear_msg_bar_text_2:
 .C:3b2f  20 57 28    JSR clear_msg_bar_text
 ;Copy game paused message to top bar
@@ -24967,7 +24967,7 @@ init_memory_sound_and_video:
 .C:8351  85 23       STA frame_buffer
 ;Multicolor text mode on, 40 columns, horizontal fine scroll 0
 .C:8353  A9 18       LDA #$18		
-.C:8355  8D 16 D0    STA vic_screen_control2_reg
+.C:8355  8D 16 D0    STA vic_screen_control_reg_2
 ;Set raster line to generate interrupt on: #FA (250)
 .C:8358  A9 FA       LDA #$FA
 .C:835a  8D 12 D0    STA raster_line_register
