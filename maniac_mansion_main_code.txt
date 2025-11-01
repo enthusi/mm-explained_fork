@@ -517,7 +517,7 @@ ACTOR_IS_FROZEN = #$40
 ;
 ;====================================================
 processor_data_direction_reg = $00
-processor_port_register = $01
+cpu_port = $01
 ;Video memory mode values
 ;	#00		Do nothing
 ;	#01		Character base: D800	Video matrix: C800	Sprite shape: CBF8
@@ -568,14 +568,14 @@ sound_read_ptr = $bc
 vic_memory_layout_shadow = $be
 
 ;Possible values: 
-;#00 (entering reset_talking)
+;#00 (entering shutdown_topbar_talking)
 ;#01 (end of message reached)
 ;#FF (after copying a new message, after printing a line break, after filling the top msg bar)
-top_bar_msg_mode = $c9		
+topbar_mode = $c9		
 source_msg_offset = $CA
-current_message_delay = $CB
-standard_message_delay = $CD
-text_delay = $CF
+cur_msg_countdown = $CB
+std_msg_countdown = $CD
+text_delay_factor = $CF
 actor = $d8
 irq_entry_count = $d9
 debug_error_code = $dc
@@ -672,7 +672,7 @@ cursor_color_idx = $166e
 cursor_color_period = $166f
 cursor_color_idx_first = $1670
 ;===========================================================
-color_ram_copy_done = $1677
+vic_color_ram_copy_done = $1677
 ui_section_semaphore = $1678 ;Semaphore used to control access to a section in irq_handler1
 game_paused_flag = $1679	;#01 if game is paused, #00 otherwise
 
@@ -1026,7 +1026,7 @@ inv_display_item_offset = $cb8b
 region_text_color = $cb8f
 
 ;CBF8 - sprite shape area
-msg_bar_text_base = $cc00
+topbar_text_base = $cc00
 ;CC00-CECF - graphics area (including parts not visible)
 SENTENCE_BAR_BASE = $ced0
 sentence_bar_2nd_kid_name_offset = $CEDD
@@ -1175,7 +1175,7 @@ actor_text_color = $d672
 ;Only the low nibble of each byte will be used
 ;
 ;In multicolor text mode, only 8 colors are available, so only the bits 2-0 are used
-color_ram = $d800
+vic_color_ram = $d800
 
 ;===========================================================
 ; I/O CIA registers
@@ -1432,9 +1432,9 @@ reset_sentence_queue_system_flag = $fe8f
 
 current_room_layers_rsrc = $fe98
 
-character_talking = $fe9a
-message_owner = $fe9b	;#FF means nobody's talking (and thus the msg bar must be cleared)
-						;Otherwise, it has the same value as character_talking
+talking_costume = $fe9a
+msg_owner_costume = $fe9b	;#FF means nobody's talking (and thus the msg bar must be cleared)
+						;Otherwise, it has the same value as talking_costume
 active_side_id = $fe9c ;This represents the desired Disk ID (the ID that identifies each of the game's disk sides)
 						;Once check_disk_id is called, this parameter is set and execution will not resume until the proper disk side is inserted
 ;Possible mouth state values
@@ -1794,7 +1794,7 @@ game_code_entry:
 .C:0408  78          SEI
 ;map_out_io
 .C:0409  A0 24       LDY #$24		
-.C:040b  84 01       STY processor_port_register
+.C:040b  84 01       STY cpu_port
 .C:040d  20 F1 82    JSR init_memory_sound_and_video
 .C:0410  20 86 85    JSR init_game_engine
 reset_game_engine:
@@ -1990,7 +1990,7 @@ main_loop:
 .C:050a  8D 67 FF    STA current_kid	;Redundant code
 .C:050d  AD 66 06    LDA camera_desired_position
 .C:0510  8D 69 FF    STA var_camera_position
-.C:0513  A5 C9       LDA top_bar_msg_mode
+.C:0513  A5 C9       LDA topbar_mode
 .C:0515  8D 6A FF    STA var_msg_flag
 .C:0518  AD 49 71    LDA current_room
 .C:051b  8D 6B FF    STA var_current_room
@@ -4253,7 +4253,7 @@ next_sentence_index:
 .C:0f0e  85 DC       STA debug_error_code
 ;map_in_io
 .C:0f10  A0 25       LDY #$25
-.C:0f12  84 01       STY processor_port_register
+.C:0f12  84 01       STY cpu_port
 hangup_loop:
 .C:0f14  8D 20 D0    STA vic_border_color_reg_register
 .C:0f17  4C 14 0F    JMP hangup_loop
@@ -4562,11 +4562,11 @@ irq_handler2:
 .C:10a4  8E EE 0F    STX temp_x
 .C:10a7  8C EC 0F    STY temp_y
 ;Save processor port register value
-.C:10aa  A4 01       LDY processor_port_register
+.C:10aa  A4 01       LDY cpu_port
 .C:10ac  84 26       STY cpu_port_shadow
 ;map_in_io
 .C:10ae  A0 25       LDY #$25
-.C:10b0  84 01       STY processor_port_register
+.C:10b0  84 01       STY cpu_port
 ;------------------------------------------------
 ;Load the relative sprite index
 .C:10b2  AD DA 0F    LDA vic_sprite_idx_0
@@ -4717,7 +4717,7 @@ set_cursor_color:
 ;------------------------------------------------
 ;Restore processor port register value
 .C:11c4  A4 26       LDY cpu_port_shadow
-.C:11c6  84 01       STY processor_port_register
+.C:11c6  84 01       STY cpu_port
 ;Restore .A, .X and .Y
 .C:11c8  AD ED 0F    LDA temp_a
 .C:11cb  AE EE 0F    LDX temp_x
@@ -4745,11 +4745,11 @@ irq_handler3:
 .C:11d2  8C EC 0F    STY temp_y
 .C:11d5  8D ED 0F    STA temp_a
 ;Save processor port register value
-.C:11d8  A4 01       LDY processor_port_register
+.C:11d8  A4 01       LDY cpu_port
 .C:11da  84 26       STY cpu_port_shadow
 ;map_in_io
 .C:11dc  A0 25       LDY #$25
-.C:11de  84 01       STY processor_port_register
+.C:11de  84 01       STY cpu_port
 ;------------------------------------------------
 ;Set screen to 25 rows, vertical scroll 4
 .C:11e0  A0 1C       LDY #$1C
@@ -4802,7 +4802,7 @@ irq_handler3:
 .C:1227  8C FF FF    STY >irq_handler
 ;Restore processor port register value and general registers
 .C:122a  A4 26       LDY cpu_port_shadow
-.C:122c  84 01       STY processor_port_register
+.C:122c  84 01       STY cpu_port
 .C:122e  AC EC 0F    LDY temp_y
 .C:1231  AD ED 0F    LDA temp_a
 .C:1234  40          RTI
@@ -4840,11 +4840,11 @@ irq_handler4:
 .C:1259  8A          TXA
 .C:125a  91 8C       STA (sprite_shape_data_ptr),Y
 ;------------------------------------------------
-.C:125c  A4 01       LDY processor_port_register
+.C:125c  A4 01       LDY cpu_port
 .C:125e  84 26       STY cpu_port_shadow
 ;map_in_io
 .C:1260  A0 25       LDY #$25
-.C:1262  84 01       STY processor_port_register
+.C:1262  84 01       STY cpu_port
 ;Set next raster line for interrupt
 .C:1264  A0 4F       LDY #$4F
 .C:1266  8C 12 D0    STY raster_line_register
@@ -4859,7 +4859,7 @@ irq_handler4:
 .C:1278  AC 0D DC    LDY cia1_irq_status_reg
 ;Restore processor port register value and general registers
 .C:127b  A4 26       LDY cpu_port_shadow
-.C:127d  84 01       STY processor_port_register
+.C:127d  84 01       STY cpu_port
 .C:127f  AD ED 0F    LDA temp_a
 .C:1282  AE EE 0F    LDX temp_x
 .C:1285  AC EC 0F    LDY temp_y
@@ -4878,11 +4878,11 @@ irq_handler4:
 irq_handler5:
 ;Save .Y
 .C:1289  8C EC 0F    STY temp_y
-.C:128c  A4 01       LDY processor_port_register
+.C:128c  A4 01       LDY cpu_port
 .C:128e  84 26       STY cpu_port_shadow
 ;map_in_io
 .C:1290  A0 25       LDY #$25
-.C:1292  84 01       STY processor_port_register
+.C:1292  84 01       STY cpu_port
 ;------------------------------------------------
 ;Set Y coordinate of sprites 0-6 to #5C
 .C:1294  A0 5C       LDY #$5C
@@ -4908,7 +4908,7 @@ irq_handler5:
 .C:12bf  AC 0D DC    LDY cia1_irq_status_reg
 ;Restore processor port register value and general registers
 .C:12c2  A4 26       LDY cpu_port_shadow
-.C:12c4  84 01       STY processor_port_register
+.C:12c4  84 01       STY cpu_port
 .C:12c6  AC EC 0F    LDY temp_y
 .C:12c9  40          RTI
 ;=======================================================
@@ -4944,11 +4944,11 @@ irq_handler6:
 .C:12ee  8A          TXA
 .C:12ef  91 8C       STA (sprite_shape_data_ptr),Y
 ;------------------------------------------------
-.C:12f1  A4 01       LDY processor_port_register
+.C:12f1  A4 01       LDY cpu_port
 .C:12f3  84 26       STY cpu_port_shadow
 ;map_in_io
 .C:12f5  A0 25       LDY #$25
-.C:12f7  84 01       STY processor_port_register
+.C:12f7  84 01       STY cpu_port
 ;Set next raster line for interrupt
 .C:12f9  A0 63       LDY #$63
 .C:12fb  8C 12 D0    STY raster_line_register
@@ -4963,7 +4963,7 @@ irq_handler6:
 .C:130d  AC 0D DC    LDY cia1_irq_status_reg
 ;Restore processor port register value and general registers
 .C:1310  A4 26       LDY cpu_port_shadow
-.C:1312  84 01       STY processor_port_register
+.C:1312  84 01       STY cpu_port
 .C:1314  AD ED 0F    LDA temp_a
 .C:1317  AE EE 0F    LDX temp_x
 .C:131a  AC EC 0F    LDY temp_y
@@ -4981,11 +4981,11 @@ irq_handler6:
 ;===========================================
 irq_handler7:
 .C:131e  8C EC 0F    STY temp_y
-.C:1321  A4 01       LDY processor_port_register
+.C:1321  A4 01       LDY cpu_port
 .C:1323  84 26       STY cpu_port_shadow
 ;map_in_io
 .C:1325  A0 25       LDY #$25
-.C:1327  84 01       STY processor_port_register
+.C:1327  84 01       STY cpu_port
 ;------------------------------------------------
 ;Set Y coordinate of sprites 0-6 to #71
 .C:1329  A0 71       LDY #$71
@@ -5011,7 +5011,7 @@ irq_handler7:
 .C:1354  AC 0D DC    LDY cia1_irq_status_reg
 ;Restore processor port register value and general registers
 .C:1357  A4 26       LDY cpu_port_shadow
-.C:1359  84 01       STY processor_port_register
+.C:1359  84 01       STY cpu_port
 .C:135b  AC EC 0F    LDY temp_y
 .C:135e  40          RTI
 ;=======================================================
@@ -5047,11 +5047,11 @@ irq_handler8:
 .C:1383  8A          TXA
 .C:1384  91 8C       STA (sprite_shape_data_ptr),Y
 ;------------------------------------------------
-.C:1386  A4 01       LDY processor_port_register
+.C:1386  A4 01       LDY cpu_port
 .C:1388  84 26       STY cpu_port_shadow
 ;map_in_io
 .C:138a  A0 25       LDY #$25
-.C:138c  84 01       STY processor_port_register
+.C:138c  84 01       STY cpu_port
 ;Set next raster line for interrupt
 .C:138e  A0 77       LDY #$77
 .C:1390  8C 12 D0    STY raster_line_register
@@ -5066,7 +5066,7 @@ irq_handler8:
 .C:13a2  AC 0D DC    LDY cia1_irq_status_reg
 ;Restore processor port register value and general registers
 .C:13a5  A4 26       LDY cpu_port_shadow
-.C:13a7  84 01       STY processor_port_register
+.C:13a7  84 01       STY cpu_port
 .C:13a9  AD ED 0F    LDA temp_a
 .C:13ac  AE EE 0F    LDX temp_x
 .C:13af  AC EC 0F    LDY temp_y
@@ -5085,11 +5085,11 @@ irq_handler8:
 irq_handler9:
 ;Save .Y
 .C:13b3  8C EC 0F    STY temp_y
-.C:13b6  A4 01       LDY processor_port_register
+.C:13b6  A4 01       LDY cpu_port
 .C:13b8  84 26       STY cpu_port_shadow
 ;map_in_io
 .C:13ba  A0 25       LDY #$25
-.C:13bc  84 01       STY processor_port_register
+.C:13bc  84 01       STY cpu_port
 ;------------------------------------------------
 ;Set Y coordinate of sprites 0-6 to #86
 .C:13be  A0 86       LDY #$86
@@ -5115,7 +5115,7 @@ irq_handler9:
 .C:13e9  AC 0D DC    LDY cia1_irq_status_reg
 ;Restore processor port register value and general registers
 .C:13ec  A4 26       LDY cpu_port_shadow
-.C:13ee  84 01       STY processor_port_register
+.C:13ee  84 01       STY cpu_port
 .C:13f0  AC EC 0F    LDY temp_y
 .C:13f3  40          RTI
 ;=======================================================
@@ -5151,11 +5151,11 @@ irq_handler10:
 .C:1418  8A          TXA
 .C:1419  91 8C       STA (sprite_shape_data_ptr),Y
 ;------------------------------------------------
-.C:141b  A4 01       LDY processor_port_register
+.C:141b  A4 01       LDY cpu_port
 .C:141d  84 26       STY cpu_port_shadow
 ;map_in_io
 .C:141f  A0 25       LDY #$25
-.C:1421  84 01       STY processor_port_register
+.C:1421  84 01       STY cpu_port
 ;Set next raster line for interrupt
 .C:1423  A0 8B       LDY #$8B
 .C:1425  8C 12 D0    STY raster_line_register
@@ -5170,7 +5170,7 @@ irq_handler10:
 .C:1437  AC 0D DC    LDY cia1_irq_status_reg
 ;Restore processor port register value and general registers
 .C:143a  A4 26       LDY cpu_port_shadow
-.C:143c  84 01       STY processor_port_register
+.C:143c  84 01       STY cpu_port
 .C:143e  AD ED 0F    LDA temp_a
 .C:1441  AE EE 0F    LDX temp_x
 .C:1444  AC EC 0F    LDY temp_y
@@ -5189,11 +5189,11 @@ irq_handler10:
 irq_handler11:
 ;Save .Y
 .C:1448  8C EC 0F    STY temp_y
-.C:144b  A4 01       LDY processor_port_register
+.C:144b  A4 01       LDY cpu_port
 .C:144d  84 26       STY cpu_port_shadow
 ;map_in_io
 .C:144f  A0 25       LDY #$25
-.C:1451  84 01       STY processor_port_register
+.C:1451  84 01       STY cpu_port
 ;------------------------------------------------
 ;Set Y coordinate of sprites 0-6 to #9B
 .C:1453  A0 9B       LDY #$9B
@@ -5219,7 +5219,7 @@ irq_handler11:
 .C:147e  AC 0D DC    LDY cia1_irq_status_reg
 ;Restore processor port register value and general registers
 .C:1481  A4 26       LDY cpu_port_shadow
-.C:1483  84 01       STY processor_port_register
+.C:1483  84 01       STY cpu_port
 .C:1485  AC EC 0F    LDY temp_y
 .C:1488  40          RTI
 ;=======================================================
@@ -5255,11 +5255,11 @@ irq_handler12:
 .C:14ad  8A          TXA
 .C:14ae  91 8C       STA (sprite_shape_data_ptr),Y
 ;------------------------------------------------
-.C:14b0  A4 01       LDY processor_port_register
+.C:14b0  A4 01       LDY cpu_port
 .C:14b2  84 26       STY cpu_port_shadow
 ;map_in_io
 .C:14b4  A0 25       LDY #$25
-.C:14b6  84 01       STY processor_port_register
+.C:14b6  84 01       STY cpu_port
 ;Set next raster line for interrupt
 .C:14b8  A0 9F       LDY #$9F
 .C:14ba  8C 12 D0    STY raster_line_register
@@ -5274,7 +5274,7 @@ irq_handler12:
 .C:14cc  AC 0D DC    LDY cia1_irq_status_reg
 ;Restore processor port register value and general registers
 .C:14cf  A4 26       LDY cpu_port_shadow
-.C:14d1  84 01       STY processor_port_register
+.C:14d1  84 01       STY cpu_port
 .C:14d3  AD ED 0F    LDA temp_a
 .C:14d6  AE EE 0F    LDX temp_x
 .C:14d9  AC EC 0F    LDY temp_y
@@ -5293,11 +5293,11 @@ irq_handler12:
 irq_handler13:
 ;Save .Y
 .C:14dd  8C EC 0F    STY temp_y
-.C:14e0  A4 01       LDY processor_port_register
+.C:14e0  A4 01       LDY cpu_port
 .C:14e2  84 26       STY cpu_port_shadow
 ;map_in_io
 .C:14e4  A0 25       LDY #$25
-.C:14e6  84 01       STY processor_port_register
+.C:14e6  84 01       STY cpu_port
 ;------------------------------------------------
 ;Set Y coordinate of sprites 0-6 to #B0
 .C:14e8  A0 B0       LDY #$B0
@@ -5323,7 +5323,7 @@ irq_handler13:
 .C:1513  AC 0D DC    LDY cia1_irq_status_reg
 ;Restore processor port register value and general registers
 .C:1516  A4 26       LDY cpu_port_shadow
-.C:1518  84 01       STY processor_port_register
+.C:1518  84 01       STY cpu_port
 .C:151a  AC EC 0F    LDY temp_y
 .C:151d  40          RTI
 ;=======================================================
@@ -5359,11 +5359,11 @@ irq_handler14:
 .C:1542  8A          TXA
 .C:1543  91 8C       STA (sprite_shape_data_ptr),Y
 ;------------------------------------------------
-.C:1545  A4 01       LDY processor_port_register
+.C:1545  A4 01       LDY cpu_port
 .C:1547  84 26       STY cpu_port_shadow
 ;map_in_io
 .C:1549  A0 25       LDY #$25
-.C:154b  84 01       STY processor_port_register
+.C:154b  84 01       STY cpu_port
 ;Set next raster line for interrupt
 .C:154d  A0 B1       LDY #$B1
 .C:154f  8C 12 D0    STY raster_line_register
@@ -5378,7 +5378,7 @@ irq_handler14:
 .C:1561  AC 0D DC    LDY cia1_irq_status_reg
 ;Restore processor port register value and general registers
 .C:1564  A4 26       LDY cpu_port_shadow
-.C:1566  84 01       STY processor_port_register
+.C:1566  84 01       STY cpu_port
 .C:1568  AD ED 0F    LDA temp_a
 .C:156b  AE EE 0F    LDX temp_x
 .C:156e  AC EC 0F    LDY temp_y
@@ -5397,11 +5397,11 @@ irq_handler14:
 irq_handler15:
 ;Save .Y
 .C:1572  8C EC 0F    STY temp_y
-.C:1575  A4 01       LDY processor_port_register
+.C:1575  A4 01       LDY cpu_port
 .C:1577  84 26       STY cpu_port_shadow
 ;map_in_io
 .C:1579  A0 25       LDY #$25
-.C:157b  84 01       STY processor_port_register
+.C:157b  84 01       STY cpu_port
 ;------------------------------------------------
 ;Set Y coordinate of sprites 0-6 to #C5
 .C:157d  A0 C5       LDY #$C5
@@ -5427,7 +5427,7 @@ irq_handler15:
 .C:15a8  AC 0D DC    LDY cia1_irq_status_reg
 ;Restore processor port register value and general registers
 .C:15ab  A4 26       LDY cpu_port_shadow
-.C:15ad  84 01       STY processor_port_register
+.C:15ad  84 01       STY cpu_port
 .C:15af  AC EC 0F    LDY temp_y
 .C:15b2  40          RTI
 ;=======================================================
@@ -5463,11 +5463,11 @@ irq_handler16:
 .C:15d7  8A          TXA
 .C:15d8  91 8C       STA (sprite_shape_data_ptr),Y
 ;------------------------------------------------
-.C:15da  A4 01       LDY processor_port_register
+.C:15da  A4 01       LDY cpu_port
 .C:15dc  84 26       STY cpu_port_shadow
 ;map_in_io
 .C:15de  A0 25       LDY #$25
-.C:15e0  84 01       STY processor_port_register
+.C:15e0  84 01       STY cpu_port
 ;Set next raster line for interrupt
 .C:15e2  A0 C3       LDY #$C3
 .C:15e4  8C 12 D0    STY raster_line_register
@@ -5482,7 +5482,7 @@ irq_handler16:
 .C:15f6  AC 0D DC    LDY cia1_irq_status_reg
 ;Restore processor port register value and general registers
 .C:15f9  A4 26       LDY cpu_port_shadow
-.C:15fb  84 01       STY processor_port_register
+.C:15fb  84 01       STY cpu_port
 .C:15fd  AD ED 0F    LDA temp_a
 .C:1600  AE EE 0F    LDX temp_x
 .C:1603  AC EC 0F    LDY temp_y
@@ -5507,11 +5507,11 @@ irq_handler17:
 ;Save .A and .Y
 .C:1607  8C EC 0F    STY temp_y
 .C:160a  8D ED 0F    STA temp_a
-.C:160d  A4 01       LDY processor_port_register
+.C:160d  A4 01       LDY cpu_port
 .C:160f  84 26       STY cpu_port_shadow
 ;map_in_io
 .C:1611  A0 25       LDY #$25
-.C:1613  84 01       STY processor_port_register
+.C:1613  84 01       STY cpu_port
 ;------------------------------------------------
 ;Set 25 rows, vertical scroll 5
 .C:1615  A9 1D       LDA #$1D
@@ -5554,7 +5554,7 @@ irq_handler17:
 .C:1653  8C FF FF    STY >irq_handler
 ;Restore processor port register value and general registers
 .C:1656  A4 26       LDY cpu_port_shadow
-.C:1658  84 01       STY processor_port_register
+.C:1658  84 01       STY cpu_port
 .C:165a  AC EC 0F    LDY temp_y
 .C:165d  AD ED 0F    LDA temp_a
 .C:1660  40          RTI
@@ -5569,17 +5569,17 @@ cursor_colors:
 ; IRQ handler
 ;===========================================
 irq_handler1:
-;Save .A, .X, .Y and processor_port_register in stack
+;Save .A, .X, .Y and cpu_port in stack
 .C:167a  48          PHA
 .C:167b  8A          TXA
 .C:167c  48          PHA
 .C:167d  98          TYA
 .C:167e  48          PHA
-.C:167f  A5 01       LDA processor_port_register
+.C:167f  A5 01       LDA cpu_port
 .C:1681  48          PHA
 ;map_in_io
 .C:1682  A0 25       LDY #$25
-.C:1684  84 01       STY processor_port_register
+.C:1684  84 01       STY cpu_port
 ;Check if irq lock is clear - if so, continue
 .C:1686  A5 E3       LDA irq_entry_lock
 .C:1688  F0 07       BEQ entry_enabled
@@ -5600,7 +5600,7 @@ entry_enabled:
 .C:169b  E6 D9       INC irq_entry_count
 ;Mark that we haven't copied color RAM data yet
 .C:169d  A9 00       LDA #$00
-.C:169f  8D 77 16    STA color_ram_copy_done
+.C:169f  8D 77 16    STA vic_color_ram_copy_done
 ;Check if video needs to be updated
 .C:16a2  A5 8E       LDA video_update_signal
 .C:16a4  D0 07       BNE signal_set
@@ -5720,7 +5720,7 @@ prepare_next_frame_handler:
 ;--------------------------------------------------
 case_03:
 ;Just copy color data, don't change base addresses
-.C:1765  20 60 18    JSR copy_color_ram
+.C:1765  20 60 18    JSR copy_vic_color_ram
 .C:1768  4C 90 17    JMP video_memory_layout_complete
 ;--------------------------------------------------
 check_01:
@@ -5739,7 +5739,7 @@ case_01:
 .C:1775  85 8C       STA <sprite_shape_data_ptr
 .C:1777  A9 CB       LDA #$CB
 .C:1779  85 8D       STA >sprite_shape_data_ptr
-.C:177b  20 60 18    JSR copy_color_ram
+.C:177b  20 60 18    JSR copy_vic_color_ram
 .C:177e  4C 90 17    JMP video_memory_layout_complete
 ;--------------------------------------------------
 ; video_setup_mode == #02
@@ -5754,7 +5754,7 @@ case_02:
 .C:1787  85 8C       STA <sprite_shape_data_ptr
 .C:1789  A9 CF       LDA #$CF
 .C:178b  85 8D       STA >sprite_shape_data_ptr
-.C:178d  20 60 18    JSR copy_color_ram
+.C:178d  20 60 18    JSR copy_vic_color_ram
 ;--------------------------------------------------
 video_memory_layout_complete:
 ;Copy the room's bkg color - not sure why this is done
@@ -5803,7 +5803,7 @@ section_entry:
 ;
 ;If the game is paused, skip these actions
 .C:17b4  D0 25       BNE do_keyboard
-.C:17b6  20 62 28    JSR print_message_on_top_bar
+.C:17b6  20 62 28    JSR tick_topbar_message
 .C:17b9  20 64 60    JSR handle_paused_scripts
 ;--------------------------------------------------
 ; Cursor color change
@@ -5834,10 +5834,10 @@ do_keyboard:
 ;--------------------------------------------------
 ;map_in_io
 .C:17de  A0 25       LDY #$25
-.C:17e0  84 01       STY processor_port_register
+.C:17e0  84 01       STY cpu_port
 .C:17e2  A9 00       LDA #$00
 .C:17e4  8D 77 FD    STA room_scene_clicked_flag
-.C:17e7  AD 77 16    LDA color_ram_copy_done
+.C:17e7  AD 77 16    LDA vic_color_ram_copy_done
 .C:17ea  D0 24       BNE $1810
 .C:17ec  AD A8 FE    LDA control_mode
 .C:17ef  C9 00       CMP #$00
@@ -5879,7 +5879,7 @@ check_hide_cursor_flag:
 handle_sound:
 ;map_in_io
 .C:182d  A0 25       LDY #$25
-.C:182f  84 01       STY processor_port_register
+.C:182f  84 01       STY cpu_port
 ;Do we need to reload the sound resource address? If not, continue
 .C:1831  AD 70 FE    LDA reload_sound_ptrs_flag
 .C:1834  D0 12       BNE clear_semaphore
@@ -5899,7 +5899,7 @@ clear_semaphore:
 exit:
 ;Restore registers from stack
 .C:184b  68          PLA
-.C:184c  85 01       STA processor_port_register
+.C:184c  85 01       STA cpu_port
 .C:184e  68          PLA
 .C:184f  A8          TAY
 .C:1850  68          PLA
@@ -5907,14 +5907,14 @@ exit:
 .C:1852  68          PLA
 .C:1853  40          RTI
 ;===========================================
-copy_color_ram_wrapper:
+copy_vic_color_ram_wrapper:
 ;map_in_io
 .C:1854  A0 25       LDY #$25
-.C:1856  84 01       STY processor_port_register
-.C:1858  20 60 18    JSR copy_color_ram
+.C:1856  84 01       STY cpu_port
+.C:1858  20 60 18    JSR copy_vic_color_ram
 ;map_out_io
 .C:185b  A0 24       LDY #$24
-.C:185d  84 01       STY processor_port_register
+.C:185d  84 01       STY cpu_port
 .C:185f  60          RTS
 ; End IRQ handler
 ;===========================================
@@ -5926,7 +5926,7 @@ copy_color_ram_wrapper:
 ;
 ; As to why this is done in this manner, perhaps it's faster than using a 16-bit counter.
 ;===========================================
-copy_color_ram:
+copy_vic_color_ram:
 .C:1860  A0 27       LDY #$27
 loop:
 .C:1862  B9 89 6D    LDA $6D89,Y
@@ -5967,7 +5967,7 @@ loop:
 .C:18c9  10 97       BPL loop
 ;Use the flag to set that we already copied color RAM
 .C:18cb  A9 01       LDA #$01
-.C:18cd  8D 77 16    STA color_ram_copy_done
+.C:18cd  8D 77 16    STA vic_color_ram_copy_done
 .C:18d0  60          RTS
 ;===========================================
 pause_game:
@@ -7879,7 +7879,7 @@ blit_and_mask_limb:
 .C:1eb8  85 DC       STA debug_error_code
 ;map_in_io
 .C:1eba  A0 25       LDY #$25
-.C:1ebc  84 01       STY processor_port_register
+.C:1ebc  84 01       STY cpu_port
 hang_loop:
 .C:1ebe  8D 20 D0    STA vic_border_color_reg_register
 .C:1ec1  4C BE 1E    JMP hang_loop
@@ -9770,22 +9770,22 @@ return:
 .C:2799  98          TYA
 .C:279a  60          RTS
 ;===========================================
-; Arguments:	message_ptr		pointer to message
-;				character_talking	
+; Arguments:	src_msg_ptr		pointer to message
+;				talking_costume	
 ;
-; If character_talking is #FF, nobody is talking (just print the message
+; If talking_costume is #FF, nobody is talking (just print the message
 ; and no talking animation is needed).
 ;
 ; To save storage, space characters are encoded into regular characters
 ; by setting their bit 7. If a message byte has bit 7 set,
 ; then the message byte is printed, and then a space as well.
 ;===========================================
-message_ptr = $15
-append_message_mode = $28c1
+src_msg_ptr = $15
+msg_copy_mode = $28c1
 
-print_msg_for_actor:
-;If character_talking's bit 7 is set, set mode #00
-.C:279b  AE 9A FE    LDX character_talking
+prepare_message_for_topbar:
+;If talking_costume's bit 7 is set, set mode #00
+.C:279b  AE 9A FE    LDX talking_costume
 .C:279e  30 25       BMI set_mode_00
 ;If actor_for_costume's bit 7 is clear, skip to update_actor
 .C:27a0  BD 57 FE    LDA actor_for_costume,X
@@ -9794,9 +9794,9 @@ print_msg_for_actor:
 .C:27a5  A2 FF       LDX #$FF
 .C:27a7  4C CA 27    JMP set_mode_x
 update_actor:
-.C:27aa  20 34 28    JSR reset_talking
-.C:27ad  AE 9A FE    LDX character_talking
-.C:27b0  8E 9B FE    STX message_owner
+.C:27aa  20 34 28    JSR shutdown_topbar_talking
+.C:27ad  AE 9A FE    LDX talking_costume
+.C:27b0  8E 9B FE    STX msg_owner_costume
 ;Test bit 6 of costume_anim_attrs
 .C:27b3  BD D9 F0    LDA costume_anim_attrs,X
 .C:27b6  29 40       AND #$40
@@ -9808,10 +9808,10 @@ update_actor:
 set_mode_x2:
 .C:27c2  4C CA 27    JMP set_mode_x
 set_mode_00:
-.C:27c5  20 34 28    JSR reset_talking
+.C:27c5  20 34 28    JSR shutdown_topbar_talking
 .C:27c8  A2 00       LDX #$00
 set_mode_x:
-.C:27ca  8E C1 28    STX append_message_mode
+.C:27ca  8E C1 28    STX msg_copy_mode
 ;-----------------------------------------
 ;Use .Y as source index, start at #FF (incremented to zero on first iteration)
 .C:27cd  A0 FF       LDY #$FF
@@ -9820,14 +9820,14 @@ set_mode_x:
 check_next_char:
 .C:27d1  C8          INY
 .C:27d2  E8          INX
-.C:27d3  AD C1 28    LDA append_message_mode
+.C:27d3  AD C1 28    LDA msg_copy_mode
 .C:27d6  10 05       BPL check_for_space_append
 ;If mode is #FF, don't append characters, just read and skip them
-.C:27d8  B1 15       LDA (message_ptr),Y
+.C:27d8  B1 15       LDA (src_msg_ptr),Y
 .C:27da  4C EC 27    JMP check_end_of_string
 check_for_space_append:
 ;If bit 7 is set, a space must be added after the character
-.C:27dd  B1 15       LDA (message_ptr),Y
+.C:27dd  B1 15       LDA (src_msg_ptr),Y
 .C:27df  10 08       BPL append_char
 ;Clear bit 7 to get the original character and append it
 .C:27e1  29 7F       AND #$7F
@@ -9846,20 +9846,20 @@ check_end_of_string:
 .C:27ee  C8          INY
 .C:27ef  98          TYA
 .C:27f0  18          CLC
-.C:27f1  65 15       ADC <message_ptr
-.C:27f3  85 15       STA <message_ptr
+.C:27f1  65 15       ADC <src_msg_ptr
+.C:27f3  85 15       STA <src_msg_ptr
 .C:27f5  90 02       BCC check_if_color_needed
-.C:27f7  E6 16       INC >message_ptr
+.C:27f7  E6 16       INC >src_msg_ptr
 ;If mode is #FF, don't set the text color
 check_if_color_needed:
-.C:27f9  AD C1 28    LDA append_message_mode
+.C:27f9  AD C1 28    LDA msg_copy_mode
 .C:27fc  30 35       BMI exit
 ;-----------------------------------------
 ; Set text color
 ;-----------------------------------------
 ;Determine the message text color to use
 ;Does the message have an owner?
-.C:27fe  AE 9B FE    LDX message_owner
+.C:27fe  AE 9B FE    LDX msg_owner_costume
 .C:2801  10 05       BPL use_actor_text_color
 ;It doesn't - use #0E color by default
 .C:2803  A9 0E       LDA #$0E
@@ -9869,32 +9869,32 @@ use_actor_text_color:
 text_color_determined:
 ;map_in_io
 .C:280b  A0 25       LDY #$25
-.C:280d  84 01       STY processor_port_register
+.C:280d  84 01       STY cpu_port
 ;Use .X as the top bar index, start at the end (#27), move downwards
 .C:280f  A2 27       LDX #$27
 color_loop:
 ;Set text color
-.C:2811  9D 00 D8    STA color_ram,X
+.C:2811  9D 00 D8    STA vic_color_ram,X
 .C:2814  CA          DEX
 .C:2815  10 FA       BPL color_loop
 ;map_out_io
 .C:2817  A0 24       LDY #$24
-.C:2819  84 01       STY processor_port_register
+.C:2819  84 01       STY cpu_port
 ;-----------------------------------------
 .C:281b  A9 00       LDA #$00
 .C:281d  85 CA       STA source_msg_offset
 ;A new message is ready to be printed - set top bar mode to #FF
 .C:281f  A2 FF       LDX #$FF
-.C:2821  86 C9       STX top_bar_msg_mode
+.C:2821  86 C9       STX topbar_mode
 ;Set some debugging variables
 .C:2823  8E 6A FF    STX var_msg_flag
 .C:2826  A9 00       LDA #$00
 .C:2828  8D 71 FF    STA var_message_length
 ;Set message delay to #0001
 .C:282b  A9 01       LDA #$01
-.C:282d  85 CB       STA <current_message_delay
+.C:282d  85 CB       STA <cur_msg_countdown
 .C:282f  A9 00       LDA #$00
-.C:2831  85 CC       STA >current_message_delay
+.C:2831  85 CC       STA >cur_msg_countdown
 exit:
 .C:2833  60          RTS
 ;===========================================
@@ -9903,17 +9903,17 @@ exit:
 ; If there's a message owner, it shuts its mouth.
 ; Message owner is then reset to #FF and the message bar is cleared.
 ;===========================================
-reset_talking:
+shutdown_topbar_talking:
 ;Set top bar mode to #00
 .C:2834  A9 00       LDA #$00
-.C:2836  85 C9       STA top_bar_msg_mode
+.C:2836  85 C9       STA topbar_mode
 ;Reset msg delay to zero
-.C:2838  85 CB       STA <current_message_delay
-.C:283a  85 CC       STA >current_message_delay
+.C:2838  85 CB       STA <cur_msg_countdown
+.C:283a  85 CC       STA >cur_msg_countdown
 ;Get the message owner
-.C:283c  AE 9B FE    LDX message_owner
+.C:283c  AE 9B FE    LDX msg_owner_costume
 ;If it's nobody (#FF), clear the message bar and exit
-.C:283f  30 16       BMI clear_msg_bar_text
+.C:283f  30 16       BMI clear_topbar_text
 ;If the owner actor is offscreen, then clear the owner and the message bar
 .C:2841  BC 57 FE    LDY actor_for_costume,X
 .C:2844  30 0C       BMI clear_msg_owner
@@ -9927,18 +9927,18 @@ reset_talking:
 clear_msg_owner:
 ;Set message owner to #FF (nobody)
 .C:2852  A9 FF       LDA #$FF
-.C:2854  8D 9B FE    STA message_owner
+.C:2854  8D 9B FE    STA msg_owner_costume
 ;Fall through - clear message bar
 ;===========================================
 ; Clears the message bar's text
 ;
 ; Arguments: None
 ;===========================================
-clear_msg_bar_text:
-.C:2857  A0 27       LDY text_bar_length
+clear_topbar_text:
+.C:2857  A0 27       LDY #text_bar_length
 .C:2859  A9 00       LDA #$00
 clear_loop:
-.C:285b  99 00 CC    STA msg_bar_text_base,Y
+.C:285b  99 00 CC    STA topbar_text_base,Y
 .C:285e  88          DEY
 .C:285f  10 FA       BPL clear_loop
 .C:2861  60          RTS
@@ -9948,48 +9948,48 @@ clear_loop:
 ; Arguments:	
 ;		source_msg_offset		Offset from which the message to print starts.
 ;								The base address is source_msg_base.
-;		top_bar_msg_mode		
-;		text_delay				Text speed factor - it will affect the message delay
+;		topbar_mode		
+;		text_delay_factor				Text speed factor - it will affect the message delay
 ;	Note: character #25 is the ellipsis (...) symbol
 ;===========================================
 source_msg_offset = $CA
-standard_message_delay = $Cd
+std_msg_countdown = $Cd
 
-print_message_on_top_bar:
+tick_topbar_message:
 ;--------------------------------------
 ; Exit if no delay countdown is in progress
 ;--------------------------------------
 ;Check if the msg delay is already zero - if so, no countdown is ongoing, exit
-.C:2862  A5 CB       LDA <current_message_delay
-.C:2864  05 CC       ORA >current_message_delay
+.C:2862  A5 CB       LDA <cur_msg_countdown
+.C:2864  05 CC       ORA >cur_msg_countdown
 .C:2866  F0 58       BEQ exit	
 ;--------------------------------------
 ;Decrement delay countdown and exit if it's still ongoing
 ;--------------------------------------
 ;Decrement the text delay
-.C:2868  A5 CB       LDA <current_message_delay
+.C:2868  A5 CB       LDA <cur_msg_countdown
 .C:286a  D0 02       BNE decrement_delay_lo
 ;If lo part is zero, decrement hi also
-.C:286c  C6 CC       DEC >current_message_delay
+.C:286c  C6 CC       DEC >cur_msg_countdown
 decrement_delay_lo:
-.C:286e  C6 CB       DEC <current_message_delay
+.C:286e  C6 CB       DEC <cur_msg_countdown
 ;Check if delay has been exhausted - if not, exit
-.C:2870  A5 CB       LDA <current_message_delay
-.C:2872  05 CC       ORA >current_message_delay
+.C:2870  A5 CB       LDA <cur_msg_countdown
+.C:2872  05 CC       ORA >cur_msg_countdown
 .C:2874  D0 4A       BNE exit
 ;--------------------------------------
 ;Delay countdown has reached zero
-.C:2876  A5 C9       LDA top_bar_msg_mode
-;Is bit 7 of top_bar_msg_mode clear? 
-;If so, skip to reset_talking
-.C:2878  10 43       BPL reset_talking_2
+.C:2876  A5 C9       LDA topbar_mode
+;Is bit 7 of topbar_mode clear? 
+;If so, skip to shutdown_topbar_talking
+.C:2878  10 43       BPL shutdown_topbar_talking_2
 ;Bit 7 is set - clear the msg bar
-.C:287a  20 57 28    JSR clear_msg_bar_text
+.C:287a  20 57 28    JSR clear_topbar_text
 ;Copy standard delay into the current delay
-.C:287d  A5 CD       LDA <standard_message_delay
-.C:287f  85 CB       STA <current_message_delay
-.C:2881  A5 CE       LDA >standard_message_delay
-.C:2883  85 CC       STA >current_message_delay
+.C:287d  A5 CD       LDA <std_msg_countdown
+.C:287f  85 CB       STA <cur_msg_countdown
+.C:2881  A5 CE       LDA >std_msg_countdown
+.C:2883  85 CC       STA >cur_msg_countdown
 ;--------------------------------------
 ;Use .Y as source msg offset
 ;If a line break occurred before, the offset will continue at the next line
@@ -10006,7 +10006,7 @@ next_character:
 ;Case #00 - normal end of string
 ;Set mode as #01 and exit
 .C:2891  A9 01       LDA #$01
-.C:2893  85 C9       STA top_bar_msg_mode
+.C:2893  85 C9       STA topbar_mode
 .C:2895  60          RTS
 ;Check if we have a line break character
 check_for_line_break:
@@ -10017,7 +10017,7 @@ check_for_line_break:
 handle_line_break:
 ;Set mode as #FF, save source offset and exit
 .C:289a  A9 FF       LDA #$FF
-.C:289c  85 C9       STA top_bar_msg_mode
+.C:289c  85 C9       STA topbar_mode
 .C:289e  84 CA       STY source_msg_offset
 .C:28a0  60          RTS
 ;--------------------------------------
@@ -10025,18 +10025,18 @@ handle_line_break:
 ;--------------------------------------
 regular_character:
 ;Copy it to the msg bar text
-.C:28a1  9D 00 CC    STA msg_bar_text_base,X
+.C:28a1  9D 00 CC    STA topbar_text_base,X
 ;Increase message length (for debugging purposes)
 .C:28a4  EE 71 FF    INC var_message_length
-;Add the text_delay factor to the delay
+;Add the text_delay_factor factor to the delay
 ;This is done for each regular character processed, effectively becoming a multiplication factor of the standard delay
-.C:28a7  A5 CB       LDA <current_message_delay
+.C:28a7  A5 CB       LDA <cur_msg_countdown
 .C:28a9  18          CLC
-.C:28aa  65 CF       ADC text_delay
-.C:28ac  85 CB       STA <current_message_delay
+.C:28aa  65 CF       ADC text_delay_factor
+.C:28ac  85 CB       STA <cur_msg_countdown
 .C:28ae  90 02       BCC end_of_bar_check
 ;If there was a carry, increase the hi part
-.C:28b0  E6 CC       INC >current_message_delay
+.C:28b0  E6 CC       INC >cur_msg_countdown
 ;--------------------------------------
 end_of_bar_check:
 ;Have we reached the end of the msg bar? 
@@ -10048,8 +10048,8 @@ end_of_bar_check:
 .C:28b7  4C 9A 28    JMP handle_line_break
 ;.C:28ba  4C C0 28    JMP exit	;Unreachable code
 ;--------------------------------------
-reset_talking_2:
-.C:28bd  20 34 28    JSR reset_talking
+shutdown_topbar_talking_2:
+.C:28bd  20 34 28    JSR shutdown_topbar_talking
 exit:
 .C:28c0  60          RTS
 ;===========================================
@@ -10112,7 +10112,7 @@ copy_game_paused_flag_msg:
 .C:2908  10 F7       BPL copy_game_paused_flag_msg
 ;map_in_io
 .C:290a  A0 25       LDY #$25
-.C:290c  84 01       STY processor_port_register
+.C:290c  84 01       STY cpu_port
 ;Set sound volume to #00
 .C:290e  A9 00       LDA #$00
 .C:2910  8D 18 D4    STA volume_control_register
@@ -10136,7 +10136,7 @@ wait_for_space_key:
 .C:2927  8D 18 D4    STA volume_control_register
 ;map_out_io
 .C:292a  A0 24       LDY #$24
-.C:292c  84 01       STY processor_port_register
+.C:292c  84 01       STY cpu_port
 ;Unpause game
 .C:292e  20 DF 18    JSR unpause_game
 ;Enable refreshing the sentence bar
@@ -10167,10 +10167,10 @@ check_plus_key:
 ;---------------------------------
 ; Plus key - accelerate text speed
 ;---------------------------------
-.C:2951  C6 CF       DEC text_delay		
+.C:2951  C6 CF       DEC text_delay_factor		
 .C:2953  10 04       BPL plus_key_exit
 .C:2955  A9 00       LDA #$00
-.C:2957  85 CF       STA text_delay
+.C:2957  85 CF       STA text_delay_factor
 plus_key_exit:
 .C:2959  60          RTS
 ;---------------------------------
@@ -10180,12 +10180,12 @@ check_minus_key:
 ;---------------------------------
 ; Minus key - decelerate text speed
 ;---------------------------------
-.C:295e  E6 CF       INC text_delay		
-.C:2960  A5 CF       LDA text_delay
+.C:295e  E6 CF       INC text_delay_factor		
+.C:2960  A5 CF       LDA text_delay_factor
 .C:2962  C9 0B       CMP #$0B
 .C:2964  D0 04       BNE minus_key_exit
 .C:2966  A9 0A       LDA #$0A
-.C:2968  85 CF       STA text_delay
+.C:2968  85 CF       STA text_delay_factor
 minus_key_exit:
 .C:296a  60          RTS
 ;---------------------------------
@@ -11252,7 +11252,7 @@ set_layer_3_as_3:
 .C:2e5a  85 2F       STA debug_semaphore
 ;map_in_io
 .C:2e5c  A0 25       LDY #$25
-.C:2e5e  84 01       STY processor_port_register
+.C:2e5e  84 01       STY cpu_port
 loop:
 .C:2e60  A9 05       LDA #$05
 .C:2e62  8D 20 D0    STA vic_border_color_reg_register
@@ -11261,7 +11261,7 @@ loop:
 .C:2e67  F0 F7       BEQ loop
 ;map_out_io
 .C:2e69  A0 24       LDY #$24
-.C:2e6b  84 01       STY processor_port_register
+.C:2e6b  84 01       STY cpu_port
 ;-------------------------------------
 exit:
 .C:2e6d  60          RTS
@@ -12479,7 +12479,7 @@ check_raster_setup_needed:
 .C:33e8  D0 31       BNE exit
 ;map_in_io
 .C:33ea  A0 25       LDY #$25
-.C:33ec  84 01       STY processor_port_register
+.C:33ec  84 01       STY cpu_port
 ;Wait for irq_handler1 to be executed at least once
 ;Set the synchronization flag and wait for the IRQ handler to clear it
 .C:33ee  A9 01       LDA #$01
@@ -12509,7 +12509,7 @@ wait_for_irq_handler_entry:
 io_finished:
 ;map_out_io
 .C:3413  A0 24       LDY #$24
-.C:3415  84 01       STY processor_port_register
+.C:3415  84 01       STY cpu_port
 ;Signal that raster setup is needed
 .C:3417  A9 01       LDA #$01
 .C:3419  85 96       STA raster_setup_needed
@@ -12524,7 +12524,7 @@ raster_setup:
 .C:341e  F0 44       BEQ exit
 ;map_in_io
 .C:3420  A0 25       LDY #$25
-.C:3422  84 01       STY processor_port_register
+.C:3422  84 01       STY cpu_port
 ;Enable all sprites
 .C:3424  A9 FF       LDA #$FF
 .C:3426  8D 15 D0    STA vic_sprite_enable_register
@@ -12557,7 +12557,7 @@ raster_setup:
 finalize_setup:
 ;map_out_io
 .C:345b  A0 24       LDY #$24
-.C:345d  84 01       STY processor_port_register
+.C:345d  84 01       STY cpu_port
 ;Enable interrupts
 .C:345f  58          CLI
 ;Raster setup is complete, mark as not needed
@@ -13132,7 +13132,7 @@ read_room_graphics:
 ;------------------------------------------------------
 ;map_in_io
 .C:3729  A0 25       LDY #$25
-.C:372b  84 01       STY processor_port_register
+.C:372b  84 01       STY cpu_port
 ;------------------------------------------------------
 ;Copy and set room's BKG colors
 .C:372d  A2 03       LDX #$03
@@ -13146,7 +13146,7 @@ bkg_color_set_loop:
 .C:373b  85 8F       STA room_bg0_shadow
 ;map_out_io
 .C:373d  A0 24       LDY #$24
-.C:373f  84 01       STY processor_port_register
+.C:373f  84 01       STY cpu_port
 ;------------------------------------------------------
 ;Setup copy counter for a total of #0800 bytes
 .C:3741  A9 00       LDA #$00
@@ -13881,10 +13881,10 @@ message = $da
 print_message_wait_for_button:
 ;map_in_io
 .C:3b15  A0 25       LDY #$25
-.C:3b17  84 01       STY processor_port_register
+.C:3b17  84 01       STY cpu_port
 ;If raster setup is needed, don't change screen and video settings
 .C:3b19  A5 96       LDA raster_setup_needed
-.C:3b1b  F0 12       BEQ clear_msg_bar_text_2
+.C:3b1b  F0 12       BEQ clear_topbar_text_2
 ;Disable blank screen (set bit 4)
 .C:3b1d  AD 11 D0    LDA vic_screen_control_register_1
 .C:3b20  09 10       ORA #$10						
@@ -13897,14 +13897,14 @@ print_message_wait_for_button:
 .C:3b27  A0 09       LDY #$09		
 .C:3b29  8D 18 D0    STA vic_memory_layout_reg
 .C:3b2c  8C 16 D0    STY vic_screen_control_reg_2
-clear_msg_bar_text_2:
-.C:3b2f  20 57 28    JSR clear_msg_bar_text
+clear_topbar_text_2:
+.C:3b2f  20 57 28    JSR clear_topbar_text
 ;Copy game paused message to top bar
 .C:3b32  A0 00       LDY #$00
 copy_pause_msg_next_char:
 .C:3b34  B1 DA       LDA (message),Y
 .C:3b36  F0 06       BEQ wait_for_button_press	;Have we found the end-of-string? (#00)
-.C:3b38  99 00 CC    STA msg_bar_text_base,Y
+.C:3b38  99 00 CC    STA topbar_text_base,Y
 .C:3b3b  C8          INY
 .C:3b3c  D0 F6       BNE copy_pause_msg_next_char
 wait_for_button_press:
@@ -13912,7 +13912,7 @@ wait_for_button_press:
 .C:3b41  29 10       AND #$10		;Check joy #1 fire button pressed?
 .C:3b43  D0 F9       BNE wait_for_button_press
 ;Clear the top bar msg
-.C:3b45  20 57 28    JSR clear_msg_bar_text
+.C:3b45  20 57 28    JSR clear_topbar_text
 ;If raster setup is needed, don't turn the screen off
 .C:3b48  A5 96       LDA raster_setup_needed
 .C:3b4a  F0 08       BEQ exit
@@ -13923,7 +13923,7 @@ wait_for_button_press:
 exit:
 ;map_out_io
 .C:3b54  A0 24       LDY #$24
-.C:3b56  84 01       STY processor_port_register
+.C:3b56  84 01       STY cpu_port
 .C:3b58  60          RTS
 ;===========================================
 insert_disk_side_msg:
@@ -14694,7 +14694,7 @@ assign_sprite_to_visible_actor:
 .C:3f38  85 DC       STA debug_error_code
 ;map_in_io
 .C:3f3a  A0 25       LDY #$25
-.C:3f3c  84 01       STY processor_port_register
+.C:3f3c  84 01       STY cpu_port
 infinite_loop:
 .C:3f3e  8D 20 D0    STA vic_border_color_reg_register
 .C:3f41  4C 3E 3F    JMP infinite_loop
@@ -16111,7 +16111,7 @@ equality_check:
 .C:44a7  85 DC       STA debug_error_code
 ;map_in_io
 .C:44a9  A0 25       LDY #$25
-.C:44ab  84 01       STY processor_port_register
+.C:44ab  84 01       STY cpu_port
 hangup_loop:
 .C:44ad  8D 20 D0    STA vic_border_color_reg_register
 .C:44b0  4C AD 44    JMP hangup_loop
@@ -16257,7 +16257,7 @@ disk_write_linear:
 try_write:
 ;map_in_io
 .C:4561  A0 25       LDY #$25
-.C:4563  84 01       STY processor_port_register
+.C:4563  84 01       STY cpu_port
 .C:4565  AE 36 46    LDX track_to_read
 .C:4568  AC 35 46    LDY sector_to_read
 .C:456b  20 41 46    JSR disk_write_sector
@@ -16271,7 +16271,7 @@ try_write:
 .C:457b  4C 61 45    JMP try_write
 ;map_out_io
 .C:457e  A0 24       LDY #$24
-.C:4580  84 01       STY processor_port_register
+.C:4580  84 01       STY cpu_port
 .C:4582  20 AE 45    JSR disk_next_sector_phys
 .C:4585  EE 32 46    INC src_ptr_hi
 .C:4588  CE 3D 46    DEC disk_copy_count_hi
@@ -16389,14 +16389,14 @@ disk_read_sector_into_buffer:
 attempt_read_sector:
 ;map_in_io
 .C:45fb  A0 25       LDY #$25
-.C:45fd  84 01       STY processor_port_register
+.C:45fd  84 01       STY cpu_port
 ;Read the sector after preparing all attributes and enabling I/O
 .C:45ff  AE 36 46    LDX track_to_read
 .C:4602  AC 35 46    LDY sector_to_read
 .C:4605  20 6E 46    JSR disk_read_sector
 ;map_out_io
 .C:4608  A0 24       LDY #$24
-.C:460a  84 01       STY processor_port_register
+.C:460a  84 01       STY cpu_port
 ;If carry is clear, read succeeded
 .C:460c  90 0E       BCC read_succeeded
 ;Read failed
@@ -19613,7 +19613,7 @@ disk_id_check:
 .C:5658  85 DC       STA debug_error_code
 ;map_in_io
 .C:565a  A0 25       LDY #$25		
-.C:565c  84 01       STY processor_port_register
+.C:565c  84 01       STY cpu_port
 infinite_loop:
 .C:565e  8D 20 D0    STA vic_border_color_reg_register
 .C:5661  4C 5E 56    JMP infinite_loop	
@@ -19689,7 +19689,7 @@ next_costume_2:
 .C:56b8  85 DC       STA debug_error_code
 ;map_in_io
 .C:56ba  A0 25       LDY #$25
-.C:56bc  84 01       STY processor_port_register
+.C:56bc  84 01       STY cpu_port
 hangup_loop:
 .C:56be  8D 20 D0    STA vic_border_color_reg_register
 .C:56c1  4C BE 56    JMP hangup_loop
@@ -21224,7 +21224,7 @@ handle_script_relocation:
 .C:5dc6  85 2F       STA debug_semaphore
 ;map_in_io
 .C:5dc8  A0 25       LDY #$25
-.C:5dca  84 01       STY processor_port_register
+.C:5dca  84 01       STY cpu_port
 wait_for_semaphore:
 .C:5dcc  A9 01       LDA #$01
 .C:5dce  8D 20 D0    STA vic_border_color_reg_register
@@ -21233,7 +21233,7 @@ wait_for_semaphore:
 .C:5dd3  F0 F7       BEQ wait_for_semaphore
 ;map_out_io
 .C:5dd5  A0 24       LDY #$24
-.C:5dd7  84 01       STY processor_port_register
+.C:5dd7  84 01       STY cpu_port
 ;-------------------------------------
 ;Cover the scenario where a memory relocation has occurred
 adjust_script_pointers:
@@ -21571,12 +21571,12 @@ refresh_items_displayed:
 .C:5f38  8D A8 FE    STA control_mode
 ;map_in_io
 .C:5f3b  A0 25       LDY #$25
-.C:5f3d  84 01       STY processor_port_register
+.C:5f3d  84 01       STY cpu_port
 ;Update the items being displayed
 .C:5f3f  20 B3 F4    JSR update_items_displayed
 ;map_out_io
 .C:5f42  A0 24       LDY #$24
-.C:5f44  84 01       STY processor_port_register
+.C:5f44  84 01       STY cpu_port
 ;Restore control mode and exit
 .C:5f46  68          PLA
 .C:5f47  8D A8 FE    STA control_mode
@@ -23121,33 +23121,33 @@ exit:
 ;===========================================
 ;Opcode #75 - player says message
 .C:6471  AD 67 FF    LDA current_kid
-.C:6474  8D 9A FE    STA character_talking
+.C:6474  8D 9A FE    STA talking_costume
 ;===========================================
-message_ptr = $15
+src_msg_ptr = $15
 
 actor_says_message:
 ;Set the current script pointer as the message address
 .C:6477  AD 15 5E    LDA script_read_pointer_lo
-.C:647a  85 15       STA <message_ptr
+.C:647a  85 15       STA <src_msg_ptr
 .C:647c  AD 16 5E    LDA script_read_pointer_hi
-.C:647f  85 16       STA >message_ptr
+.C:647f  85 16       STA >src_msg_ptr
 ;Print the message
-.C:6481  20 9B 27    JSR print_msg_for_actor
+.C:6481  20 9B 27    JSR prepare_message_for_topbar
 ;Update the script pointer (it has been moved when printing the message)
 ;It points just past the message data
-.C:6484  A5 15       LDA <message_ptr
+.C:6484  A5 15       LDA <src_msg_ptr
 .C:6486  8D 15 5E    STA script_read_pointer_lo
-.C:6489  A5 16       LDA >message_ptr
+.C:6489  A5 16       LDA >src_msg_ptr
 .C:648b  8D 16 5E    STA script_read_pointer_hi
 .C:648e  60          RTS
 ;===========================================
 ;Opcode #0D - player says message
 ;===========================================
 .C:648f  AD 67 FF    LDA current_kid
-.C:6492  8D 9A FE    STA character_talking
+.C:6492  8D 9A FE    STA talking_costume
 ;===========================================
 offset = $15
-message_ptr = $15
+src_msg_ptr = $15
 actor_says_message_with_offset:
 ;Read a 16-bit offset
 .C:6495  20 14 5E    JSR script_read_byte
@@ -23158,12 +23158,12 @@ actor_says_message_with_offset:
 .C:649f  18          CLC
 .C:64a0  A5 15       LDA <offset
 .C:64a2  6D 15 5E    ADC script_read_pointer_lo
-.C:64a5  85 15       STA <message_ptr
+.C:64a5  85 15       STA <src_msg_ptr
 .C:64a7  A5 16       LDA >offset
 .C:64a9  6D 16 5E    ADC script_read_pointer_hi
-.C:64ac  85 16       STA >message_ptr
+.C:64ac  85 16       STA >src_msg_ptr
 ;Subtract 1 from the address
-; If we call the high and low bytes of message_ptr, "hi" and "lo" respectively, then:
+; If we call the high and low bytes of src_msg_ptr, "hi" and "lo" respectively, then:
 ;
 ; If lo is #00, then the address is hi/lo = hi/00
 ; If we subtract 1, then (hi/00) - 1 = hi-1/FF
@@ -23171,25 +23171,25 @@ actor_says_message_with_offset:
 ;
 ; If instead the low byte is not #00, then (hi/lo) - 1 = (hi/lo-1).
 ; In this other case, to subtract 1, we only need to decrement lo.
-.C:64ae  A5 15       LDA <message_ptr
+.C:64ae  A5 15       LDA <src_msg_ptr
 .C:64b0  D0 02       BNE decrement_lo
-.C:64b2  C6 16       DEC >message_ptr
+.C:64b2  C6 16       DEC >src_msg_ptr
 decrement_lo:
-.C:64b4  C6 15       DEC <message_ptr
+.C:64b4  C6 15       DEC <src_msg_ptr
 ;Print the message
-.C:64b6  20 9B 27    JSR print_msg_for_actor
+.C:64b6  20 9B 27    JSR prepare_message_for_topbar
 .C:64b9  60          RTS
 ;===========================================
 ;Opcode #14, #94 - print message
 ;===========================================
 .C:64ba  20 98 5F    JSR script_load_operand_bit7
-.C:64bd  8D 9A FE    STA character_talking
+.C:64bd  8D 9A FE    STA talking_costume
 .C:64c0  4C 77 64    JMP actor_says_message
 ;===========================================
 ;Opcode #2E, #AE - actor says message (offset variant)
 ;===========================================
 .C:64c3  20 98 5F    JSR script_load_operand_bit7
-.C:64c6  8D 9A FE    STA character_talking
+.C:64c6  8D 9A FE    STA talking_costume
 .C:64c9  4C 95 64    JMP actor_says_message_with_offset
 ;===========================================
 ; Get distance between two actors.
@@ -23401,14 +23401,14 @@ set_result:
 ;===========================================
 ;map_in_io
 .C:65b9  A0 25       LDY #$25
-.C:65bb  84 01       STY processor_port_register
+.C:65bb  84 01       STY cpu_port
 ;Read sound index
 .C:65bd  20 98 5F    JSR script_load_operand_bit7
 ;Stop the sound
 .C:65c0  20 93 50    JSR stop_sound
 ;map_out_io
 .C:65c3  A0 24       LDY #$24
-.C:65c5  84 01       STY processor_port_register
+.C:65c5  84 01       STY cpu_port
 .C:65c7  60          RTS
 ;===========================================
 ;Opcode #02 - play music
@@ -23461,13 +23461,13 @@ play_music:
 .C:661b  68          PLA
 ;map_in_io
 .C:661c  A0 25       LDY #$25
-.C:661e  84 01       STY processor_port_register
+.C:661e  84 01       STY cpu_port
 ;Execute music startup code
 inlined_music_init_code_ptr = $6621
 .C:6620  20 FF FF    JSR inlined_music_init_code_ptr	;Inlined
 ;map_out_io
 .C:6623  A0 24       LDY #$24
-.C:6625  84 01       STY processor_port_register
+.C:6625  84 01       STY cpu_port
 .C:6627  20 B4 5D    JSR handle_script_relocation
 .C:662a  60          RTS
 ;===========================================
@@ -23480,13 +23480,13 @@ start_sound_entry2:
 .C:662e  85 D0       STA sound_index
 ;map_in_io
 .C:6630  A0 25       LDY #$25
-.C:6632  84 01       STY processor_port_register
+.C:6632  84 01       STY cpu_port
 ;Stop the sound, in case it was already playing
 .C:6634  A5 D0       LDA sound_index
 .C:6636  20 93 50    JSR stop_sound
 ;map_out_io
 .C:6639  A0 24       LDY #$24
-.C:663b  84 01       STY processor_port_register
+.C:663b  84 01       STY cpu_port
 ;Load the sound
 .C:663d  A5 D0       LDA sound_index
 .C:663f  20 E6 39    JSR load_sound
@@ -23494,11 +23494,11 @@ start_sound_entry2:
 .C:6642  A5 D0       LDA sound_index
 ;map_in_io
 .C:6644  A0 25       LDY #$25
-.C:6646  84 01       STY processor_port_register
+.C:6646  84 01       STY cpu_port
 .C:6648  20 0A 4D    JSR start_sound
 ;map_out_io
 .C:664b  A0 24       LDY #$24
-.C:664d  84 01       STY processor_port_register
+.C:664d  84 01       STY cpu_port
 .C:664f  20 B4 5D    JSR handle_script_relocation
 .C:6652  60          RTS
 ;===========================================
@@ -23988,12 +23988,12 @@ case_03:
 .C:68b6  8D A8 FE    STA control_mode
 ;map_in_io
 .C:68b9  A0 25       LDY #$25
-.C:68bb  84 01       STY processor_port_register
+.C:68bb  84 01       STY cpu_port
 ;Redraw all interaction regions
 .C:68bd  20 8C F3    JSR draw_all_regions
 ;map_out_io
 .C:68c0  A0 24       LDY #$24
-.C:68c2  84 01       STY processor_port_register
+.C:68c2  84 01       STY cpu_port
 ;Set control mode to #03 (normal)
 .C:68c4  A9 03       LDA #$03
 .C:68c6  8D A8 FE    STA control_mode
@@ -24211,7 +24211,7 @@ exit:
 .C:69ae  8D AB FE    STA lights_status
 ;map_in_io
 .C:69b1  A0 25       LDY #$25
-.C:69b3  84 01       STY processor_port_register
+.C:69b3  84 01       STY cpu_port
 ;Are environment lights on? (status = #02?)
 .C:69b5  AD AB FE    LDA lights_status
 .C:69b8  C9 02       CMP #$02
@@ -24237,7 +24237,7 @@ set_colors:
 .C:69cd  8E 26 D0    STX vic_sprite_mcolor1_reg
 ;map_out_io
 .C:69d0  A0 24       LDY #$24
-.C:69d2  84 01       STY processor_port_register
+.C:69d2  84 01       STY cpu_port
 ;Set default camera position
 .C:69d4  A9 C8       LDA #$C8
 .C:69d6  8D 67 06    STA camera_current_position
@@ -24637,7 +24637,7 @@ setup_vectors_and_drive_code:
 .C:8001  85 00       STA processor_data_direction_reg
 ;Map I/O and KERNAL, map RAM instead of BASIC
 .C:8003  A9 06       LDA #$06	
-.C:8005  85 01       STA processor_port_register
+.C:8005  85 01       STA cpu_port
 ;Disable interrups while we change interrupt handlers
 .C:8007  78          SEI
 ;Set IRQ handler to $EA31
@@ -24916,7 +24916,7 @@ init_memory_sound_and_video:
 ;------------------------------------------------
 ;map_out_io
 .C:8301  A0 24       LDY #$24
-.C:8303  84 01       STY processor_port_register
+.C:8303  84 01       STY cpu_port
 .C:8305  20 18 85    JSR clear_gfx_memory	
 .C:8308  20 67 84    JSR clear_zero_page_vars
 .C:830b  20 72 84    JSR clear_game_and_engine_vars ;Also clears CAD0-CB90
@@ -24936,16 +24936,16 @@ init_memory_sound_and_video:
 ;------------------------------------------------
 ;map_in_io
 .C:8327  A0 25       LDY #$25
-.C:8329  84 01       STY processor_port_register
+.C:8329  84 01       STY cpu_port
 .C:832b  20 D8 48    JSR init_sound_voices
 ;map_out_io
 .C:832e  A0 24       LDY #$24
-.C:8330  84 01       STY processor_port_register
+.C:8330  84 01       STY cpu_port
 ;Disable interrupts
 .C:8332  78          SEI
 ;map_in_io
 .C:8333  A0 25       LDY #$25
-.C:8335  84 01       STY processor_port_register
+.C:8335  84 01       STY cpu_port
 ;------------------------------------------------
 ; Initialize interrupt handlers, video memory layout
 ;------------------------------------------------
@@ -24993,7 +24993,7 @@ init_memory_sound_and_video:
 .C:837e  8D 15 D0    STA vic_sprite_enable_register
 ;map_out_io
 .C:8381  A0 24       LDY #$24
-.C:8383  84 01       STY processor_port_register
+.C:8383  84 01       STY cpu_port
 ;------------------------------------------------
 ;Copy memory from $7B7F-7BFF to $F040-F0C0 (#80 bytes)
 .C:8385  A9 7F       LDA #$7F
@@ -25238,7 +25238,7 @@ clear_cad0_cb90:
 setup_border_and_sprite_colors:
 ;map_in_io
 .C:84ba  A0 25       LDY #$25
-.C:84bc  84 01       STY processor_port_register
+.C:84bc  84 01       STY cpu_port
 ;Set border color to black
 .C:84be  A9 00       LDA #$00
 .C:84c0  8D 20 D0    STA vic_border_color_reg_register
@@ -25250,13 +25250,13 @@ setup_border_and_sprite_colors:
 .C:84ca  8D 25 D0    STA vic_sprite_mcolor0_reg
 ;map_out_io
 .C:84cd  A0 24       LDY #$24
-.C:84cf  84 01       STY processor_port_register
+.C:84cf  84 01       STY cpu_port
 .C:84d1  60          RTS
 ;===========================================
 clear_sprite_regs_and_sprite_memory:
 ;map_in_io
 .C:84d2  A0 25       LDY #$25
-.C:84d4  84 01       STY processor_port_register
+.C:84d4  84 01       STY cpu_port
 ;Initialize sprite registers
 .C:84d6  A9 00       LDA #$00
 .C:84d8  8D 1D D0    STA vic_sprite_x_expand_reg		;Sprite double width register
@@ -25274,7 +25274,7 @@ clear_sprite_regs_and_sprite_memory:
 .C:84f2  85 8D       STA >sprite_shape_data_ptr
 ;map_out_io
 .C:84f4  A0 24       LDY #$24
-.C:84f6  84 01       STY processor_port_register
+.C:84f6  84 01       STY cpu_port
 ;Fill sprite memory (E000-F000) with #00
 .C:84f8  A9 00       LDA #$00
 .C:84fa  85 19       STA base_ptr_lo
@@ -25338,17 +25338,17 @@ clear_gfx_memory:
 .C:8554  20 8A 84    JSR mem_fill_x_3
 ;map_in_io
 .C:8557  A0 25       LDY #$25
-.C:8559  84 01       STY processor_port_register
+.C:8559  84 01       STY cpu_port
 ;Fill message bar color (D800-D827) with #0E
 .C:855b  A0 27       LDY #$27
 fill_color_loop:
 .C:855d  A9 0E       LDA #$0E
-.C:855f  99 00 D8    STA color_ram,Y
+.C:855f  99 00 D8    STA vic_color_ram,Y
 .C:8562  88          DEY
 .C:8563  10 F8       BPL fill_color_loop
 ;map_out_io
 .C:8565  A0 24       LDY #$24
-.C:8567  84 01       STY processor_port_register
+.C:8567  84 01       STY cpu_port
 .C:8569  60          RTS
 ;===========================================
 init_character_data:
@@ -25375,12 +25375,12 @@ init_game_engine:
 .C:858d  8D 18 FE    STA sentence_queue_free_capacity
 ;Set message bar standard delay
 .C:8590  A9 1E       LDA #$1E
-.C:8592  85 CD       STA <standard_message_delay
+.C:8592  85 CD       STA <std_msg_countdown
 .C:8594  A9 00       LDA #$00
-.C:8596  85 CE       STA >standard_message_delay
+.C:8596  85 CE       STA >std_msg_countdown
 ;Set initial text speed factor
 .C:8598  A9 06       LDA #$06
-.C:859a  85 CF       STA text_delay
+.C:859a  85 CF       STA text_delay_factor
 ;Set current verb to "Walk to"
 .C:859c  A9 0D       LDA #$0D
 .C:859e  8D 1F FE    STA current_verb
@@ -25873,7 +25873,7 @@ prepare_video_for_new_room:
 .C:d6a7  85 15       STA $15
 .C:d6a9  A9 F2       LDA #$F2
 .C:d6ab  85 16       STA $16
-.C:d6ad  20 34 28    JSR reset_talking		;Clear text from top bar?
+.C:d6ad  20 34 28    JSR shutdown_topbar_talking		;Clear text from top bar?
 .C:d6b0  A9 00       LDA #$00
 .C:d6b2  A2 00       LDX #$00
 .C:d6b4  20 34 D7    JSR do_shutter_effect		
@@ -25908,14 +25908,14 @@ setup_buffer2:
 .C:d6df  85 A0       STA $A0
 .C:d6e1  A9 C8       LDA #$C8
 .C:d6e3  85 A1       STA $A1
-.C:d6e5  4C 23 D7    JMP no_color_ram_changes;$D723
+.C:d6e5  4C 23 D7    JMP no_vic_color_ram_changes;$D723
 ;---------------------------------------
 setup_buffer1:
 .C:d6e8  A9 28       LDA #$28 ;to frame_buffer_1 cc28 
 .C:d6ea  85 A0       STA $A0
 .C:d6ec  A9 CC       LDA #$CC
 .C:d6ee  85 A1       STA $A1
-.C:d6f0  4C 23 D7    JMP no_color_ram_changes;$D723
+.C:d6f0  4C 23 D7    JMP no_vic_color_ram_changes;$D723
 ;---------------------------------------
 prepare_shutter_open:
 .C:d6f3  A5 23       LDA frame_buffer
@@ -25930,7 +25930,7 @@ setup_buffer2_open:
 .C:d703  85 9E       STA $9E
 .C:d705  A9 C8       LDA #$C8
 .C:d707  85 9F       STA $9F
-.C:d709  4C 1C D7    JMP prepare_color_ram_for_shutter;$D71C
+.C:d709  4C 1C D7    JMP prepare_vic_color_ram_for_shutter;$D71C
 ;---------------------------------------
 setup_buffer1_open:
 .C:d70c  A9 28       LDA #$28 ;to frame_buffer_2 c828
@@ -25942,13 +25942,13 @@ setup_buffer1_open:
 .C:d718  A9 CC       LDA #$CC
 .C:d71a  85 9F       STA $9F
 ;---------------------------------------
-prepare_color_ram_for_shutter:
+prepare_vic_color_ram_for_shutter:
 .C:d71c  8A          TXA
 .C:d71d  48          PHA
-.C:d71e  20 54 18    JSR copy_color_ram_wrapper ;set up d800, the data on screen is all black still
+.C:d71e  20 54 18    JSR copy_vic_color_ram_wrapper ;set up d800, the data on screen is all black still
 .C:d721  68          PLA
 .C:d722  AA          TAX
-no_color_ram_changes:
+no_vic_color_ram_changes:
 .C:d723  A9 89       LDA #$89
 .C:d725  85 A2       STA $A2
 .C:d727  A9 6D       LDA #$6D
@@ -26121,7 +26121,7 @@ character_sprite_bkg_colors:
 ; Character animation settings
 ;
 ;Bit 7 represents whether a character animates its mouth when speaking (0 = it animates)
-;Bit 6 represents the same thing, but it's used in a different routine (print_msg_for_actor)
+;Bit 6 represents the same thing, but it's used in a different routine (prepare_message_for_topbar)
 ;Bits 5-0 represent the sound to be played when walking (footsteps)
 ;Note that Jeff has #00 as he's barefoot
 ;
