@@ -139,3 +139,13 @@
 .const VIC_CTRL_DEFAULT_1       = $1B   // $D011 preset: 25 rows, vertical scroll = 3
 .const VIC_CTRL_DEFAULT_2       = $1C   // $D011 preset: 25 rows, vertical scroll = 4
 .const VIC_CTRL_DEFAULT_3       = $1D   // $D011 preset: 25 rows, vertical scroll = 5
+
+
+.const MOUTH_STATE_CLOSED          = $00    // idle: mouth closed (default)
+.const MOUTH_STATE_SPEAK_CLOSED    = $01    // speaking cycle: frame with mouth closed
+.const MOUTH_STATE_SPEAK_OPEN      = $FF    // speaking cycle: frame with mouth open
+.const MOUTH_STATE_HELD_OPEN       = $80    // forced open until explicitly closed
+
+.const COSTUME_ATTR_NO_MOUTH_B7   = $80    // bit7: 1 = do NOT animate mouth (main loop); 0 = animate
+.const COSTUME_ATTR_NO_MOUTH_B6   = $40    // bit6: 1 = do NOT animate mouth (prepare_message_for_topbar); 0 = animate
+.const COSTUME_ATTR_STEP_SFX_MASK = $3F    // bits5..0: footsteps sound ID
