@@ -336,7 +336,7 @@ Values observed
  Costume animation settings
 
 Bit 7 represents whether a costume animates its mouth when speaking (0 = it animates)
-Bit 6 represents the same thing, but it's used in a different routine (print_msg_for_actor)
+Bit 6 represents the same thing, but it's used in a different routine (prepare_message_for_topbar)
 Bits 5-0 represent the sound to be played when walking (footsteps)
 Note that Jeff has #00 as he's barefoot
 
@@ -549,3 +549,9 @@ They were definitely intended as debugging aids.
 .label button_presses = $cb8a
 .label inv_display_item_offset = $cb8b
 .label region_text_color = $cb8f
+
+.label talking_costume = $fe9a
+.label msg_owner_costume = $fe9b	//#FF means nobody's talking (and thus the msg bar must be cleared)
+						//Otherwise, it has the same value as talking_costume
+//Base address for message bar source buffers
+.label source_msg_base = $0200
