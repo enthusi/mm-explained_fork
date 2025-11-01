@@ -158,6 +158,7 @@ Notes
 #import "constants.inc"
 #import "registers.inc"
 #import "input_scan.asm"
+#import "ui_messages.asm"
 
 * = $1671
 // ------------------------------------------------------------
@@ -171,7 +172,6 @@ cursor_colors:
 
 .label update_sprites_x_hi_and_chain_handlers = $0
 .label copy_color_ram = $0
-.label print_message_on_top_bar = $0
 .label handle_paused_scripts = $0
 .label handle_cursor_and_interaction_area = $0
 .label sound_irq_handler = $0
@@ -664,7 +664,7 @@ h1_section_entry:
         lda     game_paused_flag              // check pause state (0 = running)
         bne     h1_keyboard                   // if paused → skip these updates
 		
-        jsr     print_message_on_top_bar
+        jsr     tick_topbar_message
         jsr     handle_paused_scripts
 
         // Cursor color stepper
