@@ -605,7 +605,7 @@ pan_camera_to = $066c				;Position to pan camera to
 actor_follow_needs_pan = $066d		
 
 remove_obj_from_inv_flag = $0670
-action_bar_current_text_length = $0e72
+sentence_bar_len_used = $0e72
 
 ;===========================================================
 ; Sprite variables
@@ -864,8 +864,8 @@ obj_height_tbl = $71b1
 object_x_destination = $71cd
 object_y_destination = $71e9
 object_destination_active = $7205
-room_object_index_hi = $7221
-room_object_index_lo = $723d
+room_obj_idx_hi = $7221
+room_obj_idx_lo = $723d
 parent_object = $7259
 ancestor_overlay_req_tbl = $7275
 obj_gfx_ptr_tbl = $7291
@@ -2842,10 +2842,10 @@ word_to_append = $15
 
 print_sentence_bar_text:
 ;Clear the sentence text
-.C:08dd  20 82 0A    JSR setup_and_clear_sentence_bar
+.C:08dd  20 82 0A    JSR sentence_bar_init_and_clear
 ;Set text length to #00
 .C:08e0  A9 00       LDA #$00
-.C:08e2  8D 72 0E    STA action_bar_current_text_length
+.C:08e2  8D 72 0E    STA sentence_bar_len_used
 ;Check if the verb is "New Kid"
 .C:08e5  AD 1F FE    LDA current_verb
 .C:08e8  C9 07       CMP NEW_KID_VERB		
@@ -2935,7 +2935,7 @@ append_indirect_object:
 ;If not, treat it as an object and get its name
 .C:0960  D0 06       BNE append_object_name
 ;It's a character, prepare its name for the append
-.C:0962  20 D8 09    JSR setup_character_name_append
+.C:0962  20 D8 09    JSR load_costume_name_ptr_for_append
 .C:0965  4C 6B 09    JMP do_append
 append_object_name:
 .C:0968  20 E3 09    JSR get_object_name_pointer
@@ -2948,37 +2948,37 @@ exit:
 ;
 ; Arguments: 	None
 ;===========================================
-sentence_bar_text_ptr = $19
+sentence_bar_ptr = $19
 
 print_kid_names_on_sentence_bar:
 ;First kid
 .C:096f  AE C8 FF    LDX first_kid_id		
 ;Append the kid's name
-.C:0972  20 D8 09    JSR setup_character_name_append
+.C:0972  20 D8 09    JSR load_costume_name_ptr_for_append
 .C:0975  20 94 0A    JSR append_word
 ;------------------
 ;Second kid
 ;Adjust destination text buffer (for the sentence bar) to point to the position
 ; where the 2nd kid name must be printed
 .C:0978  A9 DD       LDA #<sentence_bar_2nd_kid_name_offset
-.C:097a  85 19       STA <sentence_bar_text_ptr
+.C:097a  85 19       STA <sentence_bar_ptr
 .C:097c  A9 CE       LDA #>sentence_bar_2nd_kid_name_offset
-.C:097e  85 1A       STA >sentence_bar_text_ptr
+.C:097e  85 1A       STA >sentence_bar_ptr
 ;Append the kid's name
 .C:0980  AE C9 FF    LDX second_kid_id
-.C:0983  20 D8 09    JSR setup_character_name_append
+.C:0983  20 D8 09    JSR load_costume_name_ptr_for_append
 .C:0986  20 94 0A    JSR append_word
 ;------------------
 ;Third kid
 ;Adjust destination text buffer (for the sentence bar) to point to the position
 ; where the 3rd kid name must be printed
 .C:0989  A9 EA       LDA #<sentence_bar_3rd_kid_name_offset
-.C:098b  85 19       STA <sentence_bar_text_ptr
+.C:098b  85 19       STA <sentence_bar_ptr
 .C:098d  A9 CE       LDA #>sentence_bar_3rd_kid_name_offset
-.C:098f  85 1A       STA >sentence_bar_text_ptr
+.C:098f  85 1A       STA >sentence_bar_ptr
 ;Append the kid's name
 .C:0991  AE CA FF    LDX third_kid_id
-.C:0994  20 D8 09    JSR setup_character_name_append
+.C:0994  20 D8 09    JSR load_costume_name_ptr_for_append
 .C:0997  20 94 0A    JSR append_word
 .C:099a  60          RTS
 ;===========================================
@@ -3051,15 +3051,15 @@ set_walk_and_exit:
 ;
 ; Argument: .X - word index
 ;===========================================
-character_names_hi = $f0f2
-character_names_lo = $f10a
-word_buffer = $15
+name_ptr_hi_tbl = $f0f2
+name_ptr_lo_tbl = $f10a
+sentence_word_ptr = $15
 
-setup_character_name_append:
-.C:09d8  BD F2 F0    LDA character_names_hi,X
-.C:09db  85 16       STA >word_buffer
-.C:09dd  BD 0A F1    LDA character_names_lo,X
-.C:09e0  85 15       STA <word_buffer
+load_costume_name_ptr_for_append:
+.C:09d8  BD F2 F0    LDA name_ptr_hi_tbl,X
+.C:09db  85 16       STA >sentence_word_ptr
+.C:09dd  BD 0A F1    LDA name_ptr_lo_tbl,X
+.C:09e0  85 15       STA <sentence_word_ptr
 .C:09e2  60          RTS
 ;===========================================
 ; Get an object's name pointer
@@ -3129,8 +3129,8 @@ get_obj_if_not_a_character:
 ;				object_ptr	pointer to object's data
 ;===========================================
 ;$15/$16 are used as input and output variables with different purposes
-object_index_lo = $15
-object_index_hi = $16
+obj_idx_lo = $15
+obj_idx_hi = $16
 ;Output parameter: pointer to object
 object_ptr_lo = $15
 object_ptr_hi = $16
@@ -3138,8 +3138,8 @@ object_offset_in_room_rsrc = $17
 
 get_obj_resource:
 ;Store object indexes
-.C:0a05  86 15       STX object_index_lo
-.C:0a07  85 16       STA object_index_hi
+.C:0a05  86 15       STX obj_idx_lo
+.C:0a07  85 16       STA obj_idx_hi
 ;Is the index hi #00? 
 ;If not, it's an immovable object, it should be findable in the room
 .C:0a09  C9 00       CMP #$00
@@ -3158,7 +3158,7 @@ get_obj_resource:
 .C:0a16  A0 2C       LDY MAX_INVENTORY_INDEX
 check_inventory_object:
 .C:0a18  B9 31 70    LDA inventory_objects,Y
-.C:0a1b  C5 15       CMP object_index_lo
+.C:0a1b  C5 15       CMP obj_idx_lo
 .C:0a1d  D0 15       BNE next_inventory_object
 ;Object found - copy object resource pointers
 .C:0a1f  B9 8B 70    LDA object_ptr_hi_tbl,Y
@@ -3182,11 +3182,11 @@ next_inventory_object:
 get_obj_resource_in_room:
 .C:0a37  AC 5C 71    LDY total_objects_in_room
 check_room_object:
-.C:0a3a  B9 3D 72    LDA room_object_index_lo,Y
-.C:0a3d  C5 15       CMP object_index_lo
+.C:0a3a  B9 3D 72    LDA room_obj_idx_lo,Y
+.C:0a3d  C5 15       CMP obj_idx_lo
 .C:0a3f  D0 3B       BNE next_room_object
-.C:0a41  B9 21 72    LDA room_object_index_hi,Y
-.C:0a44  C5 16       CMP object_index_hi
+.C:0a41  B9 21 72    LDA room_obj_idx_hi,Y
+.C:0a44  C5 16       CMP obj_idx_hi
 .C:0a46  D0 34       BNE next_room_object
 ;Objects with hi index set to #00 are "movable" (they might or might not be currently present in a room)
 ;Objects with hi index set to #01 are "immovable" (they can't be moved or mutated into a different object)
@@ -3196,7 +3196,7 @@ check_room_object:
 .C:0a4c  4C 5A 0A    JMP object_found
 check_if_obj_in_room:
 ;Fetch object attributes
-.C:0a4f  A6 15       LDX object_index_lo
+.C:0a4f  A6 15       LDX obj_idx_lo
 .C:0a51  BD 01 73    LDA object_attributes,X
 ;Mask low-nibble (object owner)
 .C:0a54  29 0F       AND #$0F
@@ -3238,23 +3238,23 @@ next_room_object:
 ; Arguments: None
 ;
 ; This routine will fill the sentence bar's text buffer with zeroes.
-; It will also set up sentence_bar_text_ptr to the correct address, so further write operations
+; It will also set up sentence_bar_ptr to the correct address, so further write operations
 ; can append text to it correctly.
 ;===========================================
-sentence_bar_text_ptr = $19
-setup_and_clear_sentence_bar:
-;Point sentence_bar_text_ptr to the beginning of the sentence bar
+sentence_bar_ptr = $19
+sentence_bar_init_and_clear:
+;Point sentence_bar_ptr to the beginning of the sentence bar
 .C:0a82  A9 D0       LDA #<SENTENCE_BAR_BASE
-.C:0a84  85 19       STA <sentence_bar_text_ptr
+.C:0a84  85 19       STA <sentence_bar_ptr
 .C:0a86  A9 CE       LDA #>SENTENCE_BAR_BASE
-.C:0a88  85 1A       STA >sentence_bar_text_ptr
+.C:0a88  85 1A       STA >sentence_bar_ptr
 ;Use .Y as index counter, start from the end, go downwards
 .C:0a8a  A0 27       LDY text_bar_length
 ;Set #00 in .A as the value to clear with
 .C:0a8c  A9 00       LDA #$00
 clear_next_char:
 ;Clear buffer byte
-.C:0a8e  91 19       STA (sentence_bar_text_ptr),Y
+.C:0a8e  91 19       STA (sentence_bar_ptr),Y
 ;Move Y downwards, loop as needed
 .C:0a90  88          DEY
 .C:0a91  10 FB       BPL clear_next_char
@@ -3263,27 +3263,27 @@ clear_next_char:
 ; Append word to text buffer
 ;
 ; Arguments:
-;		word_buffer					pointer to word
-;		sentence_bar_text_ptr		pointer to sentence bar (at the append position)
+;		sentence_word_ptr					pointer to word
+;		sentence_bar_ptr		pointer to sentence bar (at the append position)
 ;
 ; The word data must be zero-terminated.
 ; If the append operation exceeds the text buffer length,
 ; the text will be trimmed accordingly.
 ;
-; A byte of #40 in a byte read from word_buffer will force the termination of the append.
+; A byte of #40 in a byte read from sentence_word_ptr will force the termination of the append.
 ; Same thing with a value of #00.
 ;===========================================
-word_buffer = $15
-sentence_bar_text_ptr = $19
+sentence_word_ptr = $15
+sentence_bar_ptr = $19
 
 append_word:
 ;Use .Y as index, start at #FF (incremented to #00 in the first iteration), go upwards
 .C:0a94  A0 FF       LDY #$FF
 read_next_char:
-.C:0a96  EE 72 0E    INC action_bar_current_text_length
+.C:0a96  EE 72 0E    INC sentence_bar_len_used
 .C:0a99  C8          INY
-;Read next input character from word_buffer
-.C:0a9a  B1 15       LDA (word_buffer),Y		
+;Read next input character from sentence_word_ptr
+.C:0a9a  B1 15       LDA (sentence_word_ptr),Y		
 ;If the char is #40, the word is finished
 .C:0a9c  C9 40       CMP #$40					
 .C:0a9e  F0 0F       BEQ check_word_termination
@@ -3292,15 +3292,15 @@ read_next_char:
 .C:0aa0  C9 00       CMP #$00
 .C:0aa2  08          PHP
 ;Have we exceeded the max length of the text bar?
-.C:0aa3  AE 72 0E    LDX action_bar_current_text_length
+.C:0aa3  AE 72 0E    LDX sentence_bar_len_used
 .C:0aa6  E0 28       CPX text_bar_length + 1
 ;If we're exactly at the end, copy this last char
 .C:0aa8  F0 02       BEQ write_char
 ;If we're past the end, don't copy this char - keep reading (effectively trim the text)
 .C:0aaa  B0 02       BCS restore_zero_flag
 write_char:
-;Write character to sentence_bar_text_ptr
-.C:0aac  91 19       STA (sentence_bar_text_ptr),Y
+;Write character to sentence_bar_ptr
+.C:0aac  91 19       STA (sentence_bar_ptr),Y
 ;We compared the character against #00 and stored flags in the stack
 ;Restore flags
 restore_zero_flag:
@@ -3313,10 +3313,10 @@ check_word_termination:
 .C:0ab1  C8          INY
 .C:0ab2  98          TYA
 .C:0ab3  18          CLC
-.C:0ab4  65 19       ADC <sentence_bar_text_ptr
-.C:0ab6  85 19       STA <sentence_bar_text_ptr
+.C:0ab4  65 19       ADC <sentence_bar_ptr
+.C:0ab6  85 19       STA <sentence_bar_ptr
 .C:0ab8  90 02       BCC exit
-.C:0aba  E6 1A       INC >sentence_bar_text_ptr
+.C:0aba  E6 1A       INC >sentence_bar_ptr
 exit:
 .C:0abc  60          RTS
 ;===========================================
@@ -10115,7 +10115,7 @@ copy_game_paused_flag_msg:
 .C:290c  84 01       STY cpu_port
 ;Set sound volume to #00
 .C:290e  A9 00       LDA #$00
-.C:2910  8D 18 D4    STA volume_control_register
+.C:2910  8D 18 D4    STA sid_master_volume
 ;---------------------------------
 ;Wait indefinitely for the space key to be pressed
 wait_for_space_key:
@@ -10132,8 +10132,8 @@ wait_for_space_key:
 ;---------------------------------
 ;Unpause game
 ;Restore volume settings
-.C:2924  AD 6A 47    LDA volume_control_reg_copy
-.C:2927  8D 18 D4    STA volume_control_register
+.C:2924  AD 6A 47    LDA sid_master_volume_saved
+.C:2927  8D 18 D4    STA sid_master_volume
 ;map_out_io
 .C:292a  A0 24       LDY #$24
 .C:292c  84 01       STY cpu_port
@@ -12505,7 +12505,7 @@ wait_for_irq_handler_entry:
 .C:340c  F0 05       BEQ io_finished
 ;Set volume to 0, disable all filters
 .C:340e  A9 00       LDA #$00
-.C:3410  8D 18 D4    STA volume_control_register
+.C:3410  8D 18 D4    STA sid_master_volume
 io_finished:
 ;map_out_io
 .C:3413  A0 24       LDY #$24
@@ -12552,8 +12552,8 @@ raster_setup:
 .C:3450  AD 65 34    LDA $3465
 .C:3453  F0 06       BEQ finalize_setup
 ;Reset the SID volume control
-.C:3455  AD 6A 47    LDA volume_control_reg_copy
-.C:3458  8D 18 D4    STA volume_control_register
+.C:3455  AD 6A 47    LDA sid_master_volume_saved
+.C:3458  8D 18 D4    STA sid_master_volume
 finalize_setup:
 ;map_out_io
 .C:345b  A0 24       LDY #$24
@@ -13038,10 +13038,10 @@ load_object_data:
 ;Copy the object's index hi/lo
 .C:36ae  A0 05       LDY #$05
 .C:36b0  B1 15       LDA (read_ptr_lo),Y
-.C:36b2  9D 21 72    STA room_object_index_hi,X
+.C:36b2  9D 21 72    STA room_obj_idx_hi,X
 .C:36b5  A0 04       LDY #$04
 .C:36b7  B1 15       LDA (read_ptr_lo),Y
-.C:36b9  9D 3D 72    STA room_object_index_lo,X
+.C:36b9  9D 3D 72    STA room_obj_idx_lo,X
 ;Copy object's width
 .C:36bc  A0 08       LDY #$08
 .C:36be  B1 15       LDA (read_ptr_lo),Y
@@ -14059,8 +14059,8 @@ next_actor:
 ; Returns:		.X		#00	if there isn't an object under the cursor
 ;
 ;		If there's an object under the cursor:
-; 				.A		object_index_hi
-;				.X		object_index_lo
+; 				.A		obj_idx_hi
+;				.X		obj_idx_lo
 ;===========================================
 candidate_object = $3ea0
 current_parent_possible = $15
@@ -14075,13 +14075,13 @@ entry:
 .C:3c44  A2 01       LDX #$01
 boundary_check_loop:
 ;Is the object immutable?
-.C:3c46  BD 21 72    LDA room_object_index_hi,X
+.C:3c46  BD 21 72    LDA room_obj_idx_hi,X
 .C:3c49  F0 03       BEQ obj_is_mutable
 ;If so, set it as a candidate
 .C:3c4b  4C 58 3C    JMP set_object_as_candidate
 obj_is_mutable:
 ;Object is mutable (or can be in a parent object) - we have to check if it's actually in the room right now
-.C:3c4e  BC 3D 72    LDY room_object_index_lo,X
+.C:3c4e  BC 3D 72    LDY room_obj_idx_lo,X
 ;Has the object been removed from the room? (Bit 5 set?)
 .C:3c51  B9 01 73    LDA object_attributes,Y
 .C:3c54  29 20       AND #$20
@@ -14099,7 +14099,7 @@ check_object_parent:
 .C:3c65  4C 81 3C    JMP check_boundary
 parent_linkable:
 .C:3c68  A8          TAY
-.C:3c69  B9 3D 72    LDA room_object_index_lo,Y
+.C:3c69  B9 3D 72    LDA room_obj_idx_lo,Y
 .C:3c6c  AA          TAX
 ;Check the object attributes and see if the object is in the parent obj
 .C:3c6d  BD 01 73    LDA object_attributes,X
@@ -14149,10 +14149,10 @@ entry:
 .C:3ca5  AE 5C 71    LDX total_objects_in_room
 decompress_object_gfx_loop:
 ;Is the object immutable? If so, it's already drawn in the room scene - skip it
-.C:3ca8  BD 21 72    LDA room_object_index_hi,X
+.C:3ca8  BD 21 72    LDA room_obj_idx_hi,X
 .C:3cab  D0 37       BNE next_object_decompress
 ;Check if the object is in a parent object - if so, skip it (it's a redundant check, as the same thing is checked below)
-.C:3cad  BC 3D 72    LDY room_object_index_lo,X
+.C:3cad  BC 3D 72    LDY room_obj_idx_lo,X
 .C:3cb0  B9 01 73    LDA object_attributes,Y
 .C:3cb3  10 2F       BPL move_to_next_object
 .C:3cb5  8E A0 3E    STX candidate_object
@@ -14167,7 +14167,7 @@ check_object_parent:
 parent_linkable:
 ;There _might_ be a parent object - check if that's the current case
 .C:3cc5  A8          TAY
-.C:3cc6  B9 3D 72    LDA room_object_index_lo,Y
+.C:3cc6  B9 3D 72    LDA room_obj_idx_lo,Y
 .C:3cc9  AA          TAX
 ;Check the object attributes and see if the object is in the parent obj
 .C:3cca  BD 01 73    LDA object_attributes,X
@@ -14192,8 +14192,8 @@ move_to_next_object:
 ;===========================================
 ; Check if the cursor is inside an object's boundaries
 ; 
-; Returns:	if it's inside,		.A		object_index_hi
-;								.X		object_index_lo
+; Returns:	if it's inside,		.A		obj_idx_hi
+;								.X		obj_idx_lo
 ;			if it's not, it will jump back to move_to_next_object (in get_object_enclosing_cursor)
 ;===========================================
 cursor_y = $15
@@ -14252,9 +14252,9 @@ check_cursor_contained_in_height:
 .C:3d18  F0 0A       BEQ next_obj
 ;-------------------------------------------
 ;Cursor is fully contained within the object's limits
-.C:3d1a  BD 21 72    LDA room_object_index_hi,X
+.C:3d1a  BD 21 72    LDA room_obj_idx_hi,X
 .C:3d1d  48          PHA
-.C:3d1e  BD 3D 72    LDA room_object_index_lo,X
+.C:3d1e  BD 3D 72    LDA room_obj_idx_lo,X
 .C:3d21  AA          TAX
 .C:3d22  68          PLA
 .C:3d23  60          RTS
@@ -16743,7 +16743,7 @@ set_bitmasks:
 .C:475c  01 02 04 08 10 20 40          
 clear_bitmasks:
 .C:4763  FE FD FB F7 EF DF BF 00    
-volume_control_reg_copy 476A	;paired with D418 register (volume, voice 3 and filter enablement)
+sid_master_volume_saved 476A	;paired with D418 register (volume, voice 3 and filter enablement)
 .C:476b  00          BRK
 .C:476c  00          BRK
 .C:476d  00          BRK
@@ -16902,8 +16902,8 @@ init_sound_voices:
 .C:48e9  8D 16 D4    STA filter_cutoff_freq_hi_reg
 ;Set volume to max, disable filter pass selections (low, high, band)
 .C:48ec  A9 0F       LDA #$0F
-.C:48ee  8D 18 D4    STA volume_control_register
-.C:48f1  8D 6A 47    STA volume_control_reg_copy
+.C:48ee  8D 18 D4    STA sid_master_volume
+.C:48f1  8D 6A 47    STA sid_master_volume_saved
 .C:48f4  20 76 4C    JSR setup_music_pointers
 init_more_sound:
 .C:48f7  A2 06       LDX #$06
@@ -17083,8 +17083,8 @@ set_filter_and_volume_control:
 .C:49ef  8D 17 D4    STA filter_control_register
 .C:49f2  C8          INY
 .C:49f3  B1 BA       LDA (voice_read_ptr),Y
-.C:49f5  8D 6A 47    STA volume_control_reg_copy		
-.C:49f8  8D 18 D4    STA volume_control_register
+.C:49f5  8D 6A 47    STA sid_master_volume_saved		
+.C:49f8  8D 18 D4    STA sid_master_volume
 .C:49fb  60          RTS
 ;===========================================
 ; Updates voice instruction pointer and offset after doing read operations.
@@ -19056,7 +19056,7 @@ exit_2:
 x_greater_than_3:
 .C:5319  D0 1C       BNE exit
 ;Get bits 6-4 (filter mode control: low-pass, band-pass, high-pass)
-.C:531b  AD 6A 47    LDA volume_control_reg_copy
+.C:531b  AD 6A 47    LDA sid_master_volume_saved
 .C:531e  29 70       AND #$70
 ;Save those bits as filter_pass_select
 .C:5320  8D 66 51    STA filter_pass_select
@@ -19145,15 +19145,15 @@ start_filtering_voice:
 .C:5384  8D 17 D4    STA filter_control_register
 ;---------------------
 ;Read the current saved volume control value
-.C:5387  AD 6A 47    LDA volume_control_reg_copy
+.C:5387  AD 6A 47    LDA sid_master_volume_saved
 ;Take the low nibble (volume value)
 .C:538a  29 0F       AND #$0F
 ;Set the filter pass selection bits
 .C:538c  0D 66 51    ORA filter_pass_select
 ;Save a copy of the value
-.C:538f  8D 6A 47    STA volume_control_reg_copy
+.C:538f  8D 6A 47    STA sid_master_volume_saved
 ;Set it to the actual register
-.C:5392  8D 18 D4    STA volume_control_register
+.C:5392  8D 18 D4    STA sid_master_volume
 ;---------------------
 ;Copy the filter cutoff setting
 .C:5395  AD C9 47    LDA filter_cutoff_freq_lo
@@ -26150,10 +26150,10 @@ c0 c0 					;Meteor radiation, Edsel car
 ;Note: Pointers to "Dr Fred" (f14e) and "Meteor" (f199) are repeated twice
 ;		"Plant" is repeated 3 times (f1a0)
 ;		"Sandy" is repeated 4 times (f1a6)
-f0f2	character_names_hi ;(24 in total - from " " to "Sandy")
+f0f2	name_ptr_hi_tbl ;(24 in total - from " " to "Sandy")
 f1 f1 f1 f1 f1 f1 f1 f1 f1 f1 f1 f1 f1 f1 f1 f1 f1 f1 f1 f1 f1 f1 f1 f1 
 
-f10a	character_names_lo
+f10a	name_ptr_lo_tbl
 22 24 28 2e 33 3b 43 49 4e 4e 56 61 6a 7a 8a 99 99 a0 a0 a0 a6 a6 a6 a6 
 ;f122	0	" "
 ;f124	1	"Syd"
