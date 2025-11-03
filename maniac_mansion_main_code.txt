@@ -3074,7 +3074,7 @@ load_costume_name_ptr_for_append:
 object_pointer = $15
 get_object_name_pointer:
 ;Get object resource
-.C:09e3  20 05 0A    JSR get_obj_resource
+.C:09e3  20 05 0A    JSR resolve_object_resource
 ;Object found?
 .C:09e6  C9 FF       CMP #$FF
 .C:09e8  D0 04       BNE update_pointer
@@ -3101,15 +3101,15 @@ return_00:
 ; 				.A	object index hi
 ;
 ; Returns:		.A	#FF		if object is a character
-;				otherwise, returns whatever get_obj_resource returns
+;				otherwise, returns whatever resolve_object_resource returns
 ;
 ; Characters have the object hi set to #02 (can be a recipient of a "Give" sentence)
 ;===========================================
-get_obj_if_not_a_character:
+resolve_object_if_not_costume:
 ;Is the object hi index (in .A) #02?
 .C:09fe  C9 02       CMP #$02
 ;If not, get the object's resource
-.C:0a00  D0 03       BNE get_obj_resource
+.C:0a00  D0 03       BNE resolve_object_resource
 ;Object hi is #02, return #FF
 .C:0a02  A9 FF       LDA #$FF
 .C:0a04  60          RTS
@@ -3136,14 +3136,14 @@ object_ptr_lo = $15
 object_ptr_hi = $16
 room_obj_ofs = $17
 
-get_obj_resource:
+resolve_object_resource:
 ;Store object indexes
 .C:0a05  86 15       STX obj_idx_lo
 .C:0a07  85 16       STA obj_idx_hi
 ;Is the index hi #00? 
 ;If not, it's an immovable object, it should be findable in the room
 .C:0a09  C9 00       CMP #$00
-.C:0a0b  D0 2A       BNE get_obj_resource_in_room
+.C:0a0b  D0 2A       BNE resolve_object_resource_in_room
 ;Fetch attributes
 .C:0a0d  BD 01 73    LDA object_attributes,X
 ;Mask the low nibble (object owner)
@@ -3151,7 +3151,7 @@ get_obj_resource:
 ;Is the owner "a room"? (#0F)
 .C:0a12  C9 0F       CMP #$0F
 ;If so, search in a room
-.C:0a14  F0 21       BEQ get_obj_resource_in_room
+.C:0a14  F0 21       BEQ resolve_object_resource_in_room
 ;-----------------------
 ; Search for object in the inventory
 ;-----------------------
@@ -3179,7 +3179,7 @@ next_inventory_object:
 ;-----------------------
 ; Search for object in a room
 ;-----------------------
-get_obj_resource_in_room:
+resolve_object_resource_in_room:
 .C:0a37  AC 5C 71    LDY room_obj_count
 check_room_object:
 .C:0a3a  B9 3D 72    LDA room_obj_idx_lo,Y
@@ -3336,7 +3336,7 @@ determine_preposition:
 .C:0ac4  AE 20 FE    LDX direct_object_idx_lo
 .C:0ac7  AD 21 FE    LDA direct_object_idx_hi
 ;Get the object resource
-.C:0aca  20 05 0A    JSR get_obj_resource
+.C:0aca  20 05 0A    JSR resolve_object_resource
 ;Read preposition data
 .C:0acd  A0 0B       LDY #$0B
 .C:0acf  B1 15       LDA ($15),Y
@@ -3619,7 +3619,7 @@ available_queue_capacity:
 ;Check if the active direct object is in the inventory
 .C:0c37  AE 1A FE    LDX active_object_lo
 .C:0c3a  AD 1B FE    LDA active_object_hi
-.C:0c3d  20 FE 09    JSR get_obj_if_not_a_character
+.C:0c3d  20 FE 09    JSR resolve_object_if_not_costume
 ;Returns #00 if object in inventory, nonzero otherwise
 ;If it's not in the inventory, check if we can walk to it
 .C:0c40  D0 4E       BNE check_walk_to_direct_object
@@ -3631,7 +3631,7 @@ available_queue_capacity:
 ;Check if the active indirect object is in the inventory
 .C:0c47  AE 1D FE    LDX active_indirect_object
 .C:0c4a  AD 1E FE    LDA active_indirect_object_hi
-.C:0c4d  20 FE 09    JSR get_obj_if_not_a_character
+.C:0c4d  20 FE 09    JSR resolve_object_if_not_costume
 ;Returns #00 if object in inventory, nonzero otherwise
 ;If it's not in the inventory, check if we can walk to it
 .C:0c50  D0 06       BNE walk_to_indirect_object
@@ -3946,7 +3946,7 @@ execute_verb_handler_for_object:
 ;Get the active object's resource
 .C:0dca  AE 1A FE    LDX active_object_lo
 .C:0dcd  AD 1B FE    LDA active_object_hi
-.C:0dd0  20 05 0A    JSR get_obj_resource
+.C:0dd0  20 05 0A    JSR resolve_object_resource
 .C:0dd3  8C 29 71    STY resource_index_for_script_slot
 .C:0dd6  8D 19 71    STA script_type_for_script_slot
 ;Get the object's script handler for the verb, if any
@@ -4146,7 +4146,7 @@ check_if_recipient:
 .C:0e95  60          RTS
 can_be_recipient:
 ;It might - see if we can get a script handling the "Pick Up" verb
-.C:0e96  20 05 0A    JSR get_obj_resource
+.C:0e96  20 05 0A    JSR resolve_object_resource
 .C:0e99  A9 0E       LDA PICK_UP_VERB
 .C:0e9b  20 4A 0E    JSR get_obj_script_ptr_for_verb
 ;Is there any script?
@@ -22671,7 +22671,7 @@ set_object_index:
 .C:6291  A9 00       LDA #$00
 .C:6293  85 16       STA object_state
 ;Find the object in the room
-.C:6295  20 37 0A    JSR get_obj_resource_in_room
+.C:6295  20 37 0A    JSR resolve_object_resource_in_room
 ;Did we find it? 
 .C:6298  C9 FF       CMP #$FF
 .C:629a  D0 01       BNE object_found
@@ -22709,7 +22709,7 @@ object_found:
 .C:62bf  A9 00       LDA #$00
 .C:62c1  85 16       STA object_state
 ;Find the object in the room (again) and get its pointer
-.C:62c3  20 37 0A    JSR get_obj_resource_in_room
+.C:62c3  20 37 0A    JSR resolve_object_resource_in_room
 ;Copy the pointer to obj_read_ptr (again)
 .C:62c6  A5 15       LDA object_ptr_lo
 .C:62c8  85 98       STA <obj_read_ptr
@@ -22824,14 +22824,14 @@ entry:
 ;Load the room
 .C:634d  AA          TAX
 .C:634e  20 66 34    JSR load_room
-;Restore object index from stack, set it as argument for get_obj_resource_in_room
+;Restore object index from stack, set it as argument for resolve_object_resource_in_room
 .C:6351  68          PLA
 .C:6352  85 15       STA object_index
 ;Set the object search location argument to #00 - this is ignored by the routine
 .C:6354  A9 00       LDA #$00
 .C:6356  85 16       STA object_state
 ;Find the object in the room
-.C:6358  20 37 0A    JSR get_obj_resource_in_room
+.C:6358  20 37 0A    JSR resolve_object_resource_in_room
 ;Did we find it?
 .C:635b  C0 FF       CPY #$FF
 .C:635d  D0 03       BNE object_found
@@ -23094,7 +23094,7 @@ resource_ptr = $15
 
 remove_from_inventory:
 ;Get the object pointer into .X/.Y
-.C:6453  20 05 0A    JSR get_obj_resource
+.C:6453  20 05 0A    JSR resolve_object_resource
 ;Did we find it in the inventory?
 .C:6456  C9 00       CMP #$00
 ;If not, exit
@@ -23522,7 +23522,7 @@ common:
 ;Get mode from stack
 .C:6664  68          PLA
 ;Find item (pass .A as mode argument)
-.C:6665  20 05 0A    JSR get_obj_resource
+.C:6665  20 05 0A    JSR resolve_object_resource
 ;If return value is #FF (item unavailable?), exit
 .C:6668  C0 FF       CPY #$FF
 .C:666a  F0 06       BEQ exit
@@ -23552,7 +23552,7 @@ common:
 ;Get mode from stack
 .C:6684  68          PLA
 ;Check item
-.C:6685  20 05 0A    JSR get_obj_resource
+.C:6685  20 05 0A    JSR resolve_object_resource
 ;If return value is #FF (item unavailable?), use the default destination
 .C:6688  C0 FF       CPY #$FF
 .C:668a  F0 06       BEQ default_destination
