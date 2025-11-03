@@ -149,3 +149,14 @@
 .const COSTUME_ATTR_NO_MOUTH_B7   = $80    // bit7: 1 = do NOT animate mouth (main loop); 0 = animate
 .const COSTUME_ATTR_NO_MOUTH_B6   = $40    // bit6: 1 = do NOT animate mouth (prepare_message_for_topbar); 0 = animate
 .const COSTUME_ATTR_STEP_SFX_MASK = $3F    // bits5..0: footsteps sound ID
+
+* = $3BA6
+game_paused_flag_msg:
+        .byte $47,$61,$6D,$65,$20,$70,$61,$75,$73,$65
+        .byte $64,$2C,$20,$70,$72,$65,$73,$73,$20,$53
+        .byte $50,$41,$43,$45,$20,$74,$6F,$20,$63,$6F
+        .byte $6E,$74,$69,$6E,$75,$65,$2E,$20,$20,$00
+        // "Game paused, press SPACE to continue.  "
+
+//CC00-CECF - graphics area (including parts not visible)
+.const SENTENCE_BAR_BASE = $ced0
