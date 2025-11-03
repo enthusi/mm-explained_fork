@@ -3134,7 +3134,7 @@ obj_idx_hi = $16
 ;Output parameter: pointer to object
 object_ptr_lo = $15
 object_ptr_hi = $16
-object_offset_in_room_rsrc = $17
+room_obj_ofs = $17
 
 get_obj_resource:
 ;Store object indexes
@@ -3167,9 +3167,9 @@ check_inventory_object:
 .C:0a27  85 15       STA object_ptr_lo
 ;Clear the room object offset
 .C:0a29  A9 00       LDA #$00
-.C:0a2b  85 17       STA <object_offset_in_room_rsrc
+.C:0a2b  85 17       STA <room_obj_ofs
 .C:0a2d  A9 00       LDA #$00
-.C:0a2f  85 18       STA >object_offset_in_room_rsrc
+.C:0a2f  85 18       STA >room_obj_ofs
 ;Return #00 - object found in inventory
 .C:0a31  A9 00       LDA #$00
 .C:0a33  60          RTS
@@ -3211,17 +3211,17 @@ object_found:
 .C:0a5c  AA          TAX
 ;Copy the room object offsets
 .C:0a5d  BD C9 72    LDA room_obj_ofs_tbl,X
-.C:0a60  85 17       STA <object_offset_in_room_rsrc
+.C:0a60  85 17       STA <room_obj_ofs
 .C:0a62  BD CA 72    LDA room_obj_ofs_tbl + 1,X
-.C:0a65  85 18       STA >object_offset_in_room_rsrc
-;object_ptr = room_rsrc_ptrs + object_offset_in_room_rsrc
+.C:0a65  85 18       STA >room_obj_ofs
+;object_ptr = room_rsrc_ptrs + room_obj_ofs
 .C:0a67  AE 49 71    LDX current_room
 .C:0a6a  BD 2A 78    LDA room_ptr_lo_tbl,X
 .C:0a6d  18          CLC
-.C:0a6e  65 17       ADC <object_offset_in_room_rsrc
+.C:0a6e  65 17       ADC <room_obj_ofs
 .C:0a70  85 15       STA object_ptr_lo
 .C:0a72  BD F3 77    LDA room_ptr_hi_tbl,X
-.C:0a75  65 18       ADC >object_offset_in_room_rsrc
+.C:0a75  65 18       ADC >room_obj_ofs
 .C:0a77  85 16       STA object_ptr_hi
 ;Return #01 - object found in room
 .C:0a79  A9 01       LDA #$01
@@ -3937,7 +3937,7 @@ exit:
 ; If there's a custom handler defined for the combination of verb/object, execute it. 
 ; Otherwise, execute the default verb handlers accordingly.
 ;===========================================
-object_offset_in_room_rsrc = $17
+room_obj_ofs = $17
 
 execute_verb_handler_for_object:
 ;Mark sentence bar for refreshing
@@ -4017,12 +4017,12 @@ check_read_verb:
 run_handler:
 ;Pull verb index from stack
 .C:0e27  68          PLA
-;Add verb index to object_offset_in_room_rsrc, set result to script_offsets[0]
+;Add verb index to room_obj_ofs, set result to script_offsets[0]
 .C:0e28  18          CLC
-.C:0e29  65 17       ADC <object_offset_in_room_rsrc
+.C:0e29  65 17       ADC <room_obj_ofs
 .C:0e2b  8D C9 70    STA script_offsets_lo
 .C:0e2e  A9 00       LDA #$00
-.C:0e30  65 18       ADC >object_offset_in_room_rsrc
+.C:0e30  65 18       ADC >room_obj_ofs
 .C:0e32  8D B9 70    STA script_offsets_hi
 ;---------------------------------------
 ;Set current script slot to #00
