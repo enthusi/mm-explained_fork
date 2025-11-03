@@ -22,7 +22,7 @@ Dependencies
 
 Global Inputs
         current_room                      Active room id.
-        total_objects_in_room             Loop basis (implementation must match count vs last-index).
+        room_obj_count             Loop basis (implementation must match count vs last-index).
         room_ptr_lo/hi_tbl				  Per-room base pointer tables.
         room_obj_id_lo/hi_tbl			  Map room slot → object INDEX (lo) and immutability flag (hi).
         object_attributes[]               Per-object attribute byte; bit7 = OVERLAY_MASK.
@@ -173,7 +173,7 @@ Arguments
 
 Global Inputs
         current_room                   Active room id used to load room base pointer.
-        total_objects_in_room          Loop basis. 
+        room_obj_count          Loop basis. 
         room_ptr_lo/hi_tbl             Per-room base pointer tables (lo/hi).
         room_obj_id_lo_tbl             Map from loop slot to object ID used by
                                        object_attributes[] lookups.
@@ -211,7 +211,7 @@ render_room_objects:
         // ----------------------------------------
         // Early out if room has zero objects
         // ----------------------------------------
-        ldx     total_objects_in_room        // Load room object last-index/count; Z=1 if zero
+        ldx     room_obj_count        // Load room object last-index/count; Z=1 if zero
         bne     load_room_base_ptr           // X != 0 → proceed with setup and loop
         rts                                  // No objects → return early
 
@@ -229,7 +229,7 @@ load_room_base_ptr:
         // Main scan loop: X := last index (descending)
 		// Note: X is indexing per-room objects (not global object IDs)
         // ----------------------------------------
-        ldx     total_objects_in_room        // Initialize descending loop: X = last object index (or count-1)
+        ldx     room_obj_count        // Initialize descending loop: X = last object index (or count-1)
 
 scan_objects_desc:
         // ----------------------------------------

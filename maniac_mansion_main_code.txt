@@ -852,7 +852,7 @@ mask_dict = $7152
 room_exit_script_ptr = $7156
 room_entry_script_ptr = $7158
 current_room_rsrc = $715A
-total_objects_in_room = $715c
+room_obj_count = $715c
 
 ;===========================================================
 ;Room objects variables
@@ -3180,7 +3180,7 @@ next_inventory_object:
 ; Search for object in a room
 ;-----------------------
 get_obj_resource_in_room:
-.C:0a37  AC 5C 71    LDY total_objects_in_room
+.C:0a37  AC 5C 71    LDY room_obj_count
 check_room_object:
 .C:0a3a  B9 3D 72    LDA room_obj_idx_lo,Y
 .C:0a3d  C5 15       CMP obj_idx_lo
@@ -12918,8 +12918,8 @@ exit:
 room_subresources_ptr = $15
 get_room_subresources_ptr:
 .C:3618  AE 49 71    LDX current_room
-;Calculate 4 * total_objects_in_room (to skip the objects metadata)
-.C:361b  AD 5C 71    LDA total_objects_in_room
+;Calculate 4 * room_obj_count (to skip the objects metadata)
+.C:361b  AD 5C 71    LDA room_obj_count
 .C:361e  0A          ASL A
 .C:361f  0A          ASL A
 ;Skip room header (#1C bytes long)
@@ -12968,11 +12968,11 @@ room_read_objects:
 .C:3647  69 00       ADC #$00
 .C:3649  85 16       STA read_ptr_hi
 ;------------
-; Get the total_objects_in_room
+; Get the room_obj_count
 .C:364b  A0 10       LDY #$10
 .C:364d  B1 15       LDA (read_ptr_lo),Y
 .C:364f  85 1D       STA total_objects_copy
-.C:3651  8D 5C 71    STA total_objects_in_room
+.C:3651  8D 5C 71    STA room_obj_count
 ; If there are no objects, return
 .C:3654  D0 03       BNE objects_to_copy
 .C:3656  4C 0F 37    JMP exit
@@ -14067,7 +14067,7 @@ current_parent_possible = $15
 
 get_object_enclosing_cursor:
 ;Are there any objects in this room? If not, exit now
-.C:3c3e  AE 5C 71    LDX total_objects_in_room
+.C:3c3e  AE 5C 71    LDX room_obj_count
 .C:3c41  D0 01       BNE entry
 .C:3c43  60          RTS
 entry:
@@ -14119,7 +14119,7 @@ check_boundary:
 .C:3c84  4C E8 3C    JMP check_cursor_contained_within_object
 move_to_next_object:
 .C:3c87  E8          INX
-.C:3c88  EC 5C 71    CPX total_objects_in_room
+.C:3c88  EC 5C 71    CPX room_obj_count
 .C:3c8b  90 B9       BCC boundary_check_loop
 .C:3c8d  F0 B7       BEQ boundary_check_loop
 ;No object found - return #00
@@ -14136,7 +14136,7 @@ room_resource = $c3
 
 draw_objects_in_room:
 ;Are there any objects in this room? If not, exit now
-.C:3c92  AE 5C 71    LDX total_objects_in_room
+.C:3c92  AE 5C 71    LDX room_obj_count
 .C:3c95  D0 01       BNE entry
 .C:3c97  60          RTS
 entry:
@@ -14146,7 +14146,7 @@ entry:
 .C:3c9e  85 C3       STA <room_resource
 .C:3ca0  BD F3 77    LDA room_ptr_hi_tbl,X
 .C:3ca3  85 C4       STA >room_resource
-.C:3ca5  AE 5C 71    LDX total_objects_in_room
+.C:3ca5  AE 5C 71    LDX room_obj_count
 decompress_object_gfx_loop:
 ;Is the object immutable? If so, it's already drawn in the room scene - skip it
 .C:3ca8  BD 21 72    LDA room_obj_idx_hi,X

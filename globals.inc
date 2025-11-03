@@ -208,7 +208,7 @@ Values observed
 .label rsrc_sector_idx             = $5679 // Sector index in physical chain (passed in Y to disk_seek_read).  
 // ===========================================================
 
-.label total_objects_in_room = $715c	
+.label room_obj_count = $715c	
 .label obj_gfx_ptr_tbl = $7291
 .label room_obj_ofs_tbl = $72c9		//Offsets of objects in a room resource
 .label room_obj_id_hi_tbl = $7221	//Per-room objects ID table (mapping room object index to global Object ID)

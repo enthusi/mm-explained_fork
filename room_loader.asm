@@ -689,7 +689,7 @@ room_load_sounds_and_scripts_exit:
  *   current_room                Active room index selecting room_ptr_*.
  *   room_ptr_lo_tbl, room_ptr_hi_tbl
  *                                Base pointer to the loaded room resource.
- *   total_objects_in_room       N = number of objects in this room.
+ *   room_obj_count       N = number of objects in this room.
  *
  * Returns:
  *   room_sounds_base             ZP pointer set to:
@@ -699,7 +699,7 @@ room_load_sounds_and_scripts_exit:
  *   Flags                       Modified; no guarantees to callers.
  *
  * Description:
- *   Given room_base and N = total_objects_in_room, the subresource index table
+ *   Given room_base and N = room_obj_count, the subresource index table
  *   (sounds then scripts) starts at:
  *     room_base + ROOM_OBJ_ABS_START + 2*N (gfx_ofs) + 2*N (rec_ofs)
  *   = room_base + ROOM_OBJ_ABS_START + 4*N.
@@ -712,11 +712,11 @@ room_load_sounds_and_scripts_exit:
 * = $3618
 room_get_sounds_base:
 		// Compute pointer to the sounds and scripts index table for this room:
-		//   room_sounds_base = room_ptr[current_room] + ($1C + 4*N) where N=total_objects_in_room.
+		//   room_sounds_base = room_ptr[current_room] + ($1C + 4*N) where N=room_obj_count.
 		ldx     current_room
 
 		// Form low-byte of 4*N (tables total size): A = (N << 2). High byte is discarded here.
-		lda     total_objects_in_room
+		lda     room_obj_count
 		asl
 		asl
 
@@ -752,7 +752,7 @@ room_get_sounds_base:
  * Returns:
  *   Registers                    A,X,Y clobbered; no flags preserved.
  *   Globals updated              
- *                                total_objects_in_room            (mirrored count)
+ *                                room_obj_count            (mirrored count)
  *                                obj_gfx_ptr_tbl[*]               (N×16-bit gfx stream offsets)
  *                                room_obj_ofs_tbl[*]              (N×16-bit record start offsets)
  *                                room_object_index_{lo,hi}[*]     (IDs)
@@ -795,12 +795,12 @@ room_read_objects:
 		sta     >read_ptr
 
 		// Fetch object_count from metadata.
-		// Mirror it: obj_count_remaining drives loops; total_objects_in_room is for callers/UI.
+		// Mirror it: obj_count_remaining drives loops; room_obj_count is for callers/UI.
 		// Branch: BNE continues when count ≠ 0 (Z=0); otherwise early-return.
 		ldy     #ROOM_META_OBJ_COUNT_OFS
 		lda     (read_ptr),y
 		sta     obj_count_remaining
-		sta     total_objects_in_room
+		sta     room_obj_count
 		bne     copy_obj_comp_ofs
 		jmp     room_read_objects_exit
 
