@@ -533,13 +533,16 @@ They were definitely intended as debugging aids.
 
 //Placeholders for routines not modularized yet
 .label print_message_wait_for_button = $0 // UI: print message pointed by msg_to_print_ptr, wait for button
-.label reset_sentence_queue_system = $0
 .label execute_room_exit_script = $0
 .label execute_room_entry_script = $0
 .label open_shutter_flag = $0
 .label init_sprites_sound = $0
 .label raster_setup = $0
 .label prepare_video_for_new_room = $0
+.label restart_game = $0
+.label start_global_script = $0
+.label fix_camera_on_actor = $0
+.label refresh_items_displayed = $0
 
 //===========================================================
 // Interaction region variables
@@ -555,3 +558,39 @@ They were definitely intended as debugging aids.
 						//Otherwise, it has the same value as talking_costume
 //Base address for message bar source buffers
 .label source_msg_base = $0200
+
+.label destination_entity = $fe51
+.label refresh_sentence_bar_flag = $fe49	//#00 = don't refresh the sentence bar, #01 = refresh it
+									//By "refresh", we mean to update its contents
+.label sentence_queue_index = $fe17
+.label sentence_queue_free_capacity = $fe18	
+.label current_verb = $fe1f
+.label direct_object_idx_lo = $fe20
+.label direct_object_idx_hi = $fe21
+.label preposition = $fe22
+//Indirect object idx hi has the following meaning:
+//#02 - Can be a recipient with a "Give" instruction
+.label indirect_object_idx_lo = $fe23
+.label indirect_object_idx_hi = $fe24
+.label interrupted_script_offset_lo = $fea4
+.label interrupted_script_offset_hi = $fea5
+.label interrupted_script_index = $fea7
+
+.label current_script_slot = $70B8	//Script slot of script being executed
+.label script_offsets_hi = $70B9
+.label script_offsets_lo = $70C9
+.label script_2_mem_attr = $7ad9
+/*
+Script states
+Bit 7 set = frozen for cutscene
+#00	Inactive (no script)
+#01	Paused
+#02	Running
+*/
+.label script_state_for_script_slot = $70D9
+.label sid_master_volume_saved = $476A
+
+.label inventory_objects = $7031
+.label room_obj_idx_hi = $7221
+.label room_obj_idx_lo = $723d
+
