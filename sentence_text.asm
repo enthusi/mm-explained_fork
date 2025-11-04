@@ -3,6 +3,7 @@
 #import "constants.inc"
 #import "registers.inc"
 #import "text_data.inc"
+#import "sentence_action.asm"
 
 
 .const WORD_HARD_STOP           = $40    // In-word hard stop token; forces early termination
@@ -35,9 +36,6 @@
 .label obj_idx                   = $15    // ZP: temporary index/pointer used for object id or resource lookup
 .label obj_ptr                   = $15    // ZP pointer to resolved object resource or name (lo/hi shared alias)
 .label room_obj_ofs              = $17    // ZP: temporary 16-bit offset to object data within room resource
-
-.label reset_sentence_queue_system = $0
-
 
 /*
 ================================================================================
@@ -320,7 +318,7 @@ Global Outputs
 
 Description
 	• Calls resolve_object_resource to find the object resource base.
-	• If not found, calls reset_sentence_queue_system and returns.
+	• If not found, calls init_sentence_ui_and_queue and returns.
 	• If found, reads byte at offset OBJ_NAME_OFS, adds it to obj_ptr_lo/hi to
 	relocate pointer to the object’s name string.
 	• Returns with A = OBJ_NAME_FOUND and obj_ptr_* pointing directly to the
@@ -343,7 +341,7 @@ resolve_object_name:
 		// ------------------------------------------------------------
 		// Object not found → invalidate sentence and return
 		// ------------------------------------------------------------
-		jsr     reset_sentence_queue_system
+		jsr     init_sentence_ui_and_queue
 		rts
 
 object_found:
