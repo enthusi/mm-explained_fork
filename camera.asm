@@ -40,6 +40,7 @@
 .const CAM_MODE_FOLLOW_ACTOR = $02
 .const CAM_MODE_PAN = $03
 
+
 left_follow_threshold: .byte $0A
 right_follow_threshold: .byte $1E
 
@@ -89,7 +90,7 @@ right_follow_threshold: .byte $1E
  *   3) Clamp ensures the 40-col view (centered at cam_target_pos) never exceeds room edges.
  *   4) Finally, compute [viewport_left_col, viewport_right_col] from cam_target_pos.
  *========================================================*/
-* = $0668
+* = $0671
 cam_upd_target:
 		// Choose behavior based on current camera mode.
 		// Compare cam_mode against PAN mode; CMP sets Z=1 when equal.
