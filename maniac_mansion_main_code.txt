@@ -3557,28 +3557,28 @@ check_complements_in_inventory:
 check_direct_obj_pickup_script:
 ;Does the direct object have a pick up script?
 .C:0bd5  A9 01       LDA #$01
-.C:0bd7  20 73 0E    JSR has_object_a_pickup_script
+.C:0bd7  20 73 0E    JSR query_pickup_script_for_sentence_object
 ;Returns #01 if it does, #00 if it doesn't
 .C:0bda  C9 01       CMP #$01
 .C:0bdc  D0 09       BNE check_indirect_obj_pickup_script
 ;It does - run "pick up" on the object and exit
 ;As we don't modify the sentence index, it will be re-executed later
 .C:0bde  A9 01       LDA #$01
-.C:0be0  20 E1 0E    JSR run_pickup_on_sentence_complement
+.C:0be0  20 E1 0E    JSR enqueue_pickup_for_sentence_part
 .C:0be3  60          RTS
 ;--------------------------------------------------
 ;.C:0be4  4C FD 0B    JMP set_active_sentence_parts	;Unreachable code
 check_indirect_obj_pickup_script:
 ;Does the indirect object have a pick up script?
 .C:0be7  A9 02       LDA #$02
-.C:0be9  20 73 0E    JSR has_object_a_pickup_script
+.C:0be9  20 73 0E    JSR query_pickup_script_for_sentence_object
 ;Returns #01 if it does, #00 if it doesn't
 .C:0bec  C9 01       CMP #$01
 .C:0bee  D0 09       BNE no_custom_pickup_scripts
 ;It does - run "pick up" on the object and exit
 ;As we don't modify the sentence index, it will be re-executed later
 .C:0bf0  A9 02       LDA #$02
-.C:0bf2  20 E1 0E    JSR run_pickup_on_sentence_complement
+.C:0bf2  20 E1 0E    JSR enqueue_pickup_for_sentence_part
 .C:0bf5  60          RTS
 ;.C:0bf6  4C FD 0B    JMP set_active_sentence_parts	;Unreachable code
 ;--------------------------------------------------
@@ -3951,7 +3951,7 @@ execute_verb_handler_for_object:
 .C:0dd6  8D 19 71    STA script_type_for_script_slot
 ;Get the object's script handler for the verb, if any
 .C:0dd9  AD 19 FE    LDA active_verb_token
-.C:0ddc  20 4A 0E    JSR get_obj_script_ptr_for_verb
+.C:0ddc  20 4A 0E    JSR find_object_verb_handler_offset
 ;Did we find a handler?
 .C:0ddf  D0 35       BNE check_read_verb
 ;We didn't - run the default handlers
@@ -4067,7 +4067,7 @@ run_handler:
 verb_index = $0e6f
 object_rsrc_ptr = $15
 
-get_obj_script_ptr_for_verb:
+find_object_verb_handler_offset:
 .C:0e4a  8D 6F 0E    STA verb_index
 ;Use .Y as offset from the object's resource start
 .C:0e4d  A0 0C       LDY #$0C
@@ -4118,7 +4118,7 @@ return_next_byte:
 ;===========================================
 temp_x = $0e70
 temp_y = $0e71
-has_object_a_pickup_script:
+query_pickup_script_for_sentence_object:
 ;Save .X and .Y in stack
 .C:0e73  8E 70 0E    STX temp_x
 .C:0e76  8C 71 0E    STY temp_y
@@ -4148,7 +4148,7 @@ can_be_recipient:
 ;It might - see if we can get a script handling the "Pick Up" verb
 .C:0e96  20 05 0A    JSR resolve_object_resource
 .C:0e99  A9 0E       LDA PICK_UP_VERB
-.C:0e9b  20 4A 0E    JSR get_obj_script_ptr_for_verb
+.C:0e9b  20 4A 0E    JSR find_object_verb_handler_offset
 ;Is there any script?
 .C:0e9e  D0 05       BNE return_01
 ;There isn't, return #00
@@ -4220,7 +4220,7 @@ exit:
 ;===========================================
 object_ptr = $15
 temp = $0e70
-run_pickup_on_sentence_complement:
+enqueue_pickup_for_sentence_part:
 .C:0ee1  8E 70 0E    STX temp
 ;Fetch index of current sentence part being analyzed
 .C:0ee4  AE 17 FE    LDX sentq_index
