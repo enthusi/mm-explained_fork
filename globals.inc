@@ -491,7 +491,7 @@ They were definitely intended as debugging aids.
 .label var_destination_x = $ff6d			//This would be var[6]
 .label var_destination_y = $ff6e			//This would be var[7]
 .label var_music_playback_in_progress = $ff6f	//This would be var[8]
-.label var_active_verb = $ff70				//This would be var[9]
+.label var_active_verb_token = $ff70				//This would be var[9]
 .label var_message_length = $ff71			//This would be var[10]
 //FF72 and onwards are  no longer used as debugging variables
 .label kid_ids = $ffc8

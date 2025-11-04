@@ -1378,10 +1378,10 @@ actor_dir_y_bit = $fe0b ;#00 = up, #01 = down
 ;Index in the sentence queue
 sentq_index = $fe17
 sentq_free_slots = $fe18	
-active_verb = $fe19
+active_verb_token = $fe19
 active_do_lo = $fe1a
 active_do_hi = $fe1b
-active_preposition = $fe1c
+active_prep_token = $fe1c
 active_io_lo = $fe1d
 active_io_hi = $fe1e
 sentence_parts = $fe1f
@@ -1506,7 +1506,7 @@ var_active_io_lo = $ff6c	;This would be var[5]
 var_destination_x = $ff6d			;This would be var[6]
 var_destination_y = $ff6e			;This would be var[7]
 var_music_playback_in_progress = $ff6f	;This would be var[8]
-var_active_verb = $ff70				;This would be var[9]
+var_active_verb_token = $ff70				;This would be var[9]
 var_message_length = $ff71			;This would be var[10]
 ;FF72 and onwards are no longer used as debugging variables
 kid_ids = $ffc8
@@ -3591,13 +3591,13 @@ set_active_sentence_parts:
 ;Copy all the sentence parts for the current sentence into the "active_" variables
 .C:0bfd  AC 17 FE    LDY sentq_index
 .C:0c00  B9 25 FE    LDA queued_verbs,Y
-.C:0c03  8D 19 FE    STA active_verb
+.C:0c03  8D 19 FE    STA active_verb_token
 .C:0c06  B9 2B FE    LDA queued_do_lo,Y
 .C:0c09  8D 1A FE    STA active_do_lo
 .C:0c0c  B9 31 FE    LDA queued_do_hi,Y
 .C:0c0f  8D 1B FE    STA active_do_hi
 .C:0c12  B9 37 FE    LDA queued_preps,Y
-.C:0c15  8D 1C FE    STA active_preposition
+.C:0c15  8D 1C FE    STA active_prep_token
 .C:0c18  B9 3D FE    LDA queued_io_lo,Y
 .C:0c1b  8D 1D FE    STA active_io_lo
 .C:0c1e  B9 43 FE    LDA queued_io_hi,Y
@@ -3625,7 +3625,7 @@ available_queue_capacity:
 .C:0c40  D0 4E       BNE check_walk_to_direct_object
 ;The direct object is in the inventory
 ;Do we have a preposition? If not, try to handle the sentence
-.C:0c42  AD 1C FE    LDA active_preposition
+.C:0c42  AD 1C FE    LDA active_prep_token
 .C:0c45  F0 43       BEQ do_verb_handler
 ;We have a preposition
 ;Check if the active indirect object is in the inventory
@@ -3950,12 +3950,12 @@ execute_verb_handler_for_object:
 .C:0dd3  8C 29 71    STY resource_index_for_script_slot
 .C:0dd6  8D 19 71    STA script_type_for_script_slot
 ;Get the object's script handler for the verb, if any
-.C:0dd9  AD 19 FE    LDA active_verb
+.C:0dd9  AD 19 FE    LDA active_verb_token
 .C:0ddc  20 4A 0E    JSR get_obj_script_ptr_for_verb
 ;Did we find a handler?
 .C:0ddf  D0 35       BNE check_read_verb
 ;We didn't - run the default handlers
-.C:0de1  AD 19 FE    LDA active_verb
+.C:0de1  AD 19 FE    LDA active_verb_token
 .C:0de4  C9 03       CMP GIVE_VERB
 .C:0de6  D0 19       BNE check_walk_verb
 ;---------------------------------------
@@ -3985,8 +3985,8 @@ check_walk_verb:
 .C:0e03  F0 10       BEQ exit_2
 run_verb_defaults_script:
 ;Copy verb to debugging variable
-.C:0e05  AD 19 FE    LDA active_verb
-.C:0e08  8D 70 FF    STA var_active_verb
+.C:0e05  AD 19 FE    LDA active_verb_token
+.C:0e08  8D 70 FF    STA var_active_verb_token
 ;Set that no script is being executed
 .C:0e0b  A9 FF       LDA #$FF
 .C:0e0d  8D B8 70    STA current_script_slot
@@ -4000,7 +4000,7 @@ check_read_verb:
 ;Save verb index in stack, as we might need to use .A to check lights_status later
 .C:0e16  48          PHA
 ;Check if the verb is "read"
-.C:0e17  AD 19 FE    LDA active_verb
+.C:0e17  AD 19 FE    LDA active_verb_token
 .C:0e1a  C9 0C       CMP READ_VERB
 .C:0e1c  D0 09       BNE run_handler
 ;---------------------------------------
