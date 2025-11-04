@@ -4,7 +4,6 @@
 #import "render_actor.asm"
 
 .label sprite_row_ptr              = $80    // ZP: pointer to current 3-byte sprite scanline (row buffer)
-.label mask_row_ptr                = $86    // ZP: pointer to current 8×8-tile row within foreground mask layer
 .label sprite_base_cached          = $CB68  // Cached low byte of actor’s sprite base address
 .label y_coordinate                = $FC28  // Current sprite scanline Y position (bottom of actor, pixels)
 .label y_top_limit                 = $FC29  // Topmost Y (exclusive) for masking loop
