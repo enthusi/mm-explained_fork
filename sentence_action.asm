@@ -6,7 +6,7 @@ Sentence/action system
 Summary
 	This module powers the point-and-click “sentence” UX: pick a verb, then
 	zero or more complements (direct object, optional preposition, optional
-	indirect object). It keeps a small queue of pending sentences, decides when
+	indirect object). It keeps a small stack of pending sentences, decides when
 	to walk first vs act immediately, and dispatches either per-object verb
 	handlers or global defaults.
 	
@@ -69,10 +69,10 @@ Completion gate
 		* Refresh UI, call switch_active_kid_if_different, then normalize back to
 		  WALK TO and request refresh.
 
-Dispatch vs queue
+Dispatch vs stack
 	dispatch_or_push_action:
 
-		* Reset queue bookkeeping (free slots to max, head to “empty” sentinel).
+		* Reset stack bookkeeping (free slots to max, head to “empty” sentinel).
 		* If verb == WHAT IS → do nothing and return.
 		* If verb != WALK TO or DO is present → push_sentence:
 
@@ -89,7 +89,7 @@ Dispatch vs queue
 Queued execution
 	process_sentence_queue_entry:
 
-		* If a destination is already active, exit. If queue empty, exit.
+		* If a destination is already active, exit. If stack empty, exit.
 		* Drop sentences whose DO == IO.
 		* Inventory check in priority order:
 
@@ -98,7 +98,7 @@ Queued execution
 			only if the object has a custom Pick Up handler. If neither can be
 			picked up, drop the sentence.
 		* Activate the current sentence by copying stacked_* → active_* and pop the
-		  queue (with underflow reset protection).
+		  stack (with underflow reset protection).
 		* Decide walk vs execute:
 
 		  * If DO is in inventory and there is no preposition → execute now.
@@ -147,7 +147,7 @@ Helper scans and guards
 	push_pickup_for_sentence_part:
 
 		* Append a “Pick Up <obj>” sentence for the selected complement. Validates
-		  queue bounds and enters a visible debug hang if overflow occurs.
+		  stack bounds and enters a visible debug hang if overflow occurs.
 
 Kid switching and UI reset
 	switch_active_kid_if_different:
@@ -157,7 +157,7 @@ Kid switching and UI reset
 
 	init_sentence_ui_and_queue:
 
-		* Clear destination, force a bar refresh, reset queue capacity and head,
+		* Clear destination, force a bar refresh, reset stack capacity and head,
 		  set default verb to WALK TO, and clear DO/prep/IO.
 
 Typical traces
@@ -179,8 +179,8 @@ Typical traces
 #import "sentence_text.asm"
 #import "destination.asm"
 
-.const SENT_QUEUE_MAX_TOKENS      = $06    // Max number of tokens allowed in the sentence queue
-.const SENT_QUEUE_EMPTY_IDX       = $FF    // Sentinel value: queue has no active entries
+.const SENT_QUEUE_MAX_TOKENS      = $06    // Max number of tokens allowed in the sentence stack
+.const SENT_QUEUE_EMPTY_IDX       = $FF    // Sentinel value: stack has no active entries
 .const DEFAULT_VERB_WALK_TO       = $0D    // Default “Walk to” verb ID
 .const REFRESH_UI_FLAG_ON         = $01    // Nonzero → force sentence bar redraw
 .const ENTITY_NONE                = $00    // No destination entity assigned
@@ -196,7 +196,7 @@ Typical traces
 .label execute_next_operation = $0
 
 //Queued sentence parts (verbs, direct objects, indirect objects, prepositions)
-//Each queue has a maximum size of 6 elements
+//Each stack has a maximum size of 6 elements
 .label stacked_verb_ids = $fe25
 .label stacked_do_id_lo = $fe2b
 .label stacked_do_id_hi = $fe31
@@ -568,7 +568,7 @@ process_sentence_queue_entry:
         // - Immediate verb execution if all parts are ready.
         //
         // It skips invalid or redundant sentences and advances
-        // the queue pointer.
+        // the stack pointer.
         // ------------------------------------------------------------
         lda     destination_entity
         beq     check_queue_nonempty     // skip if no current destination
@@ -577,7 +577,7 @@ process_sentence_queue_entry:
 check_queue_nonempty:
         ldx     sentstk_top_idx
         bpl     check_same_complements
-        rts                                    // queue empty → exit
+        rts                                    // stack empty → exit
 
         // ------------------------------------------------------------
         // Skip identical complement sentences (DO == IO)
@@ -655,7 +655,7 @@ set_active_sentence_tokens:
         dec     sentstk_free_slots
         bpl     queue_capacity_ok
 
-        // queue underflow → reset state
+        // stack underflow → reset state
         lda     #SENT_QUEUE_EMPTY_IDX
         sta     sentstk_top_idx
         lda     #SENT_QUEUE_MAX_TOKENS
@@ -752,10 +752,10 @@ exit_process_sentence_queue_entry:
 * = $0AF3
 dispatch_or_push_action:
         // ------------------------------------------------------------
-        // Reset sentence-queue bookkeeping
+        // Reset sentence-stack bookkeeping
 		//
         // Seeds free-capacity to max and resets head index to empty
-        // sentinel. Prepares queue for a new sentence; actual
+        // sentinel. Prepares stack for a new sentence; actual
         // capacity decrementing occurs elsewhere.
         // ------------------------------------------------------------		
         lda     #SENT_QUEUE_MAX_TOKENS          
@@ -869,17 +869,17 @@ exit_dispatch_or_push_action:
         // ------------------------------------------------------------
 push_sentence:
         // ------------------------------------------------------------
-        // Advance queue index
+        // Advance stack index
 		//
         // Increments sentstk_top_idx to point to the next free
         // slot and loads it into X for writing the stacked sentence
         // tokens.
         // ------------------------------------------------------------
-        inc     sentstk_top_idx           // Advance queue pointer to next free slot
-        ldx     sentstk_top_idx           // X := current queue entry index for storing tokens
+        inc     sentstk_top_idx           // Advance stack pointer to next free slot
+        ldx     sentstk_top_idx           // X := current stack entry index for storing tokens
 
         // ------------------------------------------------------------
-        // Write current sentence tokens into queue entry X
+        // Write current sentence tokens into stack entry X
 		//
         // Stores: verb, DO lo/hi, preposition, IO lo/hi into the
         // parallel stacked_sentence_* arrays at index X.
@@ -901,12 +901,12 @@ push_sentence:
         sta     stacked_io_id_hi,x   
 
         // ------------------------------------------------------------
-        // Post-queue verb reset gate
+        // Post-stack verb reset gate
 		//
         // If current_verb_id == WALK_TO_VERB, skip UI reset and exit;
         // otherwise fall through to reset defaults.
         // ------------------------------------------------------------
-        lda     current_verb_id                   // Reload current verb for post-queue reset test
+        lda     current_verb_id                   // Reload current verb for post-stack reset test
         cmp     #WALK_TO_VERB                  // Z=1 if it was already "Walk to"
         beq     finalize_and_exit              // If so, skip UI verb reset and exit
 
@@ -1158,7 +1158,7 @@ Returns:
                 #$00 otherwise
 
 Description:
-- Selects DO or IO from the sentence queue slot at sentstk_top_idx.
+- Selects DO or IO from the sentence stack slot at sentstk_top_idx.
 - Rejects objects with hi == #$02 as non-recipients.
 - Resolves object resource and queries verb handler for PICK_UP_VERB.
 ================================================================================
@@ -1173,7 +1173,7 @@ has_pickup_script_for_sentence_part:
         sty     temp_y
 
         // ------------------------------------------------------------
-        // Load current queue index into Y
+        // Load current stack index into Y
         // ------------------------------------------------------------
         ldy     sentstk_top_idx
 
@@ -1338,8 +1338,8 @@ Queues a “Pick Up” sentence for the current sentence complement.
 
 Summary:
 Takes either the direct or indirect object from the current stacked sentence
-and appends a new “Pick Up <object>” command to the sentence queue. Ensures
-the queue index remains valid and halts with a debug indicator on overflow.
+and appends a new “Pick Up <object>” command to the sentence stack. Ensures
+the stack index remains valid and halts with a debug indicator on overflow.
 
 Arguments:
         .A = #$01 → direct object
@@ -1358,7 +1358,7 @@ push_pickup_for_sentence_part:
         stx     temp_x
 
         // ------------------------------------------------------------
-        // Fetch current queue index
+        // Fetch current stack index
         // ------------------------------------------------------------
         ldx     sentstk_top_idx
 
@@ -1388,7 +1388,7 @@ fetch_direct_object:
 
 next_sentence_index:
         // ------------------------------------------------------------
-        // Advance queue index and validate range
+        // Advance stack index and validate range
         // ------------------------------------------------------------
         inc     sentstk_top_idx
         ldx     sentstk_top_idx
@@ -1504,7 +1504,7 @@ Global Outputs
 Description
 	• Clear any active destination so pathing is idle.
 	• Request a sentence bar refresh on next UI pass.
-	• Restore sentence queue to empty with full capacity.
+	• Restore sentence stack to empty with full capacity.
 	• Set default verb to “Walk to”.
 	• Clear all sentence complements: DO, preposition, IO.
 ================================================================================
@@ -1512,10 +1512,10 @@ Description
 * = $29CC
 init_sentence_ui_and_queue:
         // ------------------------------------------------------------
-        // Reset all components of the sentence queue system
+        // Reset all components of the sentence stack system
         //
         // This restores the verb UI state to a default “Walk to” state,
-        // empties the token queue, and signals the UI to redraw.
+        // empties the token stack, and signals the UI to redraw.
         // ------------------------------------------------------------
         lda     #ENTITY_NONE
         sta     destination_entity            // clear current destination target
@@ -1527,7 +1527,7 @@ init_sentence_ui_and_queue:
         sta     sentstk_free_slots  // reset available slots (max = 6)
 
         lda     #SENT_QUEUE_EMPTY_IDX
-        sta     sentstk_top_idx          // mark queue as empty (no active tokens)
+        sta     sentstk_top_idx          // mark stack as empty (no active tokens)
 
         lda     #WALK_TO_VERB
         sta     current_verb_id                  // set default verb “Walk to”
