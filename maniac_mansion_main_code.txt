@@ -1376,14 +1376,14 @@ actor_dir_y_bit = $fe0b ;#00 = up, #01 = down
 
 ;===========================================================
 ;Index in the sentence queue
-sentence_queue_index = $fe17
-sentence_queue_free_capacity = $fe18	
+sentq_index = $fe17
+sentq_free_slots = $fe18	
 active_verb = $fe19
-active_object_lo = $fe1a
-active_object_hi = $fe1b
+active_do_lo = $fe1a
+active_do_hi = $fe1b
 active_preposition = $fe1c
-active_indirect_object = $fe1d
-active_indirect_object_hi = $fe1e
+active_io_lo = $fe1d
+active_io_hi = $fe1e
 sentence_parts = $fe1f
 current_verb = $fe1f
 
@@ -1502,7 +1502,7 @@ game_vars = $ff67
 var_camera_position = $ff69			;This would be var[2]
 var_msg_flag = $ff6a				;This would be var[3]
 var_current_room = $ff6b			;This would be var[4]
-var_active_indirect_object = $ff6c	;This would be var[5]
+var_active_io_lo = $ff6c	;This would be var[5]
 var_destination_x = $ff6d			;This would be var[6]
 var_destination_y = $ff6e			;This would be var[7]
 var_music_playback_in_progress = $ff6f	;This would be var[8]
@@ -3387,9 +3387,9 @@ destination_obj_hi = $fe50
 
 process_action:
 .C:0af3  A9 06       LDA #$06
-.C:0af5  8D 18 FE    STA sentence_queue_free_capacity
+.C:0af5  8D 18 FE    STA sentq_free_slots
 .C:0af8  A9 FF       LDA #$FF
-.C:0afa  8D 17 FE    STA sentence_queue_index
+.C:0afa  8D 17 FE    STA sentq_index
 ;If verb is "What is", return, as there's nothing else to do
 .C:0afd  AD 1F FE    LDA current_verb
 .C:0b00  C9 0F       CMP WHAT_IS_VERB
@@ -3447,8 +3447,8 @@ exit:
 .C:0b55  60          RTS
 ;----------------------------------------------
 queue_sentence:
-.C:0b56  EE 17 FE    INC sentence_queue_index
-.C:0b59  AE 17 FE    LDX sentence_queue_index
+.C:0b56  EE 17 FE    INC sentq_index
+.C:0b59  AE 17 FE    LDX sentq_index
 ;Save each of the sentence parts into the queue
 .C:0b5c  AD 1F FE    LDA current_verb
 .C:0b5f  9D 25 FE    STA queued_verbs,X
@@ -3508,12 +3508,12 @@ handle_sentence_queue:
 ;Is there a destination entity?
 ;If it's #00, Z will be set, BEQ will be taken
 .C:0b9c  AD 51 FE    LDA destination_entity
-.C:0b9f  F0 01       BEQ check_sentence_queue_index
+.C:0b9f  F0 01       BEQ check_sentq_index
 ;Destination entity set, exit
 .C:0ba1  60          RTS
-check_sentence_queue_index:
+check_sentq_index:
 ;Do we have a valid queue index? If not, exit
-.C:0ba2  AE 17 FE    LDX sentence_queue_index
+.C:0ba2  AE 17 FE    LDX sentq_index
 .C:0ba5  10 01       BPL check_if_complements_are_identical
 .C:0ba7  60          RTS
 check_if_complements_are_identical:
@@ -3533,7 +3533,7 @@ check_if_complements_are_identical:
 ;If they are not identical, check complements
 .C:0bbd  D0 04       BNE check_complements_in_inventory
 ;The direct and indirect objects are identical, move index to the next sentence and exit
-.C:0bbf  CE 17 FE    DEC sentence_queue_index
+.C:0bbf  CE 17 FE    DEC sentq_index
 .C:0bc2  60          RTS
 ;--------------------------------------------------
 ;Check if the complements are in the inventory
@@ -3584,41 +3584,41 @@ check_indirect_obj_pickup_script:
 ;--------------------------------------------------
 no_custom_pickup_scripts:
 ;Nothing left to do, move the sentence index and exit
-.C:0bf9  CE 17 FE    DEC sentence_queue_index
+.C:0bf9  CE 17 FE    DEC sentq_index
 .C:0bfc  60          RTS
 ;--------------------------------------------------
 set_active_sentence_parts:
 ;Copy all the sentence parts for the current sentence into the "active_" variables
-.C:0bfd  AC 17 FE    LDY sentence_queue_index
+.C:0bfd  AC 17 FE    LDY sentq_index
 .C:0c00  B9 25 FE    LDA queued_verbs,Y
 .C:0c03  8D 19 FE    STA active_verb
 .C:0c06  B9 2B FE    LDA queued_do_lo,Y
-.C:0c09  8D 1A FE    STA active_object_lo
+.C:0c09  8D 1A FE    STA active_do_lo
 .C:0c0c  B9 31 FE    LDA queued_do_hi,Y
-.C:0c0f  8D 1B FE    STA active_object_hi
+.C:0c0f  8D 1B FE    STA active_do_hi
 .C:0c12  B9 37 FE    LDA queued_preps,Y
 .C:0c15  8D 1C FE    STA active_preposition
 .C:0c18  B9 3D FE    LDA queued_io_lo,Y
-.C:0c1b  8D 1D FE    STA active_indirect_object
+.C:0c1b  8D 1D FE    STA active_io_lo
 .C:0c1e  B9 43 FE    LDA queued_io_hi,Y
-.C:0c21  8D 1E FE    STA active_indirect_object_hi
+.C:0c21  8D 1E FE    STA active_io_hi
 ;--------------------------------------------------
 ;Move the sentence index and the free capacity
-.C:0c24  CE 17 FE    DEC sentence_queue_index
-.C:0c27  CE 18 FE    DEC sentence_queue_free_capacity
+.C:0c24  CE 17 FE    DEC sentq_index
+.C:0c27  CE 18 FE    DEC sentq_free_slots
 ;Is the capacity exhausted?
 .C:0c2a  10 0B       BPL available_queue_capacity
 ;Capacity exhausted - reset queue and exit
 .C:0c2c  A9 FF       LDA #$FF
-.C:0c2e  8D 17 FE    STA sentence_queue_index
+.C:0c2e  8D 17 FE    STA sentq_index
 .C:0c31  A9 06       LDA #$06
-.C:0c33  8D 18 FE    STA sentence_queue_free_capacity
+.C:0c33  8D 18 FE    STA sentq_free_slots
 .C:0c36  60          RTS
 ;--------------------------------------------------
 available_queue_capacity:
 ;Check if the active direct object is in the inventory
-.C:0c37  AE 1A FE    LDX active_object_lo
-.C:0c3a  AD 1B FE    LDA active_object_hi
+.C:0c37  AE 1A FE    LDX active_do_lo
+.C:0c3a  AD 1B FE    LDA active_do_hi
 .C:0c3d  20 FE 09    JSR resolve_object_if_not_costume
 ;Returns #00 if object in inventory, nonzero otherwise
 ;If it's not in the inventory, check if we can walk to it
@@ -3629,8 +3629,8 @@ available_queue_capacity:
 .C:0c45  F0 43       BEQ do_verb_handler
 ;We have a preposition
 ;Check if the active indirect object is in the inventory
-.C:0c47  AE 1D FE    LDX active_indirect_object
-.C:0c4a  AD 1E FE    LDA active_indirect_object_hi
+.C:0c47  AE 1D FE    LDX active_io_lo
+.C:0c4a  AD 1E FE    LDA active_io_hi
 .C:0c4d  20 FE 09    JSR resolve_object_if_not_costume
 ;Returns #00 if object in inventory, nonzero otherwise
 ;If it's not in the inventory, check if we can walk to it
@@ -3641,8 +3641,8 @@ available_queue_capacity:
 ;--------------------------------------------------
 walk_to_indirect_object:
 ;Set the active indirect object as the destination object
-.C:0c58  AE 1D FE    LDX active_indirect_object
-.C:0c5b  AD 1E FE    LDA active_indirect_object_hi
+.C:0c58  AE 1D FE    LDX active_io_lo
+.C:0c5b  AD 1E FE    LDA active_io_hi
 .C:0c5e  8E 4F FE    STX destination_obj_lo
 .C:0c61  8D 50 FE    STA destination_obj_hi
 ;Set the destination for approaching the indirect object
@@ -3693,8 +3693,8 @@ check_walk_to_direct_object:
 ;--------------------------------------------------
 walk_to_direct_object:
 ;Set the active direct object as the destination object
-.C:0ca0  AE 1A FE    LDX active_object_lo
-.C:0ca3  AD 1B FE    LDA active_object_hi
+.C:0ca0  AE 1A FE    LDX active_do_lo
+.C:0ca3  AD 1B FE    LDA active_do_hi
 .C:0ca6  8E 4F FE    STX destination_obj_lo
 .C:0ca9  8D 50 FE    STA destination_obj_hi
 ;Set the destination for approaching the direct object
@@ -3944,8 +3944,8 @@ execute_verb_handler_for_object:
 .C:0dc5  A9 01       LDA #$01
 .C:0dc7  8D 49 FE    STA refresh_sentence_bar_flag
 ;Get the active object's resource
-.C:0dca  AE 1A FE    LDX active_object_lo
-.C:0dcd  AD 1B FE    LDA active_object_hi
+.C:0dca  AE 1A FE    LDX active_do_lo
+.C:0dcd  AD 1B FE    LDA active_do_hi
 .C:0dd0  20 05 0A    JSR resolve_object_resource
 .C:0dd3  8C 29 71    STY resource_index_for_script_slot
 .C:0dd6  8D 19 71    STA script_type_for_script_slot
@@ -3962,17 +3962,17 @@ execute_verb_handler_for_object:
 ; "Give" verb processing
 ;---------------------------------------
 ;Is the recipient object index >= 8? (That is, not a kid)
-.C:0de8  AD 1D FE    LDA active_indirect_object
+.C:0de8  AD 1D FE    LDA active_io_lo
 .C:0deb  C9 08       CMP #$08
 ;If so, exit
 .C:0ded  B0 11       BCS exit
 ;---------------------------------------
 ;Get the active object
-.C:0def  AE 1A FE    LDX active_object_lo
+.C:0def  AE 1A FE    LDX active_do_lo
 ;Get its attributes, replace the owner with the new one
 .C:0df2  BD 01 73    LDA object_attributes,X
 .C:0df5  29 F0       AND #$F0
-.C:0df7  0D 1D FE    ORA active_indirect_object
+.C:0df7  0D 1D FE    ORA active_io_lo
 .C:0dfa  9D 01 73    STA object_attributes,X
 ;Refresh inventory
 .C:0dfd  20 2B 5F    JSR refresh_items_displayed
@@ -4029,8 +4029,8 @@ run_handler:
 .C:0e35  A9 00       LDA #$00
 .C:0e37  8D B8 70    STA current_script_slot
 ;Copy debugging variable
-.C:0e3a  AD 1D FE    LDA active_indirect_object
-.C:0e3d  8D 6C FF    STA var_active_indirect_object
+.C:0e3a  AD 1D FE    LDA active_io_lo
+.C:0e3d  8D 6C FF    STA var_active_io_lo
 ;Set up script execution and launch it
 .C:0e40  20 20 5E    JSR set_script_resource_base_address
 .C:0e43  20 E3 5D    JSR set_current_script_read_address
@@ -4123,7 +4123,7 @@ has_object_a_pickup_script:
 .C:0e73  8E 70 0E    STX temp_x
 .C:0e76  8C 71 0E    STY temp_y
 ;Load sentence queue index into .Y
-.C:0e79  AC 17 FE    LDY sentence_queue_index
+.C:0e79  AC 17 FE    LDY sentq_index
 ;Check argument in .A - direct or indirect object?
 .C:0e7c  C9 01       CMP #$01
 .C:0e7e  D0 09       BNE part_is_indirect_object
@@ -4175,7 +4175,7 @@ temp = $0e70
 is_obj_in_current_kid_inventory:
 .C:0eae  8E 70 0E    STX temp_x
 ;Fetch index of current sentence part being analyzed
-.C:0eb1  AE 17 FE    LDX sentence_queue_index
+.C:0eb1  AE 17 FE    LDX sentq_index
 ;Are we checking for a direct object?
 .C:0eb4  C9 01       CMP #$01
 .C:0eb6  D0 09       BNE fetch_indirect_object
@@ -4223,7 +4223,7 @@ temp = $0e70
 run_pickup_on_sentence_complement:
 .C:0ee1  8E 70 0E    STX temp
 ;Fetch index of current sentence part being analyzed
-.C:0ee4  AE 17 FE    LDX sentence_queue_index
+.C:0ee4  AE 17 FE    LDX sentq_index
 ;Is it part #02 (Indirect object)?
 .C:0ee7  C9 02       CMP #$02
 .C:0ee9  D0 0D       BNE fetch_direct_object
@@ -4241,9 +4241,9 @@ fetch_direct_object:
 .C:0f00  85 16       STA >object_ptr
 next_sentence_index:
 ;Increment sentence index
-.C:0f02  EE 17 FE    INC sentence_queue_index
+.C:0f02  EE 17 FE    INC sentq_index
 ;Are we still using a valid sentence part index?
-.C:0f05  AE 17 FE    LDX sentence_queue_index
+.C:0f05  AE 17 FE    LDX sentq_index
 .C:0f08  E0 06       CPX #$06
 .C:0f0a  D0 0E       BNE queue_pickup
 ;---------------------------------------------
@@ -10276,10 +10276,10 @@ init_sentence_ui_and_queue:
 .C:29d3  8D 49 FE    STA refresh_sentence_bar_flag
 ;Reset the sentence queue capacity
 .C:29d6  A9 06       LDA #$06
-.C:29d8  8D 18 FE    STA sentence_queue_free_capacity
+.C:29d8  8D 18 FE    STA sentq_free_slots
 ;Reset the sentence queue index
 .C:29db  A9 FF       LDA #$FF
-.C:29dd  8D 17 FE    STA sentence_queue_index
+.C:29dd  8D 17 FE    STA sentq_index
 ;Set current verb to "Walk to"
 .C:29e0  A9 0D       LDA #$0D
 .C:29e2  8D 1F FE    STA current_verb
@@ -21733,7 +21733,7 @@ script_read_object_attributes:
 .C:5fb0  F0 06       BEQ bit6_clear
 bit6_set:
 ;Bit 6 set, get the object's index from the current direct object
-.C:5fb2  AC 1A FE    LDY active_object_lo
+.C:5fb2  AC 1A FE    LDY active_do_lo
 .C:5fb5  4C BC 5F    JMP get_object_attributes
 bit6_clear:
 ;Bit 6 clear, read the object's index
@@ -21962,9 +21962,9 @@ get_script_object_for_sentence:
 ;-------------------------------------------
 ; Mode #FF - return active indirect object
 ;-------------------------------------------
-.C:608c  AD 1D FE    LDA active_indirect_object
+.C:608c  AD 1D FE    LDA active_io_lo
 .C:608f  85 D0       STA low_byte
-.C:6091  AD 1E FE    LDA active_indirect_object_hi
+.C:6091  AD 1E FE    LDA active_io_hi
 .C:6094  85 D1       STA hi_byte
 .C:6096  60          RTS
 ;-------------------------------------------
@@ -21974,9 +21974,9 @@ check_fe:
 ;-------------------------------------------
 ; Mode #FE - return active direct object
 ;-------------------------------------------
-.C:609b  AD 1A FE    LDA active_object_lo
+.C:609b  AD 1A FE    LDA active_do_lo
 .C:609e  85 D0       STA low_byte
-.C:60a0  AD 1B FE    LDA active_object_hi
+.C:60a0  AD 1B FE    LDA active_do_hi
 .C:60a3  85 D1       STA hi_byte
 .C:60a5  60          RTS
 ;-------------------------------------------
@@ -22595,7 +22595,7 @@ compare_active_indirect_obj_indexes:
 ;--------------------------------------------------
 compare_only_lo:
 ;Is the hi index of the active indirect object #00?
-.C:625f  AD 1E FE    LDA active_indirect_object_hi
+.C:625f  AD 1E FE    LDA active_io_hi
 .C:6262  F0 02       BEQ jump_regardless
 ;It doesn't matter anyway, because if it isn't, jump to the next section and set .A to #00
 .C:6264  A9 00       LDA #$00
@@ -22612,7 +22612,7 @@ jump_regardless:
 ;--------------------------------------------------
 compare_lo_and_hi:
 .C:6269  18          CLC
-.C:626a  6D 1E FE    ADC active_indirect_object_hi
+.C:626a  6D 1E FE    ADC active_io_hi
 is_z_flag_set:
 .C:626d  F0 06       BEQ z_flag_set
 ;Object index hi is not #00
@@ -22625,7 +22625,7 @@ z_flag_set:
 ;Read the object index lo
 .C:6275  20 14 5E    JSR script_read_byte
 ;Does it match the indirect object lo?
-.C:6278  CD 1D FE    CMP active_indirect_object
+.C:6278  CD 1D FE    CMP active_io_lo
 ;If so, return True (#01)
 .C:627b  F0 03       BEQ return_01
 ;Otherwise return False (#00)
@@ -22664,7 +22664,7 @@ allocated_block = $9a
 .C:6286  C9 00       CMP #$00
 .C:6288  D0 03       BNE set_object_index
 ;Index == 00, so use the active object instead
-.C:628a  AD 1A FE    LDA active_object_lo
+.C:628a  AD 1A FE    LDA active_do_lo
 set_object_index:
 .C:628d  85 15       STA object_index
 .C:628f  85 97       STA object_index_copy
@@ -23026,7 +23026,7 @@ variable_index = $d0
 .C:6411  C9 00       CMP #$00
 .C:6413  D0 03       BNE fetch_object_owner
 ;It's #00, so use the active object
-.C:6415  AD 1A FE    LDA active_object_lo
+.C:6415  AD 1A FE    LDA active_do_lo
 fetch_object_owner:
 ;Get the low nibble of the object's attributes - that's the actor owner
 .C:6418  A8          TAY
@@ -23054,7 +23054,7 @@ item = $d1
 .C:6427  C9 00       CMP #$00
 .C:6429  D0 03       BNE item_determined
 ;If operand is #00, use the active object instead
-.C:642b  AD 1A FE    LDA active_object_lo
+.C:642b  AD 1A FE    LDA active_do_lo
 item_determined:
 .C:642e  85 D1       STA item
 ;Fetch another operand to determine the owner
@@ -23667,9 +23667,9 @@ hi_byte = $d1
 input_opcode = $d2
 
 ;Move to the next queue index
-.C:6724  EE 17 FE    INC sentence_queue_index
+.C:6724  EE 17 FE    INC sentq_index
 ;Use .Y as queue index
-.C:6727  AC 17 FE    LDY sentence_queue_index
+.C:6727  AC 17 FE    LDY sentq_index
 ;Read the verb from the script and store it in the current sentence queue
 .C:672a  20 14 5E    JSR script_read_byte
 .C:672d  99 25 FE    STA queued_verbs,Y
@@ -24257,7 +24257,7 @@ object_name_pointer = $15
 .C:69dd  C9 00       CMP #$00
 .C:69df  D0 03       BNE set_operand_to_x
 ;If operand is #00, use the active object instead
-.C:69e1  AD 1A FE    LDA active_object_lo
+.C:69e1  AD 1A FE    LDA active_do_lo
 set_operand_to_x:
 .C:69e4  AA          TAX
 ;Check object location to search (room or inventory), based on opcode
@@ -25370,9 +25370,9 @@ loop:
 init_game_engine:
 ;Init sentence queue system
 .C:8586  A9 FF       LDA #$FF
-.C:8588  8D 17 FE    STA sentence_queue_index
+.C:8588  8D 17 FE    STA sentq_index
 .C:858b  A9 06       LDA #$06
-.C:858d  8D 18 FE    STA sentence_queue_free_capacity
+.C:858d  8D 18 FE    STA sentq_free_slots
 ;Set message bar standard delay
 .C:8590  A9 1E       LDA #$1E
 .C:8592  85 CD       STA <std_msg_countdown
