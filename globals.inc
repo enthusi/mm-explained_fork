@@ -570,7 +570,7 @@ They were definitely intended as debugging aids.
 .label current_verb_id = $fe1f
 .label direct_object_idx_lo = $fe20
 .label direct_object_idx_hi = $fe21
-.label preposition = $fe22
+.label current_preposition = $fe22
 //Indirect object idx hi has the following meaning:
 //#02 - Can be a recipient with a "Give" instruction
 .label indirect_object_idx_lo = $fe23
