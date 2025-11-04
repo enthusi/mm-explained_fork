@@ -172,9 +172,6 @@ Typical traces
 	  refreshes without running a script.
 ================================================================================
 */
-
-Source: 
-
 #importonce
 #import "globals.inc"
 #import "constants.inc"
