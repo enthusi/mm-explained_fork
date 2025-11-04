@@ -17,24 +17,25 @@
 
 .label find_actor_enclosing_cursor = $0
 .label get_object_enclosing_cursor = $0
-.label is_obj_in_current_kid_idx_inventory = $0
-.label execute_verb_handler_for_object = $0
+.label set_script_resource_base_address = $0
+.label set_current_script_read_address = $0
+.label execute_next_operation = $0
 
 //Queued sentence parts (verbs, direct objects, indirect objects, prepositions)
 //Each queue has a maximum size of 6 elements
-.label queued_verbs = $fe25
-.label queued_do_lo = $fe2b
-.label queued_do_hi = $fe31
-.label queued_preps = $fe37
-.label queued_io_lo = $fe3d
-.label queued_io_hi = $fe43
+.label queued_verb_ids = $fe25
+.label queued_do_id_lo = $fe2b
+.label queued_do_id_hi = $fe31
+.label queued_prep_ids = $fe37
+.label queued_io_id_lo = $fe3d
+.label queued_io_id_hi = $fe43
 
-.label active_verb_token = $fe19
-.label active_do_lo = $fe1a
-.label active_do_hi = $fe1b
-.label active_prep_token = $fe1c
-.label active_io_lo = $fe1d
-.label active_io_hi = $fe1e
+.label active_verb_id = $fe19
+.label active_do_id_lo = $fe1a
+.label active_do_id_hi = $fe1b
+.label active_prep_id = $fe1c
+.label active_io_id_lo = $fe1d
+.label active_io_id_hi = $fe1e
 .label sentence_parts = $fe1f
 
 .label temp_x = $0e70         // Temp storage for X across call
@@ -42,12 +43,14 @@
 
 .const ARG_IS_DO          = $01    // Selector: A==#$01 → direct object, else indirect
 .const ARG_IS_IO          = $02    
-.const CLICK_TRIGGER_SET        = $01    // Force-run a sentence (click_trigger_sentence)
+.const CLICK_TRIGGER_SET        = $01    // Force-run a sentence (forced_sentence_trigger)
 .const CLICK_TRIGGER_CLEARED    = $FF    // Cleared state after forced trigger handled
-.const UI_REFRESH_REQUEST       = $01    // Request redraw (refresh_sentence_bar_flag)
-.const REBUILD_SENTENCE_ON      = $01    // Rebuild action sentence now (rebuild_action_sentence)
+.const UI_REFRESH_REQUEST       = $01    // Request redraw (sentence_bar_needs_refresh)
+.const REBUILD_SENTENCE_ON      = $01    // Rebuild action sentence now (needs_sentence_rebuild)
 .const OBJ_IDX_NONE             = $00    // No object selected (lo byte sentinel)
 .const PREPOSITION_NONE         = $00    // No preposition selected
+.const SCRIPT_SLOT_NONE              = $FF    // No script running sentinel
+.const GLOBAL_DEFAULTS_SCRIPT_ID     = $03    // Global “verb defaults” script number
 
 * = $077C
 process_sentence:
@@ -61,7 +64,7 @@ process_sentence:
         //   based on cursor hits.
         // ------------------------------------------------------------
 
-        lda     init_sentence_ui_and_queue_flag
+        lda     init_sentence_ui_flag
         beq     enforce_verb_limits_if_incapacitated
 
         // ------------------------------------------------------------
@@ -78,7 +81,7 @@ process_sentence:
         sta     direct_object_idx_hi
 
 apply_pending_sentence_reset:
-        sta     init_sentence_ui_and_queue_flag // clear reset flag
+        sta     init_sentence_ui_flag // clear reset flag
 
         // ------------------------------------------------------------
         // Limit verbs if the current kid is dead or in a radiation suit
@@ -87,11 +90,11 @@ enforce_verb_limits_if_incapacitated:
         ldx     current_kid_idx
         lda     actor_vars,x
         bpl     dispatch_by_control_mode              // positive → alive/normal
-        lda     current_verb
+        lda     current_verb_id
         cmp     #NEW_KID_VERB
         beq     dispatch_by_control_mode
         lda     #$00
-        sta     current_verb                    // restrict to “new kid” only
+        sta     current_verb_id                    // restrict to “new kid” only
 
         // ------------------------------------------------------------
         // Control mode dispatch
@@ -108,20 +111,20 @@ handle_keypad_mode_or_fallthrough:
 
         // keypad mode → force “Push” verb
         lda     #PUSH_VERB
-        sta     current_verb
+        sta     current_verb_id
 
         // ------------------------------------------------------------
         // Normal control mode
         // ------------------------------------------------------------
 handle_normal_mode:
-        lda     current_verb
+        lda     current_verb_id
         cmp     #WHAT_IS_VERB
         bne     handle_click_trigger_or_defer
         lda     #CLICK_TRIGGER_SET
-        sta     click_trigger_sentence           // “What is” → force sentence trigger
+        sta     forced_sentence_trigger           // “What is” → force sentence trigger
 
 handle_click_trigger_or_defer:
-        lda     click_trigger_sentence
+        lda     forced_sentence_trigger
         cmp     #CLICK_TRIGGER_SET
         beq     on_forced_trigger
         jmp     run_sentence_if_complete          // no forced trigger → check normally
@@ -131,9 +134,9 @@ handle_click_trigger_or_defer:
         // ------------------------------------------------------------
 on_forced_trigger:
         lda     #CLICK_TRIGGER_CLEARED
-        sta     click_trigger_sentence            // clear trigger flag
+        sta     forced_sentence_trigger            // clear trigger flag
 
-        lda     current_verb
+        lda     current_verb_id
         cmp     #GIVE_VERB
         bne     pick_object_under_cursor
 
@@ -153,7 +156,7 @@ branch_on_cursor_hit:
         cpx     #OBJ_IDX_NONE
         bne     cursor_hit_object_found
 
-        lda     current_verb
+        lda     current_verb_id
         cmp     #WALK_TO_VERB
         bne     finalize_after_walkto_nohit
 
@@ -181,7 +184,7 @@ cursor_hit_object_found:
         cmp     indirect_object_idx_hi
         bne     guard_reject_do_eq_io
         ldy     #REBUILD_SENTENCE_ON
-        sty     rebuild_action_sentence           // same IO → trigger rebuild
+        sty     needs_sentence_rebuild           // same IO → trigger rebuild
 
 guard_reject_do_eq_io:
         cpx     direct_object_idx_lo
@@ -197,7 +200,7 @@ commit_new_indirect_object:
         cmp     #KEYPAD_CONTROL_MODE
         bne     finalize_after_io_update
         lda     #REBUILD_SENTENCE_ON
-        sta     rebuild_action_sentence           // keypad mode → rebuild manually
+        sta     needs_sentence_rebuild           // keypad mode → rebuild manually
 
 finalize_after_io_update:
         jmp     finalize_and_maybe_execute
@@ -211,40 +214,40 @@ update_or_confirm_direct_object:
         cmp     direct_object_idx_hi
         bne     commit_new_direct_object
         ldy     #REBUILD_SENTENCE_ON
-        sty     rebuild_action_sentence           // same DO → rebuild
+        sty     needs_sentence_rebuild           // same DO → rebuild
 
 commit_new_direct_object:
         stx     direct_object_idx_lo
         sta     direct_object_idx_hi
         lda     #UI_REFRESH_REQUEST
-        sta     refresh_sentence_bar_flag         // mark UI refresh
+        sta     sentence_bar_needs_refresh         // mark UI refresh
 
         lda     control_mode
         cmp     #KEYPAD_CONTROL_MODE
         bne     finalize_and_maybe_execute
         lda     #REBUILD_SENTENCE_ON
-        sta     rebuild_action_sentence
+        sta     needs_sentence_rebuild
 
         // ------------------------------------------------------------
         // Finalize sentence processing and run if complete
         // ------------------------------------------------------------
 finalize_and_maybe_execute:
         lda     #UI_REFRESH_REQUEST
-        sta     refresh_sentence_bar_flag         // refresh UI
+        sta     sentence_bar_needs_refresh         // refresh UI
 
-        lda     current_verb
+        lda     current_verb_id
         cmp     #WALK_TO_VERB
         bne     run_sentence_if_complete
 
         lda     #ENTITY_NONE
         sta     destination_entity
         lda     #REBUILD_SENTENCE_ON
-        sta     rebuild_action_sentence
+        sta     needs_sentence_rebuild
 		//Fall through to run_sentence_if_complete
 
 
 * = $0AF0
-check_refresh_sentence_2:
+refresh_sentence_bar_trampoline:
 		jmp refresh_sentence_bar
 
 * = $0874
@@ -252,7 +255,7 @@ run_sentence_if_complete:
         // ------------------------------------------------------------
         // Run a sentence if all required parts are available.
         //
-        // - If the verb has all necessary components → execute via process_action.
+        // - If the verb has all necessary components → execute via dispatch_or_enqueue_action.
         // - If parts are missing → refresh the sentence bar and exit.
         // - Special cases handled:
         //      NEW_KID_VERB  → delegate to handle_new_kid_verb
@@ -260,15 +263,15 @@ run_sentence_if_complete:
         // ------------------------------------------------------------
         jsr     refresh_sentence_bar             // update UI before checks
 
-        lda     rebuild_action_sentence
+        lda     needs_sentence_rebuild
         beq     check_verb_validity              // skip if no rebuild needed
         lda     #FALSE
-        sta     rebuild_action_sentence          // clear rebuild flag
+        sta     needs_sentence_rebuild          // clear rebuild flag
 
 check_verb_validity:
-        lda     current_verb
+        lda     current_verb_id
         bne     dispatch_new_kid_or_next
-        jmp     check_refresh_sentence_2         // no verb → refresh and exit
+        jmp     refresh_sentence_bar_trampoline         // no verb → refresh and exit
 
         // ------------------------------------------------------------
         // Handle "New Kid" verb
@@ -284,7 +287,7 @@ dispatch_new_kid_or_next:
 dispatch_walkto_or_need_do:
         cmp     #WALK_TO_VERB
         bne     require_direct_object_or_refresh
-        jmp     process_action                   // can execute immediately
+        jmp     dispatch_or_enqueue_action                   // can execute immediately
 
         // ------------------------------------------------------------
         // Handle verbs requiring a direct object
@@ -292,36 +295,36 @@ dispatch_walkto_or_need_do:
 require_direct_object_or_refresh:
         lda     direct_object_idx_lo
         bne     resolve_preposition_and_io
-        jmp     check_refresh_sentence_2         // no DO → refresh and exit
+        jmp     refresh_sentence_bar_trampoline         // no DO → refresh and exit
 
         // ------------------------------------------------------------
         // Preposition and indirect object logic
         // ------------------------------------------------------------
 resolve_preposition_and_io:
         lda     preposition
-        beq     select_preposition_for_current_verb    // determine preposition if missing
+        beq     select_preposition_for_current_verb_id    // determine preposition if missing
         lda     indirect_object_idx_lo
         bne     commit_execute_sentence
-        jmp     check_refresh_sentence_2         // no IO → refresh and exit
+        jmp     refresh_sentence_bar_trampoline         // no IO → refresh and exit
 
         // ------------------------------------------------------------
         // All parts ready → execute
         // ------------------------------------------------------------
 commit_execute_sentence:
-        jmp     process_action
+        jmp     dispatch_or_enqueue_action
 
         // ------------------------------------------------------------
         // Preposition determination path
         // ------------------------------------------------------------
-select_preposition_for_current_verb:
+select_preposition_for_current_verb_id:
         jsr     select_preposition_for_verb
         bne     save_preposition_and_request_ui_refresh
-        jmp     process_action                   // no prep required → execute
+        jmp     dispatch_or_enqueue_action                   // no prep required → execute
 
 save_preposition_and_request_ui_refresh:
         sta     preposition                      // save selected preposition
         lda     #UI_REFRESH_REQUEST
-        sta     refresh_sentence_bar_flag        // request UI refresh
+        sta     sentence_bar_needs_refresh        // request UI refresh
         // fall through to refresh_sentence_bar
 
 * = $099B
@@ -365,9 +368,9 @@ second_kid_selected:
 select_kid:
         pha                                      // save kid index
         lda     #WALK_TO_VERB
-        sta     current_verb                     // reset verb to “Walk to”
+        sta     current_verb_id                     // reset verb to “Walk to”
         lda     #REFRESH_UI_FLAG_ON
-        sta     refresh_sentence_bar_flag
+        sta     sentence_bar_needs_refresh
         jsr     refresh_sentence_bar             // update UI
         pla                                      // restore kid index
         jsr     switch_active_kid_if_different          // perform kid switch
@@ -375,14 +378,14 @@ select_kid:
         // normalize verb/UI again and exit
 set_walk_and_exit:		
         lda     #WALK_TO_VERB
-        sta     current_verb
+        sta     current_verb_id
         lda     #REFRESH_UI_FLAG_ON
-        sta     refresh_sentence_bar_flag
+        sta     sentence_bar_needs_refresh
         rts
 
 
 * = $0B9C
-handle_sentence_queue:
+process_sentence_queue_entry:
         // ------------------------------------------------------------
         // Handle one queued sentence.
         //
@@ -406,15 +409,15 @@ check_queue_nonempty:
         // Skip identical complement sentences (DO == IO)
         // ------------------------------------------------------------
 check_same_complements:
-        lda     queued_preps,x
+        lda     queued_prep_ids,x
         beq     set_active_sentence_tokens       // no preposition → skip test
 
-        lda     queued_do_lo,x
+        lda     queued_do_id_lo,x
         beq     verify_inventory_status  // no DO → skip identical check
-        cmp     queued_io_lo,x
+        cmp     queued_io_id_lo,x
         bne     verify_inventory_status
-        lda     queued_do_hi,x
-        cmp     queued_io_hi,x
+        lda     queued_do_id_hi,x
+        cmp     queued_io_id_hi,x
         bne     verify_inventory_status
 
         dec     sentq_index            // identical DO/IO → drop sentence
@@ -425,18 +428,18 @@ check_same_complements:
         // ------------------------------------------------------------
 verify_inventory_status:
         lda     #$01
-        jsr     is_obj_in_current_kid_idx_inventory // check direct object
+        jsr     is_sentence_object_owned_by_current_kid // check direct object
         cmp     #$00
         bne     set_active_sentence_tokens
 
         lda     #$02
-        jsr     is_obj_in_current_kid_idx_inventory // check indirect object
+        jsr     is_sentence_object_owned_by_current_kid // check indirect object
         cmp     #$00
         bne     set_active_sentence_tokens
 
         // try pickup for direct object
         lda     #$01
-        jsr     query_pickup_script_for_sentence_object
+        jsr     has_pickup_script_for_sentence_part
         cmp     #$01
         bne     try_indirect_object_pickup
         lda     #$01
@@ -445,7 +448,7 @@ verify_inventory_status:
 
 try_indirect_object_pickup:
         lda     #$02
-        jsr     query_pickup_script_for_sentence_object
+        jsr     has_pickup_script_for_sentence_part
         cmp     #$01
         bne     drop_sentence_no_pickup_available
         lda     #$02
@@ -461,18 +464,18 @@ drop_sentence_no_pickup_available:
         // ------------------------------------------------------------
 set_active_sentence_tokens:
         ldy     sentq_index
-        lda     queued_verbs,y
-        sta     active_verb_token
-        lda     queued_do_lo,y
-        sta     active_do_lo
-        lda     queued_do_hi,y
-        sta     active_do_hi
-        lda     queued_preps,y
-        sta     active_prep_token
-        lda     queued_io_lo,y
-        sta     active_io_lo
-        lda     queued_io_hi,y
-        sta     active_io_hi
+        lda     queued_verb_ids,y
+        sta     active_verb_id
+        lda     queued_do_id_lo,y
+        sta     active_do_id_lo
+        lda     queued_do_id_hi,y
+        sta     active_do_id_hi
+        lda     queued_prep_ids,y
+        sta     active_prep_id
+        lda     queued_io_id_lo,y
+        sta     active_io_id_lo
+        lda     queued_io_id_hi,y
+        sta     active_io_id_hi
 
         dec     sentq_index
         dec     sentq_free_slots
@@ -489,17 +492,17 @@ set_active_sentence_tokens:
         // Determine if we must walk or execute
         // ------------------------------------------------------------
 queue_capacity_ok:
-        ldx     active_do_lo
-        lda     active_do_hi
+        ldx     active_do_id_lo
+        lda     active_do_id_hi
         jsr     resolve_object_if_not_costume   // 0 = in inv, ≠0 = world
         bne     check_walk_to_direct_object
 
-        lda     active_prep_token
+        lda     active_prep_id
         beq     execute_active_verb                 // no prep → execute directly
 
         // preposition present → ensure indirect object ready
-        ldx     active_io_lo
-        lda     active_io_hi
+        ldx     active_io_id_lo
+        lda     active_io_id_hi
         jsr     resolve_object_if_not_costume
         bne     init_walk_to_indirect_object
         jmp     execute_verb_handler_for_object
@@ -508,8 +511,8 @@ queue_capacity_ok:
         // Walk toward indirect object
         // ------------------------------------------------------------
 init_walk_to_indirect_object:
-        ldx     active_io_lo
-        lda     active_io_hi
+        ldx     active_io_id_lo
+        lda     active_io_id_hi
         stx     destination_obj_lo
         sta     destination_obj_hi
         jsr     route_destination_by_entity_type
@@ -527,7 +530,7 @@ init_walk_to_indirect_object:
         bne     exit_hsq
         jsr     set_actor_destination
 exit_hsq:
-        jmp     exit_handle_sentence_queue
+        jmp     exit_process_sentence_queue_entry
 
         // ------------------------------------------------------------
         // Execute verb directly
@@ -549,8 +552,8 @@ check_walk_to_direct_object:
         rts
 
 init_walk_to_direct_object:
-        ldx     active_do_lo
-        lda     active_do_hi
+        ldx     active_do_id_lo
+        lda     active_do_id_hi
         stx     destination_obj_lo
         sta     destination_obj_hi
         jsr     route_destination_by_entity_type
@@ -566,14 +569,14 @@ init_walk_to_direct_object:
         tax
         lda     actor_vars,x
         and     ACTOR_IS_FROZEN
-        bne     exit_handle_sentence_queue
+        bne     exit_process_sentence_queue_entry
         jsr     set_actor_destination
 
-exit_handle_sentence_queue:
+exit_process_sentence_queue_entry:
         rts
 
 * = $0AF3
-process_action:
+dispatch_or_enqueue_action:
         // ------------------------------------------------------------
         // Reset sentence-queue bookkeeping
 		//
@@ -590,11 +593,11 @@ process_action:
         // ------------------------------------------------------------
         // Early exit for “What is?” verb
 		//
-        // If current_verb equals WHAT_IS_VERB, no action is performed
+        // If current_verb_id equals WHAT_IS_VERB, no action is performed
         // and the routine returns immediately. Otherwise, control
         // falls through to walk-to handling.
         // ------------------------------------------------------------
-        lda     current_verb                    // Load active verb for dispatch
+        lda     current_verb_id                    // Load active verb for dispatch
         cmp     #WHAT_IS_VERB                   
         bne     handle_walk_to                  // Not "What is?" → continue handling
         rts                                     // "What is?" has no action → return
@@ -667,7 +670,7 @@ handle_walk_to:
         ldx     current_kid_idx                    
         lda     actor_vars,x                   // Load actor’s state flags
         and     ACTOR_IS_FROZEN                // Mask bit(s) indicating frozen state
-        bne     exit_process_action            // If frozen → skip path setup and exit routine
+        bne     exit_dispatch_or_enqueue_action            // If frozen → skip path setup and exit routine
 
         // ------------------------------------------------------------
         // Stage path to destination
@@ -684,7 +687,7 @@ handle_walk_to:
         sta     actor_y_dest,x                 // Commit actor’s vertical destination
 
         jsr     snap_and_stage_path_update     // Build and stage walking path toward dest_x/dest_y
-exit_process_action:
+exit_dispatch_or_enqueue_action:
         rts
 
         // ------------------------------------------------------------
@@ -707,40 +710,40 @@ enqueue_sentence:
         // Stores: verb, DO lo/hi, preposition, IO lo/hi into the
         // parallel queued_sentence_* arrays at index X.
         // ------------------------------------------------------------
-        lda     current_verb                    
-        sta     queued_verbs,x         
+        lda     current_verb_id                    
+        sta     queued_verb_ids,x         
 
         lda     direct_object_idx_lo            	 
-        sta     queued_do_lo,x  
+        sta     queued_do_id_lo,x  
         lda     direct_object_idx_hi            	 
-        sta     queued_do_hi,x  
+        sta     queued_do_id_hi,x  
 		
         lda     preposition                    		 
-        sta     queued_preps,x  	 
+        sta     queued_prep_ids,x  	 
 
         lda     indirect_object_idx_lo          		
-        sta     queued_io_lo,x  	
+        sta     queued_io_id_lo,x  	
         lda     indirect_object_idx_hi          		
-        sta     queued_io_hi,x   
+        sta     queued_io_id_hi,x   
 
         // ------------------------------------------------------------
         // Post-queue verb reset gate
 		//
-        // If current_verb == WALK_TO_VERB, skip UI reset and exit;
+        // If current_verb_id == WALK_TO_VERB, skip UI reset and exit;
         // otherwise fall through to reset defaults.
         // ------------------------------------------------------------
-        lda     current_verb                   // Reload current verb for post-queue reset test
+        lda     current_verb_id                   // Reload current verb for post-queue reset test
         cmp     #WALK_TO_VERB                  // Z=1 if it was already "Walk to"
         beq     finalize_and_exit              // If so, skip UI verb reset and exit
 
         // ------------------------------------------------------------
         // Reset UI verb defaults after queuing
 		//
-        // Revert current_verb to WALK_TO_VERB and clear DO/preposition
+        // Revert current_verb_id to WALK_TO_VERB and clear DO/preposition
         // so the input bar idles on a neutral “Walk to” state.
         // ------------------------------------------------------------
         lda     #WALK_TO_VERB                   // Default UI verb after queuing
-        sta     current_verb                    // Reset current verb to "Walk to"
+        sta     current_verb_id                    // Reset current verb to "Walk to"
 
         lda     #$00                            // Prepare clear value
         sta     direct_object_idx_lo            // Clear direct object reference
@@ -756,6 +759,118 @@ finalize_and_exit:
         lda     #$00                            // Prepare clear value
         sta     destination_entity              // Reset destination entity marker (none targeted)
         rts                                     // Return → sentence queued or action completed
+
+
+* = $0DC5
+execute_verb_handler_for_object:
+        // ------------------------------------------------------------
+        // Execute the correct verb handler for an object
+        //
+        // If there's a custom handler defined for the combination of
+        // verb/object, execute it. Otherwise, execute the default verb
+        // handlers accordingly.
+        // ------------------------------------------------------------
+        // ------------------------------------------------------------
+        // Mark sentence bar for refreshing
+        // ------------------------------------------------------------
+        lda     #TRUE
+        sta     sentence_bar_needs_refresh
+
+        // ------------------------------------------------------------
+        // Get the active object's resource
+        // ------------------------------------------------------------
+        ldx     active_do_id_lo
+        lda     active_do_id_hi
+        jsr     resolve_object_resource
+        sty     resource_index_for_script_slot
+        sta     script_type_for_script_slot
+
+        // ------------------------------------------------------------
+        // Get the object's script handler for the verb, if any
+        // ------------------------------------------------------------
+        lda     active_verb_id
+        jsr     find_object_verb_handler_offset
+
+        // ------------------------------------------------------------
+        // Did we find a handler?
+        // ------------------------------------------------------------
+        bne     guard_read_requires_light
+
+        // ------------------------------------------------------------
+        // No handler found → run default handlers
+        // ------------------------------------------------------------
+        lda     active_verb_id
+        cmp     #GIVE_VERB
+        bne     guard_walk_to_early_exit
+
+        // ------------------------------------------------------------
+        // "Give" verb processing
+        // ------------------------------------------------------------
+        lda     active_io_id_lo
+        cmp     #FIRST_NON_KID_INDEX                    // recipient index ≥ 8? (not a kid)
+        bcs     return_after_give_path                    // if not a kid, exit
+
+        ldx     active_do_id_lo
+        lda     object_attributes,x
+        and     #MSK_HIGH_NIBBLE                    // clear low nibble (owner)
+        ora     active_io_id_lo            // set new owner
+        sta     object_attributes,x
+        jsr     refresh_items_displayed // refresh inventory
+return_after_give_path:
+        rts
+
+guard_walk_to_early_exit:
+        // ------------------------------------------------------------
+        // If verb is "walk to", exit
+        // ------------------------------------------------------------
+        cmp     #WALK_TO_VERB
+        beq     return_after_walk_to
+
+launch_global_defaults_script:
+        // ------------------------------------------------------------
+        // Run global "verb defaults" script (#3)
+        // ------------------------------------------------------------
+        lda     active_verb_id
+        sta     var_active_verb_id
+        lda     #SCRIPT_SLOT_NONE
+        sta     current_script_slot
+        lda     #GLOBAL_DEFAULTS_SCRIPT_ID
+        jsr     start_global_script
+return_after_walk_to:
+        rts
+
+guard_read_requires_light:
+        // ------------------------------------------------------------
+        // Handle "Read" verb guard (requires light)
+        // ------------------------------------------------------------
+        pha
+        lda     active_verb_id
+        cmp     #READ_VERB
+        bne     launch_custom_handler
+        lda     global_lights_state
+        bne     launch_custom_handler
+        pla                             // darkness → fallback to defaults
+        jmp     launch_global_defaults_script
+
+launch_custom_handler:
+        // ------------------------------------------------------------
+        // Execute custom handler
+        // ------------------------------------------------------------
+        pla
+        clc
+        adc.zp  <room_obj_ofs
+        sta     script_offsets_lo
+        lda     #$00
+        adc.zp  >room_obj_ofs
+        sta     script_offsets_hi
+        lda     #$00
+        sta     current_script_slot
+        lda     active_io_id_lo
+        sta     var_active_io_id_lo
+        jsr     set_script_resource_base_address
+        jsr     set_current_script_read_address
+        jsr     execute_next_operation
+        rts
 		
 /*
 ================================================================================
@@ -876,7 +991,7 @@ Description:
 */
 
 * = $0E73
-query_pickup_script_for_sentence_object:
+has_pickup_script_for_sentence_part:
         // ------------------------------------------------------------
         // Save X and Y
         // ------------------------------------------------------------
@@ -897,16 +1012,16 @@ query_pickup_script_for_sentence_object:
         // ------------------------------------------------------------
         // Load direct object index (lo→X, hi→A)
         // ------------------------------------------------------------
-        ldx     queued_do_lo,y
-        lda     queued_do_hi,y
+        ldx     queued_do_id_lo,y
+        lda     queued_do_id_hi,y
         jmp     check_actor_class
 
 load_indirect_object_index:
         // ------------------------------------------------------------
         // Load indirect object index (lo→X, hi→A)
         // ------------------------------------------------------------
-        ldx     queued_io_lo,y
-        lda     queued_io_hi,y
+        ldx     queued_io_id_lo,y
+        lda     queued_io_id_hi,y
 
 check_actor_class:
         // ------------------------------------------------------------
@@ -953,6 +1068,95 @@ has_object_pickup_exit:
         ldx     temp_x
         ldy     temp_y
         rts
+		
+// ------------------------------------------------------------
+// Check if the sentence complement (direct or indirect object)
+// is in the current kid's inventory
+//
+// Arguments:
+//     .A = #$01 → check direct object
+//           else → check indirect object
+//
+// Returns:
+//     .A = #$01 if object is in current kid's inventory
+//           #$00 otherwise
+// ------------------------------------------------------------
+.const INVCHK_RET_FOUND            = $01    // Function return: in current kid’s inventory
+.const INVCHK_RET_NOT_FOUND        = $00    // Function return: not in current kid’s inventory
+
+* = $0EAE
+is_sentence_object_owned_by_current_kid:
+        // ------------------------------------------------------------
+        // Save X register to temporary
+        // ------------------------------------------------------------
+        stx     temp_x
+
+        // ------------------------------------------------------------
+        // Fetch index of current sentence part being analyzed
+        // ------------------------------------------------------------
+        ldx     sentq_index
+
+        // ------------------------------------------------------------
+        // Are we checking for a direct object?
+        // ------------------------------------------------------------
+        cmp     #ARG_IS_DO
+        bne     load_indirect_object_id
+
+        // ------------------------------------------------------------
+        // Direct object path
+        // ------------------------------------------------------------
+        ldy     queued_do_id_lo,x
+        lda     queued_do_id_hi,x
+        jmp     guard_in_some_inventory
+
+load_indirect_object_id:
+        // ------------------------------------------------------------
+        // Indirect object path
+        // ------------------------------------------------------------
+        ldy     queued_io_id_lo,x
+        lda     queued_io_id_hi,x
+
+guard_in_some_inventory:
+        // ------------------------------------------------------------
+        // The object's hi byte represents if it's in *somebody's*
+        // inventory (#00 = in inventory, otherwise not)
+        // ------------------------------------------------------------
+        beq     compare_owner_with_current_kid
+
+        // ------------------------------------------------------------
+        // Not in any inventory → return #00
+        // ------------------------------------------------------------
+        lda     #INVCHK_RET_NOT_FOUND
+        rts
+
+compare_owner_with_current_kid:
+        // ------------------------------------------------------------
+        // Check if the item belongs to the current kid
+        // ------------------------------------------------------------
+        lda     object_attributes,y
+        and     #MSK_LOW_NIBBLE                    // isolate owner nibble
+        cmp     current_kid_idx
+        bne     return_not_owned_by_current_kid
+
+        // ------------------------------------------------------------
+        // In current kid's inventory → return #01
+        // ------------------------------------------------------------
+        lda     #INVCHK_RET_FOUND
+        jmp     exit_inv_check
+
+return_not_owned_by_current_kid:
+        // ------------------------------------------------------------
+        // Not in current kid's inventory → return #00
+        // ------------------------------------------------------------
+        lda     #INVCHK_RET_NOT_FOUND
+
+exit_inv_check:
+        // ------------------------------------------------------------
+        // Restore X register and return
+        // ------------------------------------------------------------
+        ldx     temp_x
+        rts
+		
 
 /*
 ================================================================================
@@ -972,7 +1176,7 @@ Returns:
 ================================================================================
 */
 .label object_ptr = $15                     // ZP pointer for target object index
-
+* = $0EE1
 enqueue_pickup_for_sentence_part:
         // ------------------------------------------------------------
         // Save X
@@ -993,9 +1197,9 @@ enqueue_pickup_for_sentence_part:
         // ------------------------------------------------------------
         // Indirect object → copy indices into object_ptr
         // ------------------------------------------------------------
-        lda     queued_io_lo,x
+        lda     queued_io_id_lo,x
         sta     <object_ptr
-        lda     queued_io_hi,x
+        lda     queued_io_id_hi,x
         sta     >object_ptr
         jmp     next_sentence_index
 
@@ -1003,9 +1207,9 @@ fetch_direct_object:
         // ------------------------------------------------------------
         // Direct object → copy indices into object_ptr
         // ------------------------------------------------------------
-        lda     queued_do_lo,x
+        lda     queued_do_id_lo,x
         sta     <object_ptr
-        lda     queued_do_hi,x
+        lda     queued_do_id_hi,x
         sta     >object_ptr
 
 next_sentence_index:
@@ -1033,13 +1237,13 @@ queue_pickup:
         // Queue a new “Pick Up” sentence for the selected object
         // ------------------------------------------------------------
         lda     PICK_UP_VERB
-        sta     queued_verbs,x
+        sta     queued_verb_ids,x
         lda     #$00
-        sta     queued_preps,x
+        sta     queued_prep_ids,x
         lda     <object_ptr
-        sta     queued_do_lo,x
+        sta     queued_do_id_lo,x
         lda     >object_ptr
-        sta     queued_do_hi,x
+        sta     queued_do_id_hi,x
 
         // ------------------------------------------------------------
         // Restore X and return
@@ -1113,10 +1317,10 @@ Summary
 
 Global Outputs
 	destination_entity             ← ENTITY_NONE
-	refresh_sentence_bar_flag      ← TRUE
+	sentence_bar_needs_refresh      ← TRUE
 	sentq_free_slots   ← SENT_QUEUE_MAX_TOKENS
 	sentq_index           ← SENT_QUEUE_EMPTY_IDX
-	current_verb                   ← WALK_TO_VERB
+	current_verb_id                   ← WALK_TO_VERB
 	direct_object_idx_lo           ← $00
 	direct_object_idx_hi           ← $00
 	preposition                    ← $00
@@ -1143,7 +1347,7 @@ init_sentence_ui_and_queue:
         sta     destination_entity            // clear current destination target
 
         lda     #TRUE
-        sta     refresh_sentence_bar_flag     // force UI refresh of sentence bar
+        sta     sentence_bar_needs_refresh     // force UI refresh of sentence bar
 
         lda     #SENT_QUEUE_MAX_TOKENS
         sta     sentq_free_slots  // reset available slots (max = 6)
@@ -1152,7 +1356,7 @@ init_sentence_ui_and_queue:
         sta     sentq_index          // mark queue as empty (no active tokens)
 
         lda     #WALK_TO_VERB
-        sta     current_verb                  // set default verb “Walk to”
+        sta     current_verb_id                  // set default verb “Walk to”
 
         lda     #$00
         sta     direct_object_idx_lo          // clear direct object index (lo)
