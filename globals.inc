@@ -487,7 +487,7 @@ They were definitely intended as debugging aids.
 .label var_camera_position = $ff69			//This would be var[2]
 .label var_msg_flag = $ff6a				//This would be var[3]
 .label var_current_room = $ff6b			//This would be var[4]
-.label var_active_indirect_object = $ff6c	//This would be var[5]
+.label var_active_io_lo = $ff6c	//This would be var[5]
 .label var_destination_x = $ff6d			//This would be var[6]
 .label var_destination_y = $ff6e			//This would be var[7]
 .label var_music_playback_in_progress = $ff6f	//This would be var[8]
@@ -565,8 +565,8 @@ They were definitely intended as debugging aids.
 .label refresh_sentence_bar_flag = $fe49	//#00 = don't refresh the sentence bar, #01 = refresh it
 									//By "refresh", we mean to update its contents
 .label init_sentence_ui_and_queue_flag = $fe8f
-.label sentence_queue_index = $fe17
-.label sentence_queue_free_capacity = $fe18	
+.label sentq_index = $fe17
+.label sentq_free_slots = $fe18	
 .label current_verb = $fe1f
 .label direct_object_idx_lo = $fe20
 .label direct_object_idx_hi = $fe21
