@@ -143,21 +143,21 @@ append_verb:
         // ------------------------------------------------------------
         // Determine and append preposition
         // ------------------------------------------------------------
-        lda     preposition                     // A := current preposition index (0 = unset)
+        lda     current_preposition                     // A := current preposition index (0 = unset)
         bne     append_preposition_if_any       // already set → skip inference
 
         jsr     select_preposition_for_verb     // infer preposition from verb/object context → A
         cmp     #PREPOSITION_NONE_NEEDED        // is inference "none needed"?
         beq     append_preposition_if_any       // yes → do not set, just skip append
 
-        sta     preposition                     // cache inferred preposition for later reuse
+        sta     current_preposition                     // cache inferred preposition for later reuse
 
         lda     #$00                            // clear any prior indirect object because
         sta     indirect_object_idx_lo          // grammar changed after inference
         sta     indirect_object_idx_hi
 
 append_preposition_if_any:
-        lda     preposition                     // A := preposition index; 0 → none selected
+        lda     current_preposition                     // A := preposition index; 0 → none selected
         beq     return_refreshed_sentence       // no preposition → finish sentence build
 
         tax                                     // X := preposition index (table selector)
