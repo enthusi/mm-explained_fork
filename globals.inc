@@ -49,7 +49,7 @@ Values observed
 .label video_update_signal = $8e			// synchronization flag - NOT to be confused with vsync
 .label room_bg0_shadow = $8f
 .label room_bg1_shadow = $90
-.label rebuild_action_sentence = $95
+.label needs_sentence_rebuild = $95
 
 .label video_processed_signal = $166b
 
@@ -487,11 +487,11 @@ They were definitely intended as debugging aids.
 .label var_camera_position = $ff69			//This would be var[2]
 .label var_msg_flag = $ff6a				//This would be var[3]
 .label var_current_room = $ff6b			//This would be var[4]
-.label var_active_io_lo = $ff6c	//This would be var[5]
+.label var_active_io_id_lo = $ff6c	//This would be var[5]
 .label var_destination_x = $ff6d			//This would be var[6]
 .label var_destination_y = $ff6e			//This would be var[7]
 .label var_music_playback_in_progress = $ff6f	//This would be var[8]
-.label var_active_verb_token = $ff70				//This would be var[9]
+.label var_active_verb_id = $ff70				//This would be var[9]
 .label var_message_length = $ff71			//This would be var[10]
 //FF72 and onwards are  no longer used as debugging variables
 .label kid_ids = $ffc8
@@ -512,7 +512,7 @@ They were definitely intended as debugging aids.
 .label actor_vars = $fee3
 
 .label room_scene_clicked_flag = $fd77
-.label click_trigger_sentence = $fe8e
+.label forced_sentence_trigger = $fe8e
 //Control mode values
 //#00 - cutscene
 //#01 - push only, verb forcefully set to "push" (no walking possible) - used for keypad interaction and start screen
@@ -564,10 +564,10 @@ They were definitely intended as debugging aids.
 //.label destination_entity = $fe51
 .label sentence_bar_needs_refresh = $fe49	//#00 = don't refresh the sentence bar, #01 = refresh it
 									//By "refresh", we mean to update its contents
-.label init_sentence_ui_and_queue_flag = $fe8f
+.label init_sentence_ui_flag = $fe8f
 .label sentq_index = $fe17
 .label sentq_free_slots = $fe18	
-.label current_verb = $fe1f
+.label current_verb_id = $fe1f
 .label direct_object_idx_lo = $fe20
 .label direct_object_idx_hi = $fe21
 .label preposition = $fe22
