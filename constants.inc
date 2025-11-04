@@ -194,3 +194,5 @@ game_paused_flag_msg:
 .const KEYPAD_CONTROL_MODE = $01
 .const NO_KID_CHANGE_CONTROL_MODE = $02
 .const NORMAL_CONTROL_MODE = $03
+
+.const FIRST_NON_KID_INDEX           = $08    // Recipient index ≥ $08 → not a kid
