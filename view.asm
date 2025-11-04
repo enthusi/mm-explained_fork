@@ -16,7 +16,7 @@ Global Inputs:
   - current_room, cam_target_pos, cam_current_pos
   - room_ptr_lo_tbl/room_ptr_hi_tbl, current_room_rsrc
   - room_gfx_layers_lo/hi, room_gfx_layers_active_ptr
-  - frame_buffer_base, frame_buffer, lights_status
+  - frame_buffer_base, frame_buffer, global_lights_state
   - snapshot tables per layer:
       *_src_tbl_lo/hi, *_emit_rem_tbl, *_run_symbol_tbl
   - dicts per layer: tile_dict4, color_dict4, mask_dict4
@@ -675,7 +675,7 @@ set_col_base_next:
   Global Inputs:
     frame_buffer                 selects active frame buffer; determines “other” source
     frame_buffer_base            16-bit base address of the active frame buffer (dest)
-    lights_status                1 → flashlight-only (forces in-place copy)
+    global_lights_state                1 → flashlight-only (forces in-place copy)
 
   Global Outputs:
     scroll_src                   16-bit source pointer (set per pass: tile/color/mask)
@@ -790,7 +790,7 @@ lscroll_set_dest_to_active_fb:
         /*------------------------------------------------------------
            If flashlight-only, switch to in-place copy (scroll_src := scroll_dest)
         ------------------------------------------------------------*/
-        lda     lights_status
+        lda     global_lights_state
         cmp     #$01
         bne     move_one_column_left
         lda     <frame_buffer_base
@@ -852,7 +852,7 @@ lscroll_copy_tiles_block:
   Global Inputs:
     frame_buffer             selects active frame buffer (1 → CC28, else C828)
     frame_buffer_base        16-bit base of the active frame buffer (scroll_dest)
-    lights_status            1 → flashlight-only mode (forces in-place copy)
+    global_lights_state            1 → flashlight-only mode (forces in-place copy)
 
   Global Outputs:
     scroll_src                   16-bit source pointer set per pass (tile/color/mask)
@@ -956,10 +956,10 @@ set_dest_to_active_fb:
 
         /*------------------------------------------------------------
            If flashlight-only, switch to in-place copy (src := dest)
-           - When lights_status == 1, read and write the same frame buffer
+           - When global_lights_state == 1, read and write the same frame buffer
            - Otherwise, proceed to offset source to column #1
         ------------------------------------------------------------*/
-        lda     lights_status                 // read lighting mode
+        lda     global_lights_state                 // read lighting mode
         cmp     #$01                          // 1 → flashlight-only
         bne     offset_src_to_col1            // not flashlight-only → keep double-buffer source
 

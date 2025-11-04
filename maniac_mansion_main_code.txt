@@ -1404,7 +1404,7 @@ queued_preps = $fe37
 queued_io_lo = $fe3d
 queued_io_hi = $fe43
 
-refresh_sentence_bar_flag = $fe49	;#00 = don't refresh the sentence bar, #01 = refresh it
+sentence_bar_needs_refresh = $fe49	;#00 = don't refresh the sentence bar, #01 = refresh it
 									;By "refresh", we mean to update its contents
 rsrc_released_flag = $fe4a
 
@@ -1466,7 +1466,7 @@ saved_room = $feaa
 ;#00	environment lights off, flashlights off
 ;#01	environment lights off, flashlight on
 ;#02	environment lights on
-lights_status = $feab
+global_lights_state = $feab
 engine_vars = $feac
 
 ;Actor_vars bit meanings when bit is set
@@ -2147,7 +2147,7 @@ update_actors:
 ;If not, continue
 .C:05ca  F0 12       BEQ make_walk_sounds
 ;Are the environment lights on? If not, continue
-.C:05cc  AD AB FE    LDA lights_status
+.C:05cc  AD AB FE    LDA global_lights_state
 .C:05cf  C9 02       CMP #$02
 .C:05d1  D0 03       BNE show_cursor
 ;Environment lights on, do the shutter effect
@@ -2166,9 +2166,9 @@ make_walk_sounds:
 ;--------------------------------------------------
 ; Flashlight beam handling
 ;--------------------------------------------------
-;Are env lights off and flashlight on? (lights_status == #01)
+;Are env lights off and flashlight on? (global_lights_state == #01)
 ;If not, skip to next section
-.C:05e1  AD AB FE    LDA lights_status
+.C:05e1  AD AB FE    LDA global_lights_state
 .C:05e4  C9 01       CMP #$01
 .C:05e6  D0 2F       BNE synchronize_on_video_update
 ;Lights_status is #01, so flashlight is the only source of light
@@ -2458,8 +2458,8 @@ exit:
 .C:074d  60          RTS
 ;===========================================
 alternate_frame_buffer:
-;If lights_status != #02 (environment lights on), exit
-.C:074e  AD AB FE    LDA lights_status
+;If global_lights_state != #02 (environment lights on), exit
+.C:074e  AD AB FE    LDA global_lights_state
 .C:0751  C9 02       CMP #$02
 .C:0753  D0 25       BNE exit
 ;Lights_status == #02, environment lights on
@@ -2686,7 +2686,7 @@ set_new_direct_object:
 .C:0849  8E 20 FE    STX direct_object_idx_lo
 .C:084c  8D 21 FE    STA direct_object_idx_hi
 .C:084f  A9 01       LDA #$01
-.C:0851  8D 49 FE    STA refresh_sentence_bar_flag
+.C:0851  8D 49 FE    STA sentence_bar_needs_refresh
 ;-------------------------------------------
 ;If we're in keypad mode, the sentence is not rendered, so don't rebuild it
 .C:0854  AD A8 FE    LDA control_mode
@@ -2699,7 +2699,7 @@ finalize_processing:
 ;We're done updating the complements
 ;Set the sentence bar as needing a refresh
 .C:085f  A9 01       LDA #$01
-.C:0861  8D 49 FE    STA refresh_sentence_bar_flag
+.C:0861  8D 49 FE    STA sentence_bar_needs_refresh
 ;Is the verb "walk to"?
 .C:0864  AD 1F FE    LDA current_verb
 .C:0867  C9 0D       CMP WALK_TO_VERB
@@ -2799,27 +2799,27 @@ preposition_needed:
 .C:08be  8D 22 FE    STA preposition
 ;Refresh the sentence with what we have so far
 .C:08c1  A9 01       LDA #$01
-.C:08c3  8D 49 FE    STA refresh_sentence_bar_flag
+.C:08c3  8D 49 FE    STA sentence_bar_needs_refresh
 ;Fall through
 ;===========================================
 ; Refresh the sentence bar contents
 ;
 ; The sentence bar will be refreshed only if both:
 ;
-;	-the refresh_sentence_bar_flag is True (nonzero)
+;	-the sentence_bar_needs_refresh is True (nonzero)
 ;	-control_mode is not keypad or cutscene
 ;===========================================
 refresh_sentence_bar:
 ;Do we need to refresh the sentence bar?
 ;If not, exit
-.C:08c6  AD 49 FE    LDA refresh_sentence_bar_flag
+.C:08c6  AD 49 FE    LDA sentence_bar_needs_refresh
 .C:08c9  D0 03       BNE check_control_mode
 .C:08cb  4C 6E 09    JMP exit
 check_control_mode:
 ;We have to refresh the sentence bar
 ;Clear the refresh sentence bar flag
 .C:08ce  A9 00       LDA #$00
-.C:08d0  8D 49 FE    STA refresh_sentence_bar_flag
+.C:08d0  8D 49 FE    STA sentence_bar_needs_refresh
 ;If we're in Cutscene or Keypad control mode, exit
 .C:08d3  AD A8 FE    LDA control_mode
 .C:08d6  C9 01       CMP #$01
@@ -3033,7 +3033,7 @@ select_kid:
 .C:09be  8D 1F FE    STA current_verb
 ;Refresh the sentence bar
 .C:09c1  A9 01       LDA #$01
-.C:09c3  8D 49 FE    STA refresh_sentence_bar_flag
+.C:09c3  8D 49 FE    STA sentence_bar_needs_refresh
 .C:09c6  20 C6 08    JSR refresh_sentence_bar
 ;Restore the selected kid index and execute the kid change
 .C:09c9  68          PLA
@@ -3044,7 +3044,7 @@ set_walk_and_exit:
 .C:09cd  A9 0D       LDA WALK_TO_VERB
 .C:09cf  8D 1F FE    STA current_verb
 .C:09d2  A9 01       LDA #$01
-.C:09d4  8D 49 FE    STA refresh_sentence_bar_flag
+.C:09d4  8D 49 FE    STA sentence_bar_needs_refresh
 .C:09d7  60          RTS
 ;===========================================
 ; Sets up a character's name so that it can be appended by append_word
@@ -3942,7 +3942,7 @@ room_obj_ofs = $17
 execute_verb_handler_for_object:
 ;Mark sentence bar for refreshing
 .C:0dc5  A9 01       LDA #$01
-.C:0dc7  8D 49 FE    STA refresh_sentence_bar_flag
+.C:0dc7  8D 49 FE    STA sentence_bar_needs_refresh
 ;Get the active object's resource
 .C:0dca  AE 1A FE    LDX active_do_lo
 .C:0dcd  AD 1B FE    LDA active_do_hi
@@ -3997,7 +3997,7 @@ exit_2:
 .C:0e15  60          RTS
 ;---------------------------------------
 check_read_verb:
-;Save verb index in stack, as we might need to use .A to check lights_status later
+;Save verb index in stack, as we might need to use .A to check global_lights_state later
 .C:0e16  48          PHA
 ;Check if the verb is "read"
 .C:0e17  AD 19 FE    LDA active_verb_token
@@ -4006,7 +4006,7 @@ check_read_verb:
 ;---------------------------------------
 ; "Read" verb handling - make sure there's a source of light
 ;---------------------------------------
-.C:0e1e  AD AB FE    LDA lights_status
+.C:0e1e  AD AB FE    LDA global_lights_state
 .C:0e21  D0 04       BNE run_handler
 ;---------------------------------------
 ;Lights status is #00 (Total darkness)
@@ -4639,7 +4639,7 @@ irq_handler2:
 .C:112f  8C FF CF    STY $CFFF
 ;------------------------------------------------
 ;Lights_status is #00? If so, set sprites 0-6 to dark gray
-.C:1132  AD AB FE    LDA lights_status
+.C:1132  AD AB FE    LDA global_lights_state
 .C:1135  F0 49       BEQ set_all_sprites_to_dark_gray
 ;------------------------------------------------
 ;Lights normal - set colors accordingly
@@ -10141,7 +10141,7 @@ wait_for_space_key:
 .C:292e  20 DF 18    JSR unpause_game
 ;Enable refreshing the sentence bar
 .C:2931  A9 01       LDA #$01
-.C:2933  8D 49 FE    STA refresh_sentence_bar_flag
+.C:2933  8D 49 FE    STA sentence_bar_needs_refresh
 ;Clear out the paused game message from the command bar
 .C:2936  A0 27       LDY #$27
 clear_game_paused_flag_msg:
@@ -10273,7 +10273,7 @@ init_sentence_ui_and_queue:
 .C:29cc  A9 00       LDA #$00
 .C:29ce  8D 51 FE    STA destination_entity
 .C:29d1  A9 01       LDA #$01
-.C:29d3  8D 49 FE    STA refresh_sentence_bar_flag
+.C:29d3  8D 49 FE    STA sentence_bar_needs_refresh
 ;Reset the sentence queue capacity
 .C:29d6  A9 06       LDA #$06
 .C:29d8  8D 18 FE    STA sentq_free_slots
@@ -15384,7 +15384,7 @@ frame_buffer_set:
 .C:421d  85 1A       STA >dest
 ;Are the lights off and the flashlight on?
 ;If not, continue
-.C:421f  AD AB FE    LDA lights_status
+.C:421f  AD AB FE    LDA global_lights_state
 .C:4222  C9 01       CMP #$01
 .C:4224  D0 08       BNE move_one_column_left
 ;Flashlight is the only source of light
@@ -15476,7 +15476,7 @@ frame_buffer_set:
 .C:427d  85 1A       STA >dest
 ;Are the lights off and the flashlight on?
 ;If not, continue
-.C:427f  AD AB FE    LDA lights_status
+.C:427f  AD AB FE    LDA global_lights_state
 .C:4282  C9 01       CMP #$01
 .C:4284  D0 08       BNE move_one_column_right
 ;Flashlight is the only source of light
@@ -23814,7 +23814,7 @@ restore_sentence_part:
 .C:67f8  20 8C 68    JSR set_control_mode
 ;Enable rendering the sentence bar
 .C:67fb  A9 01       LDA #$01
-.C:67fd  8D 49 FE    STA refresh_sentence_bar_flag
+.C:67fd  8D 49 FE    STA sentence_bar_needs_refresh
 exit:
 .C:6800  60          RTS
 ;===========================================
@@ -23959,7 +23959,7 @@ case_00:
 setup_cutscene:
 ;Clear sentence bar
 .C:6890  A9 00       LDA #$00
-.C:6892  8D 49 FE    STA refresh_sentence_bar_flag
+.C:6892  8D 49 FE    STA sentence_bar_needs_refresh
 .C:6895  A9 D0       LDA <SENTENCE_BAR_BASE
 .C:6897  85 19       STA $19
 .C:6899  A9 CE       LDA >SENTENCE_BAR_BASE
@@ -24208,12 +24208,12 @@ exit:
 ;===========================================
 ;Read lights status operand
 .C:69ab  20 98 5F    JSR script_load_operand_bit7
-.C:69ae  8D AB FE    STA lights_status
+.C:69ae  8D AB FE    STA global_lights_state
 ;map_in_io
 .C:69b1  A0 25       LDY #$25
 .C:69b3  84 01       STY cpu_port
 ;Are environment lights on? (status = #02?)
-.C:69b5  AD AB FE    LDA lights_status
+.C:69b5  AD AB FE    LDA global_lights_state
 .C:69b8  C9 02       CMP #$02
 .C:69ba  F0 0A       BEQ environment_lights_on
 ;-----------------------------------
@@ -25386,10 +25386,10 @@ init_game_engine:
 .C:859e  8D 1F FE    STA current_verb
 ;Enable refreshing the sentence bar
 .C:85a1  A9 01       LDA #$01
-.C:85a3  8D 49 FE    STA refresh_sentence_bar_flag
+.C:85a3  8D 49 FE    STA sentence_bar_needs_refresh
 ;Set environment lights on
 .C:85a6  A9 01       LDA #$01
-.C:85a8  8D AB FE    STA lights_status
+.C:85a8  8D AB FE    STA global_lights_state
 ;Set desired disk ID = game disk side 2
 .C:85ab  A9 32       LDA #$32		;Side 2 Disk ID
 .C:85ad  8D 9C FE    STA active_side_id		;Desired disk ID
@@ -26641,7 +26641,7 @@ init_sentence_ui_and_queue:
 .C:f444  8D 8F FE    STA init_sentence_ui_and_queue_flag
 refresh_sentence:
 .C:f447  A9 01       LDA #$01
-.C:f449  8D 49 FE    STA refresh_sentence_bar_flag
+.C:f449  8D 49 FE    STA sentence_bar_needs_refresh
 .C:f44c  60          RTS
 ;===================================================
 handle_click_on_action_bar:
@@ -26678,7 +26678,7 @@ item_not_in_possession:
 .C:f487  85 95       STA rebuild_action_sentence
 :
 .C:f489  A9 01       LDA #$01
-.C:f48b  8D 49 FE    STA refresh_sentence_bar_flag
+.C:f48b  8D 49 FE    STA sentence_bar_needs_refresh
 .C:f48e  60          RTS
 ;===================================================
 ; Handles a click on the inventory scroll arrows.

@@ -235,7 +235,7 @@ cursor_colors:
 // ------------------------------------------------------------
 // Lighting and visual-state flags
 // ------------------------------------------------------------
-.const LIGHTS_OFF                = $00    // lights_status sentinel for “lights off” mode
+.const LIGHTS_OFF                = $00    // global_lights_state sentinel for “lights off” mode
 
 // ------------------------------------------------------------
 // VIC-II control register presets
@@ -797,7 +797,7 @@ Global Inputs
 	cursor_sprite_color             cursor color nibble
 	cursor_sprite_y                 cursor Y position
 	sprite_shape_data_ptr           pointer to sprite shape table
-	lights_status                   0=dark mode, ≠0=normal
+	global_lights_state                   0=dark mode, ≠0=normal
 
 Global Outputs
 	irq_handler						next IRQ handler vector (set to irq_handler3)
@@ -809,7 +809,7 @@ Description
 	* Write cursor X low byte and horizontal expansion control.
 	* Write shape indices for the 0–3 strip via (sprite_shape_data_ptr),Y.
 	* Write the cursor shape into both screen-bank cursor slots.
-	* If lights_status==0, set sprites 0–6 to dark gray; else apply per-sprite
+	* If global_lights_state==0, set sprites 0–6 to dark gray; else apply per-sprite
 	  colors. Cursor color set unconditionally afterward.
 	* Set cursor Y; set sprites 0–6 Y to SPRITES_Y_ROW1.
 	* Acknowledge the VIC IRQ, set next raster line to NEXT_RASTER_LINE_H3, read
@@ -923,7 +923,7 @@ irq_handler2:
         // ------------------------------------------------------------
         // Colors: lights off → force dark gray; else per-sprite colors
         // ------------------------------------------------------------
-        lda     lights_status
+        lda     global_lights_state
         beq     set_all_sprites_to_dark_gray
 
         // ------------------------------------------------------------

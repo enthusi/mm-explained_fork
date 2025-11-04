@@ -48,16 +48,16 @@ Summary
 	refresh flag, then either exits or tail-calls the builder.
 
 Vars/State
-	refresh_sentence_bar_flag   nonzero → refresh requested
+	sentence_bar_needs_refresh   nonzero → refresh requested
 	control_mode                0=CUTSCENE, 1=KEYPAD, ≥2=normal gameplay
 
 Global Outputs
-	refresh_sentence_bar_flag   cleared on entry
+	sentence_bar_needs_refresh   cleared on entry
 	(sentence bar buffer updated indirectly via build_sentence_bar_text)
 
 Description
-	• Test refresh_sentence_bar_flag. If zero, return immediately.
-	• Clear refresh_sentence_bar_flag.
+	• Test sentence_bar_needs_refresh. If zero, return immediately.
+	• Clear sentence_bar_needs_refresh.
 	• Gate by control_mode:
 		– control_mode == KEYPAD_CONTROL_MODE → return.
 		– control_mode <= CUTSCENE → return.
@@ -71,7 +71,7 @@ refresh_sentence_bar:
 		//
 		// If zero → jump return_no_refresh; else → control-mode gate
 		// ------------------------------------------------------------	
-        lda     refresh_sentence_bar_flag      // A := refresh flag
+        lda     sentence_bar_needs_refresh      // A := refresh flag
         bne     gate_by_control_mode           // nonzero → proceed
         jmp     return_no_refresh              // zero → exit
 
@@ -84,7 +84,7 @@ refresh_sentence_bar:
 gate_by_control_mode:
         // Clear flag, then gate by control mode
         lda     #$00                           // A := 0
-        sta     refresh_sentence_bar_flag      // clear refresh flag
+        sta     sentence_bar_needs_refresh      // clear refresh flag
         lda     control_mode                   // A := control mode
         cmp     #KEYPAD_CONTROL_MODE           // compare with keypad mode
         beq     return_no_refresh              // keypad → exit
