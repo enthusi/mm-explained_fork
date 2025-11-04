@@ -1494,7 +1494,7 @@ mem_free_tail = $ff65
 ;===========================================================
 ; Game script variables
 ;===========================================================
-current_kid = $ff67
+current_kid_idx = $ff67
 game_vars = $ff67
 ;These vars are copies of some game engine variables.
 ;I did not find any usage of them in the final scripts.
@@ -1906,12 +1906,12 @@ start_game:
 .C:0498  85 25       STA >frame_buffer_base
 ;Set current kid to #03 (Dave)
 .C:049a  A9 03       LDA #$03
-.C:049c  8D 67 FF    STA current_kid
+.C:049c  8D 67 FF    STA current_kid_idx
 ;Set camera mode to #02 (follow costume)
 .C:049f  A9 02       LDA #$02
 .C:04a1  8D 6A 06    STA camera_mode
 ;Set costume to follow = current kid
-.C:04a4  AD 67 FF    LDA current_kid
+.C:04a4  AD 67 FF    LDA current_kid_idx
 .C:04a7  8D 6B 06    STA camera_costume_to_follow
 ;Set current script slot to #FF (no script)
 .C:04aa  A9 FF       LDA #$FF
@@ -1986,8 +1986,8 @@ main_loop:
 ; Debugging variables
 ;--------------------------------------------------
 ;Set debugging script variables
-.C:0507  AD 67 FF    LDA current_kid
-.C:050a  8D 67 FF    STA current_kid	;Redundant code
+.C:0507  AD 67 FF    LDA current_kid_idx
+.C:050a  8D 67 FF    STA current_kid_idx	;Redundant code
 .C:050d  AD 66 06    LDA camera_desired_position
 .C:0510  8D 69 FF    STA var_camera_position
 .C:0513  A5 C9       LDA topbar_mode
@@ -2529,7 +2529,7 @@ limit_verbs:
 ;Check if the current kid is dead or in the radiation suit
 ;If so, the verbs are limited
 ;If not, continue
-.C:079a  AE 67 FF    LDX current_kid
+.C:079a  AE 67 FF    LDX current_kid_idx
 .C:079d  BD E3 FE    LDA actor_vars,X
 .C:07a0  10 0C       BPL check_control_mode
 ;Kid is dead or in a suit, only "new kid" is allowed
@@ -3409,7 +3409,7 @@ is_verb_walk_to:
 ; Walk to location on screen (no specific object)
 ;----------------------------------------------
 ;Set the current kid as the character/costume in action
-.C:0b0e  AD 67 FF    LDA current_kid
+.C:0b0e  AD 67 FF    LDA current_kid_idx
 .C:0b11  8D 30 FC    STA active_costume
 ;Get the actor for the character
 .C:0b14  AE 30 FC    LDX active_costume
@@ -3431,7 +3431,7 @@ is_verb_walk_to:
 .C:0b37  8D 6E FF    STA var_destination_y
 ;Check if kid is frozen (when captured by an enemy)
 ;If so, we can't move, exit
-.C:0b3a  AE 67 FF    LDX current_kid
+.C:0b3a  AE 67 FF    LDX current_kid_idx
 .C:0b3d  BD E3 FE    LDA actor_vars,X
 .C:0b40  29 40       AND ACTOR_IS_FROZEN
 .C:0b42  D0 11       BNE exit
@@ -3541,14 +3541,14 @@ check_if_complements_are_identical:
 check_complements_in_inventory:
 ;Check if direct object is in inventory
 .C:0bc3  A9 01       LDA #$01
-.C:0bc5  20 AE 0E    JSR is_obj_in_current_kid_inventory
+.C:0bc5  20 AE 0E    JSR is_obj_in_current_kid_idx_inventory
 ;Returns #01 if it's in the inventory, #00 if not
 ;If object in inventory, set the active sentence parts
 .C:0bc8  C9 00       CMP #$00
 .C:0bca  D0 31       BNE set_active_sentence_parts
 ;Check if indirect object is in inventory
 .C:0bcc  A9 02       LDA #$02
-.C:0bce  20 AE 0E    JSR is_obj_in_current_kid_inventory
+.C:0bce  20 AE 0E    JSR is_obj_in_current_kid_idx_inventory
 ;Returns #01 if it's in the inventory, #00 if not
 ;If object in inventory, set the active sentence parts
 .C:0bd1  C9 00       CMP #$00
@@ -3655,7 +3655,7 @@ walk_to_indirect_object:
 .C:0c6d  8D 6D FF    STA var_destination_x
 .C:0c70  AD E7 FD    LDA dest_y
 .C:0c73  8D 6E FF    STA var_destination_y
-.C:0c76  AD 67 FF    LDA current_kid
+.C:0c76  AD 67 FF    LDA current_kid_idx
 .C:0c79  8D 30 FC    STA active_costume
 .C:0c7c  AA          TAX
 ;--------------------------------------------------
@@ -3710,7 +3710,7 @@ walk_to_direct_object:
 ;--------------------------------------------------
 ;Check if current kid is frozen
 ;If so, exit
-.C:0cbe  AD 67 FF    LDA current_kid
+.C:0cbe  AD 67 FF    LDA current_kid_idx
 .C:0cc1  8D 30 FC    STA active_costume
 .C:0cc4  AA          TAX
 .C:0cc5  BD E3 FE    LDA actor_vars,X
@@ -3735,7 +3735,7 @@ trigger_action_on_entity_contact:
 ;-------------------------------------------------------
 entry:
 ;Get the actor for the current kid
-.C:0cd8  AE 67 FF    LDX current_kid
+.C:0cd8  AE 67 FF    LDX current_kid_idx
 .C:0cdb  BD 57 FE    LDA actor_for_costume,X
 .C:0cde  AA          TAX
 ;Is the actor stopped? If not, exit
@@ -3760,7 +3760,7 @@ approach_entity:
 .C:0cfb  AC 51 FE    LDY destination_entity
 .C:0cfe  20 32 0F    JSR route_destination_by_entity_type
 ;Get the actor for the current kid
-.C:0d01  AE 67 FF    LDX current_kid
+.C:0d01  AE 67 FF    LDX current_kid_idx
 .C:0d04  BD 57 FE    LDA actor_for_costume,X
 .C:0d07  AA          TAX
 check_delta_x:
@@ -3832,7 +3832,7 @@ apply_facing_toward_destination:
 .C:0d52  A9 00       LDA #$00
 .C:0d54  8D E8 FD    STA clip_loop_cnt
 ;Set the costume in action
-.C:0d57  AD 67 FF    LDA current_kid
+.C:0d57  AD 67 FF    LDA current_kid_idx
 .C:0d5a  8D 30 FC    STA active_costume
 ;Setup the animation set
 .C:0d5d  20 20 27    JSR apply_animation_set
@@ -3892,7 +3892,7 @@ object_is_a_character:
 ;Save it as X destination
 .C:0d93  8D E6 FD    STA dest_x
 ;Get current kid's X position
-.C:0d96  AE 67 FF    LDX current_kid
+.C:0d96  AE 67 FF    LDX current_kid_idx
 .C:0d99  BD 57 FE    LDA actor_for_costume,X
 .C:0d9c  AA          TAX
 .C:0d9d  BD 41 FD    LDA actor_x_pos,X
@@ -4172,7 +4172,7 @@ exit:
 ;				#00 otherwise
 ;===========================================
 temp = $0e70
-is_obj_in_current_kid_inventory:
+is_obj_in_current_kid_idx_inventory:
 .C:0eae  8E 70 0E    STX temp_x
 ;Fetch index of current sentence part being analyzed
 .C:0eb1  AE 17 FE    LDX sentq_index
@@ -4189,21 +4189,21 @@ fetch_indirect_object:
 .C:0ec4  BD 43 FE    LDA queued_io_hi,X
 check_object_state: 
 ;The object's hi byte represents if it's in _somebody's_ inventory or not (#00 == in inventory)
-.C:0ec7  F0 03       BEQ check_in_current_kid_inventory
+.C:0ec7  F0 03       BEQ check_in_current_kid_idx_inventory
 ;Not in anyone's inventory, return #00
 .C:0ec9  A9 00       LDA #$00
 .C:0ecb  60          RTS
-check_in_current_kid_inventory:
+check_in_current_kid_idx_inventory:
 ;Check if the item is in the _current_ kid's inventory
 .C:0ecc  B9 01 73    LDA object_attributes,Y
 ;Low nibble of the object attributes represents which kid is the owner
 .C:0ecf  29 0F       AND #$0F
-.C:0ed1  CD 67 FF    CMP current_kid
-.C:0ed4  D0 05       BNE not_in_current_kid_inventory
+.C:0ed1  CD 67 FF    CMP current_kid_idx
+.C:0ed4  D0 05       BNE not_in_current_kid_idx_inventory
 ;It is in current kid's inventory - return #01
 .C:0ed6  A9 01       LDA #$01
 .C:0ed8  4C DD 0E    JMP exit
-not_in_current_kid_inventory:
+not_in_current_kid_idx_inventory:
 ;Not in current kid's inventory - return #00
 .C:0edb  A9 00       LDA #$00
 exit:
@@ -4296,7 +4296,7 @@ route_destination_by_entity_type:
 .C:0f3b  8D 65 0F    STA actor_approach_x_offset_pos_byte
 .C:0f3e  A9 FC       LDA #$FC
 .C:0f40  8D 6A 0F    STA actor_approach_x_offset_neg_byte
-.C:0f43  AC 67 FF    LDY current_kid
+.C:0f43  AC 67 FF    LDY current_kid_idx
 ;Fall through
 ;===========================================
 ; Set destination for actor:
@@ -10250,18 +10250,18 @@ switch_active_kid_if_different:
 ;Fetch the kid ID for the index
 .C:29af  BD C8 FF    LDA kid_ids,X	
 ;Is it already the current kid? If so, exit
-.C:29b2  CD 67 FF    CMP current_kid		
+.C:29b2  CD 67 FF    CMP current_kid_idx		
 .C:29b5  D0 01       BNE change_to_new_kid
 .C:29b7  60          RTS
 change_to_new_kid:
 ;Set the new kid
-.C:29b8  8D 67 FF    STA current_kid
-.C:29bb  8D 67 FF    STA current_kid
+.C:29b8  8D 67 FF    STA current_kid_idx
+.C:29bb  8D 67 FF    STA current_kid_idx
 ;Stop script execution
 .C:29be  A9 FF       LDA #$FF
 .C:29c0  8D B8 70    STA current_script_slot
 ;Fix camera on the new kid actor
-.C:29c3  AD 67 FF    LDA current_kid
+.C:29c3  AD 67 FF    LDA current_kid_idx
 .C:29c6  20 23 68    JSR fix_camera_on_actor
 ;Refresh inventory displayed
 .C:29c9  20 2B 5F    JSR refresh_items_displayed
@@ -14036,7 +14036,7 @@ cursor_within_actor_box:
 .C:3c2c  BD 53 FE    LDA costume_for_actor,X
 ;Is it the current kid?
 ;If so, continue with next actor
-.C:3c2f  CD 67 FF    CMP current_kid
+.C:3c2f  CD 67 FF    CMP current_kid_idx
 .C:3c32  F0 04       BEQ next_actor
 ;It's not the kid, so we found a different actor
 ;Set the character index in .X, return #02
@@ -19651,7 +19651,7 @@ next_costume:
 .C:568b  A2 08       LDX #$08
 check_eligibility:
 ;Is it the current kid? If so, continue
-.C:568d  EC 67 FF    CPX current_kid
+.C:568d  EC 67 FF    CPX current_kid_idx
 .C:5690  F0 21       BEQ next_costume_2
 ;Is it loaded in memory? If not, continue
 .C:5692  BD 61 78    LDA costume_ptr_hi_tbl,X
@@ -22762,9 +22762,9 @@ copy_loop:
 ;Mark object as stored in parent object
 ;Mark object as removed from room (to stop drawing its original state in the future)
 .C:62fc  09 A0       ORA #$A0
-;Set current_kid as object owner
+;Set current_kid_idx as object owner
 .C:62fe  29 F0       AND #$F0
-.C:6300  0D 67 FF    ORA current_kid
+.C:6300  0D 67 FF    ORA current_kid_idx
 .C:6303  99 01 73    STA object_attributes,Y
 ;Set default camera position
 .C:6306  A9 C8       LDA #$C8
@@ -22802,7 +22802,7 @@ room_loaded:
 object_index = $15
 object_state = $16
 
-.C:632d  AE 67 FF    LDX current_kid
+.C:632d  AE 67 FF    LDX current_kid_idx
 ;Check if kid is frozen (as when captured by an enemy)
 .C:6330  BD E3 FE    LDA actor_vars,X
 .C:6333  29 40       AND ACTOR_IS_FROZEN
@@ -22819,7 +22819,7 @@ entry:
 ;Read room index
 .C:6344  20 14 5E    JSR script_read_byte
 ;Set room for current kid
-.C:6347  AE 67 FF    LDX current_kid
+.C:6347  AE 67 FF    LDX current_kid_idx
 .C:634a  9D FC FE    STA costume_room_idx,X
 ;Load the room
 .C:634d  AA          TAX
@@ -22841,13 +22841,13 @@ object_found:
 ;Set the destination based on the object's position
 .C:6362  20 75 0F    JSR set_actor_destination_to_object
 ;Move the current kid to the position
-.C:6365  AD 67 FF    LDA current_kid
+.C:6365  AD 67 FF    LDA current_kid_idx
 .C:6368  8D 30 FC    STA active_costume
 .C:636b  AD 49 71    LDA current_room
 .C:636e  8D EA FD    STA room_destination
 .C:6371  20 9C 26    JSR teleport_costume_to_destination
 ;Set the camera position at the kid's position
-.C:6374  AE 67 FF    LDX current_kid
+.C:6374  AE 67 FF    LDX current_kid_idx
 .C:6377  BD 57 FE    LDA actor_for_costume,X
 .C:637a  AA          TAX
 .C:637b  BD 41 FD    LDA actor_x_pos,X
@@ -23120,7 +23120,7 @@ exit:
 .C:6470  60          RTS
 ;===========================================
 ;Opcode #75 - player says message
-.C:6471  AD 67 FF    LDA current_kid
+.C:6471  AD 67 FF    LDA current_kid_idx
 .C:6474  8D 9A FE    STA talking_costume
 ;===========================================
 src_msg_ptr = $15
@@ -23143,7 +23143,7 @@ actor_says_message:
 ;===========================================
 ;Opcode #0D - player says message
 ;===========================================
-.C:648f  AD 67 FF    LDA current_kid
+.C:648f  AD 67 FF    LDA current_kid_idx
 .C:6492  8D 9A FE    STA talking_costume
 ;===========================================
 offset = $15
@@ -23799,7 +23799,7 @@ other_control_modes:
 ;Unfreeze all scripts
 .C:67e3  20 6C 67    JSR unfreeze_all_scripts
 ;Fix camera on the current kid
-.C:67e6  AD 67 FF    LDA current_kid
+.C:67e6  AD 67 FF    LDA current_kid_idx
 .C:67e9  20 1C 68    JSR fix_camera_on_actor_2
 ;Restore sentence parts
 .C:67ec  A2 05       LDX #$05
@@ -26884,7 +26884,7 @@ check_possession:
 ;Get the low nibble, which represents which character ID possesses the item
 .C:f584  29 0F       AND #$0F		
 ;Is it the current kid?
-.C:f586  CD 67 FF    CMP current_kid
+.C:f586  CD 67 FF    CMP current_kid_idx
 ;If not, skip
 .C:f589  D0 07       BNE next_item
 ;If it is, count down
@@ -26923,7 +26923,7 @@ check_item:
 .C:f5a5  BD 01 73    LDA object_attributes,X
 ;Check if they are in the current kid's inventory
 .C:f5a8  29 0F       AND #$0F
-.C:f5aa  CD 67 FF    CMP current_kid
+.C:f5aa  CD 67 FF    CMP current_kid_idx
 ;If not, skip
 .C:f5ad  D0 03       BNE next_item
 ;They are in the inventory, so increment the counter

@@ -1411,8 +1411,8 @@ advance_lock_scan:
 
 scan_for_evict:
         // Do not evict the active character:
-        // CPX current_kid sets Z=1 when X == current_kid; BEQ ⇒ skip this entry.
-        cpx current_kid
+        // CPX current_kid_idx sets Z=1 when X == current_kid_idx; BEQ ⇒ skip this entry.
+        cpx current_kid_idx
         beq advance_costume_evict_scan
 
         // Candidate must be resident:

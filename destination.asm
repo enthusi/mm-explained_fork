@@ -36,7 +36,7 @@ Summary:
 Global Inputs:
     destination_obj_hi           Destination object type (hi byte)
     destination_obj_lo           Destination object index (lo byte)
-    current_kid                  Costume/actor initiating the facing
+    current_kid_idx                  Costume/actor initiating the facing
 
 Global Outputs:
     saved_facing_clip_id  Saved base facing clip id
@@ -45,7 +45,7 @@ Global Outputs:
     active_costume               Active costume to apply clip on
 
 Description:
-    • Query the facing clip toward the destination and apply it to current_kid.
+    • Query the facing clip toward the destination and apply it to current_kid_idx.
     • If the destination is an actor (type $02) and not the plant (id $13),
       mirror the clip’s left/right bit and apply it to that destination actor.
 ================================================================================
@@ -53,7 +53,7 @@ Description:
 * = $0D49
 apply_facing_toward_destination:
         // ------------------------------------------------------------
-        // Get facing clip toward destination and apply to current_kid
+        // Get facing clip toward destination and apply to current_kid_idx
         // ------------------------------------------------------------
         jsr     select_facing_clip_for_destination   // A := facing clip id
         sta     saved_facing_clip_id                // save base clip
@@ -62,7 +62,7 @@ apply_facing_toward_destination:
         lda     #LOOP_ONE_SHOT                             // one-shot playback
         sta     clip_loop_cnt
 
-        lda     current_kid                                // select standing kid
+        lda     current_kid_idx                                // select standing kid
         sta     active_costume
         jsr     apply_clip_set                        	   // apply facing clip
 
@@ -111,7 +111,7 @@ Returns:
 Global Inputs:
      destination_obj_hi               destination type (hi byte)
      destination_obj_lo               destination index (lo byte)
-     current_kid                      active kid costume index
+     current_kid_idx                      active kid costume index
      actor_for_costume                table: costume → actor index
      actor_x_pos                      table: actor → X position
      destination_entity               object index or $FF
@@ -150,7 +150,7 @@ select_facing_clip_for_destination:
         sta     dest_x
 
         // Load current kid’s X into A
-        ldx     current_kid
+        ldx     current_kid_idx
         lda     actor_for_costume,x
         tax
         lda     actor_x_pos,x
@@ -200,7 +200,7 @@ Arguments
 		If object: destination object index
 
 Global Inputs
-	current_kid                    player-controlled actor index
+	current_kid_idx                    player-controlled actor index
 
 Global Outputs
 	actor_approach_x_offset_pos_byte  +X approach offset for actor targets
@@ -209,7 +209,7 @@ Global Outputs
 Description
 	- Save incoming Y to a temp slot.
 	- If A != #$02, branch to object-handling routine.
-	- For actor targets, set ±4 approach offsets and load Y := current_kid,
+	- For actor targets, set ±4 approach offsets and load Y := current_kid_idx,
 	then fall through to the actor-specific handler.
 
 Notes
@@ -230,8 +230,8 @@ route_destination_by_entity_type:
 		lda     #ACTOR_APPROACH_X_OFFSET_NEG
 		sta     actor_approach_x_offset_neg_byte
 
-		// Use current_kid as working Y, then fall through to actor handler
-		ldy     current_kid
+		// Use current_kid_idx as working Y, then fall through to actor handler
+		ldy     current_kid_idx
 		// fall through to set_actor_destination_adjacent_to_actor
 /*
 ==========================================================================

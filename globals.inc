@@ -477,7 +477,7 @@ Possible mouth state values
  Game script variables
 ===========================================================
 */
-.label current_kid = $ff67
+.label current_kid_idx = $ff67
 .label game_vars = $ff67
 /*
 These vars are copies of some game engine variables.
