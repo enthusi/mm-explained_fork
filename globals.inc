@@ -493,9 +493,9 @@ They were definitely intended as debugging aids.
 .label var_message_length = $ff71			//This would be var[10]
 //FF72 and onwards are  no longer used as debugging variables
 .label kid_ids = $ffc8
-.label first_kid_id = $FFC8
-.label second_kid_id = $FFC9
-.label third_kid_id = $FFCA
+.label kid1_costume_id = $FFC8
+.label kid2_costume_id = $FFC9
+.label kid3_costume_id = $FFCA
 .label costume_room_idx = $fefc	 //The CURRENT room where a costume is present
 
 /*
