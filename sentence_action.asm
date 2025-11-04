@@ -1,3 +1,180 @@
+/*
+================================================================================
+Sentence/action system
+================================================================================
+
+Summary
+	This module powers the point-and-click “sentence” UX: pick a verb, then
+	zero or more complements (direct object, optional preposition, optional
+	indirect object). It keeps a small queue of pending sentences, decides when
+	to walk first vs act immediately, and dispatches either per-object verb
+	handlers or global defaults.
+	
+Terminology
+		DO		Direct object
+		IO		Indirect object
+
+Core data
+
+	* Current picks (UI state): current_verb_id, direct_object_idx_{lo,hi},
+	  preposition, indirect_object_idx_{lo,hi}.
+	* Queue (up to 6): parallel arrays of verb/prep/DO/IO plus sentstk_top_idx
+	  (top) and sentstk_free_slots (capacity).
+	* “Active” copy: once a stacked sentence is selected to run, its tokens are
+	  mirrored into active_* so execution code has a stable snapshot.
+	* Destination: destination_entity plus dest_{x,y} are used to route walking
+	  targets and stage paths. var_destination_{x,y} mirror the clamped target
+	  for scripts/debug.
+
+Main loop
+	process_sentence:
+
+		1. Optional reset of DO/IO/preposition if init_sentence_ui_flag is set.
+		2. If the current kid is incapacitated, restrict verbs to “New kid”.
+		3. Control-mode branch:
+
+		   * Cutscene: only try to run completed sentences.
+		   * Keypad: force PUSH verb and bypass walking later.
+		   * Normal: if verb == “What is?”, set a “forced trigger”.
+		4. Forced trigger path:
+
+		   * If verb = GIVE and a preposition is set, pick an actor under cursor
+			 as IO; else pick an object under cursor.
+		   * Update DO or IO, guarding DO == IO and setting UI-rebuild flags when
+			 selections repeat. Always request a sentence-bar refresh.
+		5. If verb is Walk to, clear destination_entity and mark a rebuild (so UI
+		   reflects the bare walk). Then fall into run_sentence_if_complete.
+
+Completion gate
+	run_sentence_if_complete:
+
+		* Always refresh the bar first. If a “rebuild needed” flag was set, clear
+		  it and continue.
+		* If no verb, just refresh again and exit.
+		* NEW KID → handle_new_kid_verb.
+		* WALK TO → can execute without objects → dispatch_or_push_action.
+		* Other verbs:
+
+		  * Require a DO. If missing, refresh and exit.
+		  * If a preposition is required and missing, call select_preposition_for_verb.
+			If it returns none, we can run. Otherwise store it, mark refresh, and
+			exit until the user picks an IO.
+		  * If we have a preposition but no IO yet, refresh and exit.
+		  * With all parts present → dispatch_or_push_action.
+
+“New kid”
+	handle_new_kid_verb:
+
+		* Only in NORMAL_CONTROL_MODE. Cursor X chooses kid0/1/2 by name columns.
+		* Refresh UI, call switch_active_kid_if_different, then normalize back to
+		  WALK TO and request refresh.
+
+Dispatch vs queue
+	dispatch_or_push_action:
+
+		* Reset queue bookkeeping (free slots to max, head to “empty” sentinel).
+		* If verb == WHAT IS → do nothing and return.
+		* If verb != WALK TO or DO is present → push_sentence:
+
+		  * Advance sentstk_top_idx and store current tokens to stacked_* arrays.
+		  * If verb wasn’t WALK TO, reset the UI to WALK TO and clear DO+prep.
+		  * Clear destination_entity and return.
+		* Bare WALK TO (no DO):
+
+		  * Resolve acting entity from current kid and copy cursor coords to dest.
+		  * Clamp to walkable space, publish var_destination_{x,y}.
+		  * If kid is frozen, stop here.
+		  * Otherwise write actor_x_dest/y_dest and call snap_and_stage_path_update.
+
+Queued execution
+	process_sentence_queue_entry:
+
+		* If a destination is already active, exit. If queue empty, exit.
+		* Drop sentences whose DO == IO.
+		* Inventory check in priority order:
+
+		  * If either DO or IO is already in current kid’s inventory, proceed.
+		  * Else try to push a “Pick up <obj>” sentence for DO, else IO, but
+			only if the object has a custom Pick Up handler. If neither can be
+			picked up, drop the sentence.
+		* Activate the current sentence by copying stacked_* → active_* and pop the
+		  queue (with underflow reset protection).
+		* Decide walk vs execute:
+
+		  * If DO is in inventory and there is no preposition → execute now.
+		  * If a preposition exists, ensure IO is also in inventory; if not, walk
+			to IO first.
+		  * If DO is not in inventory:
+
+			* In KEYPAD mode: execute now, no walking.
+			* Otherwise walk to DO.
+
+Verb execution
+	execute_verb_handler_for_object:
+
+		* Refresh bar, resolve the active DO’s resource, and look up a custom
+		  handler for active_verb_id via find_object_verb_handler_offset.
+		* If none:
+
+		  * GIVE: if recipient is a kid, transfer ownership (owner nibble) and
+			refresh inventory; then return.
+		  * WALK TO: return.
+		  * Else run the global defaults script (#3).
+		* Guard: READ requires lights; if dark, fall back to global defaults.
+		* If a custom handler exists: compute its script offset from the object’s
+		  base, set script read address, and execute_next_operation.
+
+Helper scans and guards
+	find_object_verb_handler_offset:
+
+		* Scans the object’s handler table starting at +$0E: {verb_id, offset}
+		  pairs, terminated by 0. A special “default” id (#$0F) matches any verb.
+		  Returns offset on match. Returns #$00 if absent and verb ≠ WALK TO,
+		  or #$0D if absent and verb == WALK TO.
+
+	has_pickup_script_for_sentence_part:
+
+		* Select DO or IO from the stacked entry at sentstk_top_idx. Reject actors.
+		  Resolve the object and check for a PICK_UP_VERB handler. Returns 1 if
+		  present.
+
+	is_sentence_object_owned_by_current_kid:
+
+		* Given DO vs IO selector, read the stacked object. If its hi byte says
+		  “in some inventory”, compare the owner nibble against current_kid_idx
+		  and return 1 if it matches, else 0.
+
+	push_pickup_for_sentence_part:
+
+		* Append a “Pick Up <obj>” sentence for the selected complement. Validates
+		  queue bounds and enters a visible debug hang if overflow occurs.
+
+Kid switching and UI reset
+	switch_active_kid_if_different:
+
+		* Change current_kid_idx if needed, stop any running script, recenter the
+		  camera, refresh inventory, then fall through to init_sentence_ui_and_queue.
+
+	init_sentence_ui_and_queue:
+
+		* Clear destination, force a bar refresh, reset queue capacity and head,
+		  set default verb to WALK TO, and clear DO/prep/IO.
+
+Typical traces
+
+	* “Walk to” click on floor: bare WALK TO path clamps cursor position into a
+	  walkable box and stages a path unless frozen.
+	* “Use key on door”: ensure DO “key” is in inventory or push a “Pick up
+	  key” first. If a preposition selects “with/door” and IO is not in
+	  inventory, walk to door first. When ready, execute custom handler or
+	  default.
+	* “Give coin to kid”: if IO is a kid, ownership is updated and inventory
+	  refreshes without running a script.
+================================================================================
+*/
+
+Source: 
+
 #importonce
 #import "globals.inc"
 #import "constants.inc"
@@ -23,12 +200,12 @@
 
 //Queued sentence parts (verbs, direct objects, indirect objects, prepositions)
 //Each queue has a maximum size of 6 elements
-.label queued_verb_ids = $fe25
-.label queued_do_id_lo = $fe2b
-.label queued_do_id_hi = $fe31
-.label queued_prep_ids = $fe37
-.label queued_io_id_lo = $fe3d
-.label queued_io_id_hi = $fe43
+.label stacked_verb_ids = $fe25
+.label stacked_do_id_lo = $fe2b
+.label stacked_do_id_hi = $fe31
+.label stacked_prep_ids = $fe37
+.label stacked_io_id_lo = $fe3d
+.label stacked_io_id_hi = $fe43
 
 .label active_verb_id = $fe19
 .label active_do_id_lo = $fe1a
@@ -255,7 +432,7 @@ run_sentence_if_complete:
         // ------------------------------------------------------------
         // Run a sentence if all required parts are available.
         //
-        // - If the verb has all necessary components → execute via dispatch_or_enqueue_action.
+        // - If the verb has all necessary components → execute via dispatch_or_push_action.
         // - If parts are missing → refresh the sentence bar and exit.
         // - Special cases handled:
         //      NEW_KID_VERB  → delegate to handle_new_kid_verb
@@ -287,7 +464,7 @@ dispatch_new_kid_or_next:
 dispatch_walkto_or_need_do:
         cmp     #WALK_TO_VERB
         bne     require_direct_object_or_refresh
-        jmp     dispatch_or_enqueue_action                   // can execute immediately
+        jmp     dispatch_or_push_action                   // can execute immediately
 
         // ------------------------------------------------------------
         // Handle verbs requiring a direct object
@@ -311,7 +488,7 @@ resolve_preposition_and_io:
         // All parts ready → execute
         // ------------------------------------------------------------
 commit_execute_sentence:
-        jmp     dispatch_or_enqueue_action
+        jmp     dispatch_or_push_action
 
         // ------------------------------------------------------------
         // Preposition determination path
@@ -319,7 +496,7 @@ commit_execute_sentence:
 select_preposition_for_current_verb_id:
         jsr     select_preposition_for_verb
         bne     save_preposition_and_request_ui_refresh
-        jmp     dispatch_or_enqueue_action                   // no prep required → execute
+        jmp     dispatch_or_push_action                   // no prep required → execute
 
 save_preposition_and_request_ui_refresh:
         sta     preposition                      // save selected preposition
@@ -387,9 +564,9 @@ set_walk_and_exit:
 * = $0B9C
 process_sentence_queue_entry:
         // ------------------------------------------------------------
-        // Handle one queued sentence.
+        // Handle one stacked sentence.
         //
-        // This processes a queued verb sentence into either:
+        // This processes a stacked verb sentence into either:
         // - Walking toward a needed object, or
         // - Immediate verb execution if all parts are ready.
         //
@@ -401,7 +578,7 @@ process_sentence_queue_entry:
         rts                                    // destination active → exit
 
 check_queue_nonempty:
-        ldx     sentq_index
+        ldx     sentstk_top_idx
         bpl     check_same_complements
         rts                                    // queue empty → exit
 
@@ -409,18 +586,18 @@ check_queue_nonempty:
         // Skip identical complement sentences (DO == IO)
         // ------------------------------------------------------------
 check_same_complements:
-        lda     queued_prep_ids,x
+        lda     stacked_prep_ids,x
         beq     set_active_sentence_tokens       // no preposition → skip test
 
-        lda     queued_do_id_lo,x
+        lda     stacked_do_id_lo,x
         beq     verify_inventory_status  // no DO → skip identical check
-        cmp     queued_io_id_lo,x
+        cmp     stacked_io_id_lo,x
         bne     verify_inventory_status
-        lda     queued_do_id_hi,x
-        cmp     queued_io_id_hi,x
+        lda     stacked_do_id_hi,x
+        cmp     stacked_io_id_hi,x
         bne     verify_inventory_status
 
-        dec     sentq_index            // identical DO/IO → drop sentence
+        dec     sentstk_top_idx            // identical DO/IO → drop sentence
         rts
 
         // ------------------------------------------------------------
@@ -443,7 +620,7 @@ verify_inventory_status:
         cmp     #$01
         bne     try_indirect_object_pickup
         lda     #$01
-        jsr     enqueue_pickup_for_sentence_part
+        jsr     push_pickup_for_sentence_part
         rts
 
 try_indirect_object_pickup:
@@ -452,40 +629,40 @@ try_indirect_object_pickup:
         cmp     #$01
         bne     drop_sentence_no_pickup_available
         lda     #$02
-        jsr     enqueue_pickup_for_sentence_part
+        jsr     push_pickup_for_sentence_part
         rts
 
 drop_sentence_no_pickup_available:
-        dec     sentq_index            // no pickup scripts → drop sentence
+        dec     sentstk_top_idx            // no pickup scripts → drop sentence
         rts
 
         // ------------------------------------------------------------
         // Activate current sentence: copy into active_* vars
         // ------------------------------------------------------------
 set_active_sentence_tokens:
-        ldy     sentq_index
-        lda     queued_verb_ids,y
+        ldy     sentstk_top_idx
+        lda     stacked_verb_ids,y
         sta     active_verb_id
-        lda     queued_do_id_lo,y
+        lda     stacked_do_id_lo,y
         sta     active_do_id_lo
-        lda     queued_do_id_hi,y
+        lda     stacked_do_id_hi,y
         sta     active_do_id_hi
-        lda     queued_prep_ids,y
+        lda     stacked_prep_ids,y
         sta     active_prep_id
-        lda     queued_io_id_lo,y
+        lda     stacked_io_id_lo,y
         sta     active_io_id_lo
-        lda     queued_io_id_hi,y
+        lda     stacked_io_id_hi,y
         sta     active_io_id_hi
 
-        dec     sentq_index
-        dec     sentq_free_slots
+        dec     sentstk_top_idx
+        dec     sentstk_free_slots
         bpl     queue_capacity_ok
 
         // queue underflow → reset state
         lda     #SENT_QUEUE_EMPTY_IDX
-        sta     sentq_index
+        sta     sentstk_top_idx
         lda     #SENT_QUEUE_MAX_TOKENS
-        sta     sentq_free_slots
+        sta     sentstk_free_slots
         rts
 
         // ------------------------------------------------------------
@@ -576,7 +753,7 @@ exit_process_sentence_queue_entry:
         rts
 
 * = $0AF3
-dispatch_or_enqueue_action:
+dispatch_or_push_action:
         // ------------------------------------------------------------
         // Reset sentence-queue bookkeeping
 		//
@@ -585,10 +762,10 @@ dispatch_or_enqueue_action:
         // capacity decrementing occurs elsewhere.
         // ------------------------------------------------------------		
         lda     #SENT_QUEUE_MAX_TOKENS          
-        sta     sentq_free_slots     // Reset free-slot counter; decremented elsewhere
+        sta     sentstk_free_slots     // Reset free-slot counter; decremented elsewhere
 
         lda     #SENT_QUEUE_EMPTY_IDX            
-        sta     sentq_index             // Reset head to “no entries” for pre-increment use
+        sta     sentstk_top_idx             // Reset head to “no entries” for pre-increment use
 
         // ------------------------------------------------------------
         // Early exit for “What is?” verb
@@ -607,15 +784,15 @@ dispatch_or_enqueue_action:
 		//
         // Distinguishes between a bare “Walk to” (no object selected)
         // and a full “Walk to <object>” action. Non–walk-to verbs or
-        // walk-to with object are queued for later execution; only a
+        // walk-to with object are stacked for later execution; only a
         // bare walk-to proceeds to immediate movement.
         // ------------------------------------------------------------
 handle_walk_to:
         cmp     #WALK_TO_VERB                   // Z=1 if current verb is "Walk to"
-        bne     enqueue_sentence                // Different verb → enqueue full sentence
+        bne     push_sentence                // Different verb → push full sentence
 
         lda     direct_object_idx_lo            // Test DO presence using low byte
-        bne     enqueue_sentence                // DO present → treat as full action and enqueue
+        bne     push_sentence                // DO present → treat as full action and push
 
         // ------------------------------------------------------------
         // “Walk to” verb with no object → walk to cursor location
@@ -670,7 +847,7 @@ handle_walk_to:
         ldx     current_kid_idx                    
         lda     actor_vars,x                   // Load actor’s state flags
         and     ACTOR_IS_FROZEN                // Mask bit(s) indicating frozen state
-        bne     exit_dispatch_or_enqueue_action            // If frozen → skip path setup and exit routine
+        bne     exit_dispatch_or_push_action            // If frozen → skip path setup and exit routine
 
         // ------------------------------------------------------------
         // Stage path to destination
@@ -687,44 +864,44 @@ handle_walk_to:
         sta     actor_y_dest,x                 // Commit actor’s vertical destination
 
         jsr     snap_and_stage_path_update     // Build and stage walking path toward dest_x/dest_y
-exit_dispatch_or_enqueue_action:
+exit_dispatch_or_push_action:
         rts
 
         // ------------------------------------------------------------
         // Queue a complete sentence for later execution
         // ------------------------------------------------------------
-enqueue_sentence:
+push_sentence:
         // ------------------------------------------------------------
         // Advance queue index
 		//
-        // Increments sentq_index to point to the next free
-        // slot and loads it into X for writing the queued sentence
+        // Increments sentstk_top_idx to point to the next free
+        // slot and loads it into X for writing the stacked sentence
         // tokens.
         // ------------------------------------------------------------
-        inc     sentq_index           // Advance queue pointer to next free slot
-        ldx     sentq_index           // X := current queue entry index for storing tokens
+        inc     sentstk_top_idx           // Advance queue pointer to next free slot
+        ldx     sentstk_top_idx           // X := current queue entry index for storing tokens
 
         // ------------------------------------------------------------
         // Write current sentence tokens into queue entry X
 		//
         // Stores: verb, DO lo/hi, preposition, IO lo/hi into the
-        // parallel queued_sentence_* arrays at index X.
+        // parallel stacked_sentence_* arrays at index X.
         // ------------------------------------------------------------
         lda     current_verb_id                    
-        sta     queued_verb_ids,x         
+        sta     stacked_verb_ids,x         
 
         lda     direct_object_idx_lo            	 
-        sta     queued_do_id_lo,x  
+        sta     stacked_do_id_lo,x  
         lda     direct_object_idx_hi            	 
-        sta     queued_do_id_hi,x  
+        sta     stacked_do_id_hi,x  
 		
         lda     preposition                    		 
-        sta     queued_prep_ids,x  	 
+        sta     stacked_prep_ids,x  	 
 
         lda     indirect_object_idx_lo          		
-        sta     queued_io_id_lo,x  	
+        sta     stacked_io_id_lo,x  	
         lda     indirect_object_idx_hi          		
-        sta     queued_io_id_hi,x   
+        sta     stacked_io_id_hi,x   
 
         // ------------------------------------------------------------
         // Post-queue verb reset gate
@@ -758,7 +935,7 @@ enqueue_sentence:
 finalize_and_exit:
         lda     #$00                            // Prepare clear value
         sta     destination_entity              // Reset destination entity marker (none targeted)
-        rts                                     // Return → sentence queued or action completed
+        rts                                     // Return → sentence stacked or action completed
 
 
 * = $0DC5
@@ -972,7 +1149,7 @@ return_handler_offset:
 Returns whether an object has a custom "pick up" script.
 
 Summary:
-Checks the queued sentence’s direct or indirect object for a custom Pick Up
+Checks the stacked sentence’s direct or indirect object for a custom Pick Up
 handler. Returns A = #$01 if a script exists, else #$00. Preserves X and Y.
 
 Arguments:
@@ -984,7 +1161,7 @@ Returns:
                 #$00 otherwise
 
 Description:
-- Selects DO or IO from the sentence queue slot at sentq_index.
+- Selects DO or IO from the sentence queue slot at sentstk_top_idx.
 - Rejects objects with hi == #$02 as non-recipients.
 - Resolves object resource and queries verb handler for PICK_UP_VERB.
 ================================================================================
@@ -1001,7 +1178,7 @@ has_pickup_script_for_sentence_part:
         // ------------------------------------------------------------
         // Load current queue index into Y
         // ------------------------------------------------------------
-        ldy     sentq_index
+        ldy     sentstk_top_idx
 
         // ------------------------------------------------------------
         // DO vs IO selector: A == #ARG_IS_DO → direct object
@@ -1012,16 +1189,16 @@ has_pickup_script_for_sentence_part:
         // ------------------------------------------------------------
         // Load direct object index (lo→X, hi→A)
         // ------------------------------------------------------------
-        ldx     queued_do_id_lo,y
-        lda     queued_do_id_hi,y
+        ldx     stacked_do_id_lo,y
+        lda     stacked_do_id_hi,y
         jmp     check_actor_class
 
 load_indirect_object_index:
         // ------------------------------------------------------------
         // Load indirect object index (lo→X, hi→A)
         // ------------------------------------------------------------
-        ldx     queued_io_id_lo,y
-        lda     queued_io_id_hi,y
+        ldx     stacked_io_id_lo,y
+        lda     stacked_io_id_hi,y
 
 check_actor_class:
         // ------------------------------------------------------------
@@ -1094,7 +1271,7 @@ is_sentence_object_owned_by_current_kid:
         // ------------------------------------------------------------
         // Fetch index of current sentence part being analyzed
         // ------------------------------------------------------------
-        ldx     sentq_index
+        ldx     sentstk_top_idx
 
         // ------------------------------------------------------------
         // Are we checking for a direct object?
@@ -1105,16 +1282,16 @@ is_sentence_object_owned_by_current_kid:
         // ------------------------------------------------------------
         // Direct object path
         // ------------------------------------------------------------
-        ldy     queued_do_id_lo,x
-        lda     queued_do_id_hi,x
+        ldy     stacked_do_id_lo,x
+        lda     stacked_do_id_hi,x
         jmp     guard_in_some_inventory
 
 load_indirect_object_id:
         // ------------------------------------------------------------
         // Indirect object path
         // ------------------------------------------------------------
-        ldy     queued_io_id_lo,x
-        lda     queued_io_id_hi,x
+        ldy     stacked_io_id_lo,x
+        lda     stacked_io_id_hi,x
 
 guard_in_some_inventory:
         // ------------------------------------------------------------
@@ -1163,7 +1340,7 @@ exit_inv_check:
 Queues a “Pick Up” sentence for the current sentence complement.
 
 Summary:
-Takes either the direct or indirect object from the current queued sentence
+Takes either the direct or indirect object from the current stacked sentence
 and appends a new “Pick Up <object>” command to the sentence queue. Ensures
 the queue index remains valid and halts with a debug indicator on overflow.
 
@@ -1177,7 +1354,7 @@ Returns:
 */
 .label object_ptr = $15                     // ZP pointer for target object index
 * = $0EE1
-enqueue_pickup_for_sentence_part:
+push_pickup_for_sentence_part:
         // ------------------------------------------------------------
         // Save X
         // ------------------------------------------------------------
@@ -1186,7 +1363,7 @@ enqueue_pickup_for_sentence_part:
         // ------------------------------------------------------------
         // Fetch current queue index
         // ------------------------------------------------------------
-        ldx     sentq_index
+        ldx     sentstk_top_idx
 
         // ------------------------------------------------------------
         // Is it the indirect object? 
@@ -1197,9 +1374,9 @@ enqueue_pickup_for_sentence_part:
         // ------------------------------------------------------------
         // Indirect object → copy indices into object_ptr
         // ------------------------------------------------------------
-        lda     queued_io_id_lo,x
+        lda     stacked_io_id_lo,x
         sta     <object_ptr
-        lda     queued_io_id_hi,x
+        lda     stacked_io_id_hi,x
         sta     >object_ptr
         jmp     next_sentence_index
 
@@ -1207,17 +1384,17 @@ fetch_direct_object:
         // ------------------------------------------------------------
         // Direct object → copy indices into object_ptr
         // ------------------------------------------------------------
-        lda     queued_do_id_lo,x
+        lda     stacked_do_id_lo,x
         sta     <object_ptr
-        lda     queued_do_id_hi,x
+        lda     stacked_do_id_hi,x
         sta     >object_ptr
 
 next_sentence_index:
         // ------------------------------------------------------------
         // Advance queue index and validate range
         // ------------------------------------------------------------
-        inc     sentq_index
-        ldx     sentq_index
+        inc     sentstk_top_idx
+        ldx     sentstk_top_idx
         cpx     #SENT_QUEUE_MAX_TOKENS
         bne     queue_pickup
 
@@ -1237,13 +1414,13 @@ queue_pickup:
         // Queue a new “Pick Up” sentence for the selected object
         // ------------------------------------------------------------
         lda     PICK_UP_VERB
-        sta     queued_verb_ids,x
+        sta     stacked_verb_ids,x
         lda     #$00
-        sta     queued_prep_ids,x
+        sta     stacked_prep_ids,x
         lda     <object_ptr
-        sta     queued_do_id_lo,x
+        sta     stacked_do_id_lo,x
         lda     >object_ptr
-        sta     queued_do_id_hi,x
+        sta     stacked_do_id_hi,x
 
         // ------------------------------------------------------------
         // Restore X and return
@@ -1318,8 +1495,8 @@ Summary
 Global Outputs
 	destination_entity             ← ENTITY_NONE
 	sentence_bar_needs_refresh      ← TRUE
-	sentq_free_slots   ← SENT_QUEUE_MAX_TOKENS
-	sentq_index           ← SENT_QUEUE_EMPTY_IDX
+	sentstk_free_slots   ← SENT_QUEUE_MAX_TOKENS
+	sentstk_top_idx           ← SENT_QUEUE_EMPTY_IDX
 	current_verb_id                   ← WALK_TO_VERB
 	direct_object_idx_lo           ← $00
 	direct_object_idx_hi           ← $00
@@ -1350,10 +1527,10 @@ init_sentence_ui_and_queue:
         sta     sentence_bar_needs_refresh     // force UI refresh of sentence bar
 
         lda     #SENT_QUEUE_MAX_TOKENS
-        sta     sentq_free_slots  // reset available slots (max = 6)
+        sta     sentstk_free_slots  // reset available slots (max = 6)
 
         lda     #SENT_QUEUE_EMPTY_IDX
-        sta     sentq_index          // mark queue as empty (no active tokens)
+        sta     sentstk_top_idx          // mark queue as empty (no active tokens)
 
         lda     #WALK_TO_VERB
         sta     current_verb_id                  // set default verb “Walk to”
