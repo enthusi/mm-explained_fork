@@ -44,10 +44,12 @@ Values observed
 .label irq_entry_count = $d9
 .label debug_error_code = $DC
 .label irq_entry_lock = $e3
+.label mask_row_ptr                = $86    // ZP: pointer to current 8×8-tile row within foreground mask layer
 .label sprite_shape_data_ptr = $8c
 .label video_update_signal = $8e			// synchronization flag - NOT to be confused with vsync
 .label room_bg0_shadow = $8f
 .label room_bg1_shadow = $90
+.label rebuild_action_sentence = $95
 
 .label video_processed_signal = $166b
 
@@ -559,9 +561,10 @@ They were definitely intended as debugging aids.
 //Base address for message bar source buffers
 .label source_msg_base = $0200
 
-.label destination_entity = $fe51
+//.label destination_entity = $fe51
 .label refresh_sentence_bar_flag = $fe49	//#00 = don't refresh the sentence bar, #01 = refresh it
 									//By "refresh", we mean to update its contents
+.label init_sentence_ui_and_queue_flag = $fe8f
 .label sentence_queue_index = $fe17
 .label sentence_queue_free_capacity = $fe18	
 .label current_verb = $fe1f
