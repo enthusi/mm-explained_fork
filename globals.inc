@@ -281,7 +281,7 @@ Values observed
 #00	environment lights off, flashlights off
 #01	environment lights off, flashlight on
 #02	environment lights on*/
-.label lights_status = $FEAB
+.label global_lights_state = $FEAB
 
 .label room_for_character = $FEFC
 
@@ -562,7 +562,7 @@ They were definitely intended as debugging aids.
 .label source_msg_base = $0200
 
 //.label destination_entity = $fe51
-.label refresh_sentence_bar_flag = $fe49	//#00 = don't refresh the sentence bar, #01 = refresh it
+.label sentence_bar_needs_refresh = $fe49	//#00 = don't refresh the sentence bar, #01 = refresh it
 									//By "refresh", we mean to update its contents
 .label init_sentence_ui_and_queue_flag = $fe8f
 .label sentq_index = $fe17
@@ -579,21 +579,31 @@ They were definitely intended as debugging aids.
 .label interrupted_script_offset_hi = $fea5
 .label interrupted_script_index = $fea7
 
-.label current_script_slot = $70B8	//Script slot of script being executed
-.label script_offsets_hi = $70B9
-.label script_offsets_lo = $70C9
-.label script_2_mem_attr = $7ad9
-/*
-Script states
-Bit 7 set = frozen for cutscene
-#00	Inactive (no script)
-#01	Paused
-#02	Running
-*/
-.label script_state_for_script_slot = $70D9
 .label sid_master_volume_saved = $476A
 
 .label inventory_objects = $7031
 .label room_obj_idx_hi = $7221
 .label room_obj_idx_lo = $723d
 
+//===================================================
+// Concurrent script engine variables
+//===================================================
+.label current_script_slot = $70B8	//Script slot of script being executed
+.label script_offsets_hi = $70B9
+.label script_offsets_lo = $70C9
+//Script states
+//Bit 7 set = frozen for cutscene
+//#00	Inactive (no script)
+//#01	Paused
+//#02	Running
+.label script_state_for_script_slot = $70D9
+.label script_pause_counter_1 = $70e9
+.label script_pause_counter_2 = $70f9
+.label script_pause_counter_3 = $7109
+//Script types
+//#00 = object script
+//#01 = room script
+//#02 = global script
+.label script_type_for_script_slot = $7119
+.label resource_index_for_script_slot = $7129
+.label script_2_mem_attr = $7ad9
