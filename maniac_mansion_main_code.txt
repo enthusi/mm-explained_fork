@@ -1510,9 +1510,9 @@ var_active_verb = $ff70				;This would be var[9]
 var_message_length = $ff71			;This would be var[10]
 ;FF72 and onwards are no longer used as debugging variables
 kid_ids = $ffc8
-first_kid_id = $FFC8
-second_kid_id = $FFC9
-third_kid_id = $FFCA
+kid1_costume_id = $FFC8
+kid2_costume_id = $FFC9
+kid3_costume_id = $FFCA
 ;===========================================================
 ; Interrupt handlers
 ;===========================================================
@@ -2773,21 +2773,21 @@ check_preposition:
 ;We have a direct object - do we have a preposition determined?
 .C:08a0  AD 22 FE    LDA preposition
 ;If not, determine one
-.C:08a3  F0 0E       BEQ determine_preposition_2
+.C:08a3  F0 0E       BEQ select_preposition_for_verb_2
 ;We do have a preposition - do we have an indirect object determined?
 .C:08a5  AD 23 FE    LDA indirect_object_idx_lo
 ;If not, refresh the sentence with what we have so far, and exit
 .C:08a8  F0 06       BEQ check_refresh_sentence_3
 ;We have all necessary parts in place, process the action
 .C:08aa  4C F3 0A    JMP process_action
-;.C:08ad  4C B3 08    JMP determine_preposition_2	;Unreachable code
+;.C:08ad  4C B3 08    JMP select_preposition_for_verb_2	;Unreachable code
 check_refresh_sentence_3:
 .C:08b0  4C F0 0A    JMP check_refresh_sentence_2	;This is a JMP refresh_sentence_bar
 ;-----------------------
-determine_preposition_2:
+select_preposition_for_verb_2:
 ;Determine the preposition
-.C:08b3  20 BD 0A    JSR determine_preposition
-;Do we actually need one? (determine_preposition will return #00 if one is not needed)
+.C:08b3  20 BD 0A    JSR select_preposition_for_verb
+;Do we actually need one? (select_preposition_for_verb will return #00 if one is not needed)
 .C:08b6  D0 06       BNE preposition_needed
 ;No preposition needed - and no indirect object needed either
 ;Then we have all necessary parts in place, process the action
@@ -2836,7 +2836,7 @@ exit:
 ; indirect object and preposition) and append them in the correct order.
 ;
 ; It will also validate if the recipient for a "Give" verb is valid, and clear it out if not.
-; If the verb is "New Kid", it will delegate that special case to the print_kid_names_on_sentence_bar routine.
+; If the verb is "New Kid", it will delegate that special case to the write_kid_names_to_sentence_bar routine.
 ;===========================================
 word_to_append = $15
 
@@ -2852,7 +2852,7 @@ print_sentence_bar_text:
 .C:08ea  D0 03       BNE is_verb_empty
 ;----------------------------
 ;"New kid" verb - print the kids' names on the sentence bar and exit
-.C:08ec  4C 6F 09    JMP print_kid_names_on_sentence_bar
+.C:08ec  4C 6F 09    JMP write_kid_names_to_sentence_bar
 ;----------------------------
 is_verb_empty:
 .C:08ef  C9 00       CMP #$00
@@ -2877,14 +2877,14 @@ append_direct_object:
 ;Append the direct object's name to the sentence text
 .C:090b  AA          TAX
 .C:090c  AD 21 FE    LDA direct_object_idx_hi
-.C:090f  20 E3 09    JSR get_object_name_pointer
+.C:090f  20 E3 09    JSR resolve_object_name
 .C:0912  20 94 0A    JSR append_word
 ;----------------------------
 ;Is there a preposition?
 .C:0915  AD 22 FE    LDA preposition
 .C:0918  D0 12       BNE check_preposition
 ;No, check if we need one
-.C:091a  20 BD 0A    JSR determine_preposition
+.C:091a  20 BD 0A    JSR select_preposition_for_verb
 ;If we don't need a preposition, continue
 .C:091d  C9 00       CMP PREPOSITION_NONE_NEEDED
 .C:091f  F0 0B       BEQ check_preposition
@@ -2935,10 +2935,10 @@ append_indirect_object:
 ;If not, treat it as an object and get its name
 .C:0960  D0 06       BNE append_object_name
 ;It's a character, prepare its name for the append
-.C:0962  20 D8 09    JSR load_costume_name_ptr_for_append
+.C:0962  20 D8 09    JSR resolve_costume_name
 .C:0965  4C 6B 09    JMP do_append
 append_object_name:
-.C:0968  20 E3 09    JSR get_object_name_pointer
+.C:0968  20 E3 09    JSR resolve_object_name
 do_append:
 .C:096b  20 94 0A    JSR append_word
 exit:
@@ -2950,11 +2950,11 @@ exit:
 ;===========================================
 sentence_bar_ptr = $19
 
-print_kid_names_on_sentence_bar:
+write_kid_names_to_sentence_bar:
 ;First kid
-.C:096f  AE C8 FF    LDX first_kid_id		
+.C:096f  AE C8 FF    LDX kid1_costume_id		
 ;Append the kid's name
-.C:0972  20 D8 09    JSR load_costume_name_ptr_for_append
+.C:0972  20 D8 09    JSR resolve_costume_name
 .C:0975  20 94 0A    JSR append_word
 ;------------------
 ;Second kid
@@ -2965,8 +2965,8 @@ print_kid_names_on_sentence_bar:
 .C:097c  A9 CE       LDA #>sentence_bar_2nd_kid_name_offset
 .C:097e  85 1A       STA >sentence_bar_ptr
 ;Append the kid's name
-.C:0980  AE C9 FF    LDX second_kid_id
-.C:0983  20 D8 09    JSR load_costume_name_ptr_for_append
+.C:0980  AE C9 FF    LDX kid2_costume_id
+.C:0983  20 D8 09    JSR resolve_costume_name
 .C:0986  20 94 0A    JSR append_word
 ;------------------
 ;Third kid
@@ -2977,8 +2977,8 @@ print_kid_names_on_sentence_bar:
 .C:098d  A9 CE       LDA #>sentence_bar_3rd_kid_name_offset
 .C:098f  85 1A       STA >sentence_bar_ptr
 ;Append the kid's name
-.C:0991  AE CA FF    LDX third_kid_id
-.C:0994  20 D8 09    JSR load_costume_name_ptr_for_append
+.C:0991  AE CA FF    LDX kid3_costume_id
+.C:0994  20 D8 09    JSR resolve_costume_name
 .C:0997  20 94 0A    JSR append_word
 .C:099a  60          RTS
 ;===========================================
@@ -3055,7 +3055,7 @@ name_ptr_hi_tbl = $f0f2
 name_ptr_lo_tbl = $f10a
 sentence_word_ptr = $15
 
-load_costume_name_ptr_for_append:
+resolve_costume_name:
 .C:09d8  BD F2 F0    LDA name_ptr_hi_tbl,X
 .C:09db  85 16       STA >sentence_word_ptr
 .C:09dd  BD 0A F1    LDA name_ptr_lo_tbl,X
@@ -3072,7 +3072,7 @@ load_costume_name_ptr_for_append:
 ; Returns:		pointer		pointer to object's name
 ;===========================================
 object_pointer = $15
-get_object_name_pointer:
+resolve_object_name:
 ;Get object resource
 .C:09e3  20 05 0A    JSR resolve_object_resource
 ;Object found?
@@ -3327,7 +3327,7 @@ exit:
 ;===========================================
 ;Prepositions: in, with, on, to
 
-determine_preposition:
+select_preposition_for_verb:
 .C:0abd  AD 1F FE    LDA current_verb
 .C:0ac0  C9 0B       CMP USE_VERB		
 .C:0ac2  D0 13       BNE give_verb_check
@@ -24270,7 +24270,7 @@ set_location_to_inventory:
 .C:69ef  A9 00       LDA #$00
 get_obj_name:
 ;Get the object name pointer
-.C:69f1  20 E3 09    JSR get_object_name_pointer
+.C:69f1  20 E3 09    JSR resolve_object_name
 ;Use .Y as copy index, start at #FF (incremented to #00 in the first iteration), go upwards
 .C:69f4  A0 FF       LDY #$FF
 ;Copy the new object's name - it's a zero-terminated string
