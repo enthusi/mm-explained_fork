@@ -241,6 +241,69 @@ Typical traces
 .const SECOND_KID_NAME_COLUMN     = $0B    // Column threshold for kid #2 selection in UI
 .const THIRD_KID_NAME_COLUMN      = $18    // Column threshold for kid #3 selection in UI
 
+/*
+================================================================================
+  process_sentence
+================================================================================
+
+Summary
+	Process the current verb sentence for this frame. Optionally reset parts,
+	apply incapacity limits, branch by control mode, handle forced-trigger
+	selection via cursor hits, then run the completeness gate.
+
+Global Inputs
+	init_sentence_ui_flag             One-shot reset request
+	current_kid_idx                   Active kid index
+	actor_vars[]                      Kid state flags (sign bit used for incapacitated)
+	control_mode                      Current control mode
+	current_verb_id                   Active verb token
+	current_preposition               Current preposition token
+	direct_object_idx_lo/hi           Current direct object id
+	indirect_object_idx_lo/hi         Current indirect object id
+	cursor_x_pos_quarter_relative     Cursor X on sentence bar (used in subroutines)
+
+Global Outputs
+	current_verb_id                   May be clamped to NEW_KID or reset to WALK_TO
+	current_preposition, direct_object_idx_lo/hi,
+	indirect_object_idx_lo/hi         Cleared on resets or updated from cursor hits
+	forced_sentence_trigger           Set/cleared when “What is?” is active
+	sentence_bar_needs_refresh        Set when UI must redraw the bar
+	needs_sentence_rebuild            Set for one-shot rebuild after certain updates
+	destination_entity                Cleared when normalizing WALK_TO without object
+
+Description
+	* Reset path:
+		  • If init_sentence_ui_flag is set:
+			  – If no preposition: clear the flag only.
+			  – If a preposition exists: clear prep, IO, and DO; then clear the flag.
+	* Incapacity limits:
+		  • If the current kid is “incapacitated” (sign bit in actor_vars), force
+		  NEW_KID behavior by zeroing current_verb_id unless it is NEW_KID.
+	* Control-mode dispatch:
+		  • CUTSCENE → jump to run_sentence_if_complete.
+		  • KEYPAD   → force current_verb_id = PUSH_VERB, then fall through.
+		  • NORMAL   → if WHAT_IS_VERB, set forced_sentence_trigger.
+	* Forced trigger:
+		  • If forced_sentence_trigger == SET:
+			  – If verb == GIVE and a preposition exists, select an actor under the
+			  cursor as IO; else select an object under the cursor (DO or IO).
+			  – Handle “no hit” (including WALK_TO special case) or commit DO/IO.
+			  – Normalize UI flags and fall to the completeness gate.
+		  • Otherwise, fall straight to run_sentence_if_complete.
+	* Cursor-hit handlers:
+		  • DO path: confirm or set DO; request UI refresh; in KEYPAD set rebuild.
+		  • IO path: reject DO==IO, confirm or set IO; in KEYPAD set rebuild.
+	* Finalization:
+		  • Always request a UI refresh before the completeness gate.
+		  • If verb is WALK_TO, also clear destination_entity and set rebuild.
+		  • Tail-fall to run_sentence_if_complete for execution/stacking.
+
+Notes
+	* This routine never executes scripts or stages walking directly; it only
+	  mutates sentence parts, UI flags, and routes to the completeness logic.
+	* DO/IO equality is explicitly rejected to prevent redundant sentences.
+================================================================================
+*/
 * = $077C
 process_sentence:
         // ------------------------------------------------------------
@@ -259,11 +322,11 @@ process_sentence:
         // ------------------------------------------------------------
         // Reset sentence parts if required
         // ------------------------------------------------------------
-        lda     preposition
+        lda     current_preposition
         beq     apply_pending_sentence_reset            // no preposition → partial reset only
 
         lda     #$00
-        sta     preposition
+        sta     current_preposition
         sta     indirect_object_idx_lo
         sta     indirect_object_idx_hi
         sta     direct_object_idx_lo
@@ -330,7 +393,7 @@ on_forced_trigger:
         bne     pick_object_under_cursor
 
         // “Give” requires an actor as IO
-        lda     preposition
+        lda     current_preposition
         beq     pick_object_under_cursor          // no preposition yet → get DO
         jsr     find_actor_enclosing_cursor       // preposition set → find actor (IO)
         jmp     branch_on_cursor_hit
@@ -352,7 +415,7 @@ branch_on_cursor_hit:
         // “Walk to” without object → clear parts
         lda     #OBJ_IDX_NONE
         sta     direct_object_idx_lo
-        sta     preposition
+        sta     current_preposition
         sta     indirect_object_idx_lo
 
 finalize_after_walkto_nohit:
@@ -362,7 +425,7 @@ finalize_after_walkto_nohit:
         // Object found under cursor
         // ------------------------------------------------------------
 cursor_hit_object_found:
-        ldy     preposition
+        ldy     current_preposition
         beq     update_or_confirm_direct_object       // no preposition → DO selection
 
         // ------------------------------------------------------------
@@ -439,6 +502,56 @@ finalize_and_maybe_execute:
 refresh_sentence_bar_trampoline:
 		jmp refresh_sentence_bar
 
+/*
+================================================================================
+  run_sentence_if_complete
+================================================================================
+
+Summary
+	Run the current verb sentence if all required parts are present. Handles
+	special verbs, requests UI refreshes when parts are missing, and dispatches
+	either immediate execution or stacking via dispatch_or_push_action.
+
+Vars/State
+	needs_sentence_rebuild          Cleared here if set; triggers a one-shot UI rebuild
+
+Global Inputs
+	current_verb_id                 Active verb token (0 if none)
+	direct_object_idx_lo            Presence check for direct object (lo byte)
+	current_preposition                     Current preposition token (0 if none)
+	indirect_object_idx_lo          Presence check for indirect object (lo byte)
+
+Global Outputs
+	needs_sentence_rebuild          Cleared when observed
+	sentence_bar_needs_refresh      Set when preposition was just chosen
+	(UI) refresh via refresh_sentence_bar_trampoline
+	
+	(control flow) tail-calls:
+		- handle_new_kid_verb
+		- dispatch_or_push_action
+
+Description
+	* Always refresh the sentence bar first so the UI stays in sync.
+	* If a one-shot sentence rebuild was requested, clear the flag and continue.
+	* If no verb is selected, refresh again and exit.
+	* If verb = NEW_KID_VERB, delegate to handle_new_kid_verb.
+	* If verb = WALK_TO_VERB, execute immediately (no DO required) via
+	  dispatch_or_push_action.
+	* For all other verbs:
+		  • Require a direct object; if missing, refresh and exit.
+		  • If preposition is needed but missing, call select_preposition_for_verb:
+			  – If it returns 0 → no preposition required; execute now.
+			  – If it returns nonzero → save it, request a UI refresh, and exit so
+			  the user can choose an indirect object.
+		  • If preposition is present but no indirect object yet, refresh and exit.
+		  • When all parts are present, execute via dispatch_or_push_action.
+
+Notes
+	* This routine performs no movement or script execution itself; it only
+	  validates sentence completeness and routes control.
+	* UI is refreshed at entry and whenever a missing part blocks execution.
+================================================================================
+*/
 * = $0874
 run_sentence_if_complete:
         // ------------------------------------------------------------
@@ -490,7 +603,7 @@ require_direct_object_or_refresh:
         // Preposition and indirect object logic
         // ------------------------------------------------------------
 resolve_preposition_and_io:
-        lda     preposition
+        lda     current_preposition
         beq     select_preposition_for_current_verb_id    // determine preposition if missing
         lda     indirect_object_idx_lo
         bne     commit_execute_sentence
@@ -511,11 +624,48 @@ select_preposition_for_current_verb_id:
         jmp     dispatch_or_push_action                   // no prep required → execute
 
 save_preposition_and_request_ui_refresh:
-        sta     preposition                      // save selected preposition
+        sta     current_preposition                      // save selected preposition
         lda     #UI_REFRESH_REQUEST
         sta     sentence_bar_needs_refresh        // request UI refresh
         // fall through to refresh_sentence_bar
 
+/*
+================================================================================
+  handle_new_kid_verb
+================================================================================
+Summary
+	Handle the “New kid” verb. In normal control mode, map the cursor’s X position
+	to kid 0/1/2, refresh the UI, and attempt a kid switch. Outside normal control,
+	just normalize the verb/UI and exit.
+
+Global Inputs
+	control_mode                     Current control mode (must be NORMAL_CONTROL_MODE)
+	cursor_x_pos_quarter_relative    Cursor X on the sentence bar (quarter-pixel units)
+
+Global Outputs
+	current_verb_id                  Set to WALK_TO_VERB
+	sentence_bar_needs_refresh       Set to UI_REFRESH_REQUEST
+	(current_kid_idx)                May change via switch_active_kid_if_different
+
+Description
+	* If control_mode ≠ NORMAL_CONTROL_MODE:
+		  • Normalize UI: set current_verb_id = WALK_TO_VERB and request a bar refresh.
+		  • Return.
+	* Otherwise:
+		  • Determine kid by cursor X:
+			  – X < SECOND_KID_NAME_COLUMN  → kid 0
+			  – SECOND_KID_NAME_COLUMN ≤ X ≤ THIRD_KID_NAME_COLUMN → kid 1
+			  – X > THIRD_KID_NAME_COLUMN   → kid 2
+		  • Push kid index on stack (PHA), reset UI to WALK_TO and refresh the bar,
+		  then POP and call switch_active_kid_if_different.
+		  • Normalize UI again to WALK_TO and request refresh before returning.
+
+Notes
+	* The routine always leaves the UI in the neutral “Walk to” state.
+	* If the selected kid is already active, switch_active_kid_if_different exits
+	  early and no camera/inventory updates occur.
+================================================================================
+*/
 * = $099B
 handle_new_kid_verb:
         // ------------------------------------------------------------
@@ -572,7 +722,64 @@ set_walk_and_exit:
         sta     sentence_bar_needs_refresh
         rts
 
+/*
+================================================================================
+  process_sentence_queue_entry
+================================================================================
 
+Summary
+	Process one stacked sentence at the top of the sentence stack. If all parts
+	are ready, execute immediately. Otherwise stage walking toward the needed
+	object. Skips invalid or redundant entries and advances the stack pointer.
+
+Global Inputs
+	sentstk_top_idx                   Current top index (–1 when empty)
+	stacked_verb_ids[]                Stacked verb ids
+	stacked_do_id_lo/hi[]             Stacked direct-object ids
+	stacked_prep_ids[]                Stacked preposition ids
+	stacked_io_id_lo/hi[]             Stacked indirect-object ids
+	destination_entity                Nonzero if a walk is already in progress
+	control_mode
+	current_kid_idx, actor_vars[]     Actor state; includes ACTOR_IS_FROZEN
+	object_attributes[]               For inventory/owner checks
+
+Global Outputs
+	sentstk_top_idx                   Decremented on consume or drop
+	sentstk_free_slots                Decremented on consume; reset on underflow
+	active_verb_id                    Latched verb for execution
+	active_do_id_lo/hi                Latched DO id
+	active_prep_id                    Latched preposition
+	active_io_id_lo/hi                Latched IO id
+	destination_entity                Set when staging a walk
+	var_destination_x/var_destination_y
+	active_costume                    Acting costume for pathing
+
+Description
+	* Early exits:
+		  • If a destination is already active, do nothing.
+		  • If the stack is empty, do nothing.
+	* Redundancy filter:
+		• If a preposition is present and DO == IO, drop the entry.
+	* Inventory gate:
+		  • Check DO and IO ownership for the current kid. If neither is owned,
+		  attempt to push a scripted “Pick Up <obj>” for DO, else IO. If neither
+		  supports Pick Up, drop the entry.
+	* Activation:
+		  • Copy the top entry into active_* and pop the stack. Protect against
+		  underflow by restoring empty-state invariants and capacity.
+	* Dispatch:
+		  • If DO is in inventory and no preposition → execute now.
+		  • If a preposition exists, ensure IO readiness; if IO not ready → walk to IO.
+		  • If DO not in inventory:
+			  – In keypad mode → execute directly (no walking).
+			  – Otherwise → walk to DO.
+
+Notes
+	* Ownership checks use the object’s “in inventory” flag plus owner nibble.
+	* Walking publishes var_destination_{x,y}, resolves the destination entity,
+	  and respects the ACTOR_IS_FROZEN gate.
+================================================================================
+*/
 * = $0B9C
 process_sentence_queue_entry:
         // ------------------------------------------------------------
@@ -764,6 +971,71 @@ init_walk_to_direct_object:
 exit_process_sentence_queue_entry:
         rts
 
+/*
+================================================================================
+  dispatch_or_push_action
+================================================================================
+Summary
+	Prepare the sentence stack for a new command, then either:
+		* Walk immediately to the cursor location for a bare “Walk to”, or
+		* Push a complete sentence (verb + DO [+ prep + IO]) onto the stacks and
+		  normalize the UI back to “Walk to”.
+
+Global Inputs
+	current_verb_id
+	direct_object_idx_lo, direct_object_idx_hi
+	preposition
+	indirect_object_idx_lo, indirect_object_idx_hi
+	cursor_x_pos_quarter_absolute, cursor_y_pos_half_off_by_8
+	current_kid_idx
+	actor_for_costume[]               costume → actor index map
+	actor_vars[]                      includes ACTOR_IS_FROZEN flag
+	WALK_TO_VERB, WHAT_IS_VERB
+	SENT_STACK_MAX_TOKENS, SENT_STACK_EMPTY_IDX
+
+Global Outputs
+	sentstk_free_slots                reset to SENT_STACK_MAX_TOKENS
+	sentstk_top_idx                   reset to SENT_STACK_EMPTY_IDX; incremented on push
+	stacked_verb_ids[x]               written on push
+	stacked_do_id_lo/hi[x]            written on push
+	stacked_prep_ids[x]               written on push
+	stacked_io_id_lo/hi[x]            written on push
+	current_verb_id                   reset to WALK_TO_VERB after pushing non-walk verbs
+	direct_object_idx_lo              cleared after pushing non-walk verbs
+	preposition                       cleared after pushing non-walk verbs
+	destination_entity                cleared before exit
+	active_costume                    set for bare “Walk to”
+	actor                             latched actor for movement path
+	var_destination_x, var_destination_y
+	actor_x_dest[], actor_y_dest[]    written for immediate walk
+	(via call) snap_and_stage_path_update()
+
+Description
+	* Reset sentence-stack bookkeeping: set sentstk_free_slots to the maximum
+	  and sentstk_top_idx to “empty”. If the verb is WHAT_IS_VERB, return.
+
+	* If the verb is WALK_TO and no direct object is selected, treat it as a
+	  bare walk:
+		  • Resolve the acting entity from current_kid_idx.
+		  • Copy cursor coordinates to dest_x/dest_y and clamp to walkable space.
+		  • Publish var_destination_x/y for debugging.
+		  • If the actor is not frozen, write actor_x_dest/y_dest and call
+		  snap_and_stage_path_update. Then return.
+
+	* Otherwise push a full sentence:
+		  • Increment sentstk_top_idx and write verb, DO, prep, IO into the
+		  stacked_* arrays at index X.
+		  • If the verb was not WALK_TO, reset UI defaults by setting
+		  current_verb_id = WALK_TO_VERB and clearing DO and preposition.
+		  • Clear destination_entity and return.
+
+Notes
+	* This routine does not execute verbs. It only stages immediate walking
+	  for the bare “Walk to” case or records a sentence for later handling.
+	* Indices and capacity are managed as a LIFO stack; range checks occur in
+	  the push helpers.
+================================================================================
+*/
 * = $0AF3
 dispatch_or_push_action:
         // ------------------------------------------------------------
@@ -907,7 +1179,7 @@ push_sentence:
         lda     direct_object_idx_hi            	 
         sta     stacked_do_id_hi,x  
 		
-        lda     preposition                    		 
+        lda     current_preposition                    		 
         sta     stacked_prep_ids,x  	 
 
         lda     indirect_object_idx_lo          		
@@ -936,7 +1208,7 @@ push_sentence:
 
         lda     #$00                            // Prepare clear value
         sta     direct_object_idx_lo            // Clear direct object reference
-        sta     preposition                     // Clear preposition token
+        sta     current_preposition                     // Clear preposition token
 
         // ------------------------------------------------------------
         // Finalize and exit
@@ -950,6 +1222,54 @@ finalize_and_exit:
         rts                                     // Return → sentence stacked or action completed
 
 
+/*
+================================================================================
+  execute_verb_handler_for_object
+================================================================================
+Summary
+	Run the correct verb logic for the active direct object. Prefer a custom
+	per-object handler; otherwise fall back to defaults:
+
+		* GIVE with a kid recipient transfers ownership and refreshes inventory.
+		* WALK TO does nothing and returns.
+		* All other verbs run the global “defaults” script (#3).
+		  A guard enforces that READ requires lights; if dark, use defaults.
+
+Global Inputs
+	active_do_id_lo, active_do_id_hi      Object to act on
+	active_verb_id                         Verb to execute
+	active_io_id_lo                        Recipient for GIVE
+	object_attributes[]                    Per-object attribute byte; hi nibble kept, low nibble = owner id
+	global_lights_state                    Nonzero if lights are on
+	room_obj_ofs                           Per-room base offset for object scripts
+
+Global Outputs
+	sentence_bar_needs_refresh             Set TRUE to redraw the sentence bar
+	resource_index_for_script_slot         Bound to object’s resource for script VM
+	script_type_for_script_slot            Script type associated with resource
+	var_active_verb_id                     Latched active verb for defaults
+	current_script_slot                    Cleared before launching scripts
+	script_offsets_lo, script_offsets_hi   Computed handler offset (custom path)
+	var_active_io_id_lo                    IO passed to custom handler
+	object_attributes[x]                   Updated owner on GIVE→kid
+	(refresh) refresh_items_displayed       Invoked after ownership change
+
+Description
+	* Mark UI for refresh.
+	* Resolve active DO’s resource and bind it to the script VM slot metadata.
+	* Look up a custom handler for active_verb_id:
+		  • If absent:
+			  – If verb = GIVE and IO is a kid: write new owner into object_attributes
+			  and refresh inventory; return.
+			  – If verb = WALK TO: return.
+			  – Else launch the global defaults script (#3) with var_active_verb_id.
+		  • If present:
+			  – If verb = READ and lights are off: fall back to defaults script.
+			  – Else compute absolute script offset (room_obj_ofs + handler_ofs),
+			  seed VM state (var_active_io_id_lo, script_offsets_*), set base and
+			  read address, then execute_next_operation.
+================================================================================
+*/
 * = $0DC5
 execute_verb_handler_for_object:
         // ------------------------------------------------------------
@@ -1060,29 +1380,43 @@ launch_custom_handler:
         jsr     set_current_script_read_address
         jsr     execute_next_operation
         rts
-		
 /*
 ================================================================================
-Get an object's script offset for a given verb.
+  find_object_verb_handler_offset
+================================================================================
+Summary
+	Scan an object’s verb-handler table and return the handler script offset for a
+	requested verb. Supports a wildcard “default” handler and a table terminator.
 
-Summary:
-Scans the verb-handler list inside an object resource and returns the offset of
-the matching handler. Each handler occupies two bytes: {verb_id, script_offset}.
-A value of #$00 marks the end of the list, and #$0F indicates a default handler.
+Arguments
+	.A      Requested verb id to look up
 
-Arguments:
-        .A = verb index
-        (object_rsrc_ptr) = base pointer to object resource
+Vars/State
+	verb_index              Latched copy of requested verb id for comparisons
 
-Returns:
-        .A = script offset within the object resource, or:
-             #$00 if no handler and verb ≠ WALK_TO_VERB
-             #$0D if no handler and verb == WALK_TO_VERB
+Global Inputs
+	object_rsrc_ptr         ZP pointer to start of the object resource
 
-Description:
-- The verb-handler list starts at offset #$0E from the resource base.
-- Each entry: {verb_id, offset}
-- The default handler (#$0F) matches any verb.
+Returns
+	.A      Handler script offset (nonzero) if a matching entry is found
+			DEFAULT_VERB_WALK_TO (#$0D) if no entry and verb == Walk to
+			NO_HANDLER_RET (#$00) if no entry and verb ≠ Walk to
+
+Description
+	* Initialize Y so the first INY, INY lands on the first handler entry at
+	  VERB_TABLE_START_OFS: each entry is {verb_id, handler_ofs}.
+	* Loop over entries:
+	  • If verb_id == #$00 → end of table:
+		  – If requested verb == WALK_TO_VERB, return #$0D.
+		  – Else return #$00.
+	  • If verb_id == DEFAULT_VERB (#$0F) → match any verb: return its handler_ofs.
+	  • If verb_id == requested verb → return its handler_ofs.
+	  • Otherwise advance to the next pair and continue scanning.
+
+Notes
+	* Table encoding: pairs of one-byte verb_id followed by one-byte offset,
+	  terminated by verb_id == #$00.
+	* Clobbers Y during the scan. X is preserved by caller.
 ================================================================================
 */
 * = $0E4A
@@ -1150,27 +1484,39 @@ return_handler_offset:
 		
 /*
 ================================================================================
-Returns whether an object has a custom "pick up" script.
+  has_pickup_script_for_sentence_part
+================================================================================
+Summary
+	Checks whether the selected sentence object (direct or indirect) defines a
+	custom “Pick Up” verb handler. Actor-class targets are rejected up front.
 
-Summary:
-Checks the stacked sentence’s direct or indirect object for a custom Pick Up
-handler. Returns A = #$01 if a script exists, else #$00. Preserves X and Y.
+Arguments
+	.A      Selector for which object to test:
+			ARG_IS_DO (#$01) → check direct object
+			ARG_IS_IO (#$02) → check indirect object
 
-Arguments:
-        .A      #$01 → direct object
-                any other value → indirect object
+Global Inputs
+	sentstk_top_idx         Top index into the sentence stacks
+	stacked_do_id_lo/hi     Direct-object ID pair at each stack entry
+	stacked_io_id_lo/hi     Indirect-object ID pair at each stack entry
 
-Returns:
-        .A      #$01 if custom Pick Up script exists
-                #$00 otherwise
+Returns
+	.A      TRUE  (#$01) if a Pick Up handler exists for the chosen object
+			FALSE (#$00) if absent or the target is an actor
 
-Description:
-- Selects DO or IO from the sentence stack slot at sentstk_top_idx.
-- Rejects objects with hi == #$02 as non-recipients.
-- Resolves object resource and queries verb handler for PICK_UP_VERB.
+Description
+	* Read the current stack entry (sentstk_top_idx) and select DO or IO per .A.
+	* If the object type equals OBJ_TYPE_ACTOR, return FALSE (actors aren’t pickable).
+	* Otherwise resolve the object resource, then scan its handler table for
+	  PICK_UP_VERB using find_object_verb_handler_offset.
+	* Return TRUE if a nonzero handler offset is found; else return FALSE.
+	* X and Y are preserved via temp_x and temp_y.
+
+Notes
+	* This routine performs no UI changes and does not mutate the sentence stacks.
+	* The object “type” check occurs before any script lookup for a fast reject.
 ================================================================================
 */
-
 * = $0E73
 has_pickup_script_for_sentence_part:
         // ------------------------------------------------------------
@@ -1249,20 +1595,45 @@ has_object_pickup_exit:
         ldx     temp_x
         ldy     temp_y
         rts
-		
-// ------------------------------------------------------------
-// Check if the sentence complement (direct or indirect object)
-// is in the current kid's inventory
-//
-// Arguments:
-//     .A = #$01 → check direct object
-//           else → check indirect object
-//
-// Returns:
-//     .A = #$01 if object is in current kid's inventory
-//           #$00 otherwise
-// ------------------------------------------------------------
+/*
+================================================================================
+ is_sentence_object_owned_by_current_kid
+================================================================================
+Summary
+	Determine if the selected sentence object (direct or indirect) is owned by the
+	current kid. Uses the sentence stack top index to select DO or IO, then checks
+	inventory flags and the owner nibble.
 
+Arguments
+	.A      Selector for which object to check:
+				ARG_IS_DO (#$01) → check direct object
+				ARG_IS_IO (#$02) → check indirect object
+
+Global Inputs
+	sentstk_top_idx         Top index into the sentence stacks
+	stacked_do_id_lo/hi     Direct object ID pair for each stack entry
+	stacked_io_id_lo/hi     Indirect object ID pair for each stack entry
+	object_attributes[]     Per-object attribute byte; low nibble = owner id
+	current_kid_idx         Index of the current kid
+
+
+Returns
+	.A      INVCHK_RET_FOUND  (#$01) if the object is in current kid’s inventory
+			INVCHK_RET_NOT_FOUND (#$00) otherwise
+
+Description
+	* Select DO or IO from the sentence stacks using sentstk_top_idx.
+	* The object’s high-byte ID acts as an “in some inventory” flag:
+	  #$00 → the object is in an inventory; nonzero → not in any inventory.
+	* If in an inventory, read object_attributes[y], mask the owner nibble, and
+	  compare to current_kid_idx. Match → FOUND, else NOT_FOUND.
+	* X is preserved via temp_x; Y exits holding the object index used for lookup.
+
+Notes
+	* High-byte semantics: #$00 means “in inventory somewhere,” not necessarily
+	  owned by the current kid. Ownership is decided by the low-nibble owner id.
+================================================================================
+*/
 * = $0EAE
 is_sentence_object_owned_by_current_kid:
         // ------------------------------------------------------------
@@ -1337,19 +1708,51 @@ exit_inv_check:
         rts	
 /*
 ================================================================================
-Queues a “Pick Up” sentence for the current sentence complement.
+  push_pickup_for_sentence_part
+================================================================================
+Summary
+	Push a new “Pick Up <object>” sentence onto the sentence stack for either the
+	direct object (DO) or the indirect object (IO) selected in the current stack
+	entry. Copies the chosen object ID, clears the preposition, and writes the
+	PICK_UP_VERB into the stacked verb list.
 
-Summary:
-Takes either the direct or indirect object from the current stacked sentence
-and appends a new “Pick Up <object>” command to the sentence stack. Ensures
-the stack index remains valid and halts with a debug indicator on overflow.
+Arguments
+	.A      Complement selector:
+			ARG_IS_IO (#$02) → use indirect object from current entry
+			ARG_IS_DO (#$01) → use direct object from current entry
 
-Arguments:
-        .A = #$01 → direct object
-             #$02 → indirect object
+Vars/State
+	temp_x                  Saves X across the routine
+	object_ptr              ZP scratch: receives selected object id (lo/hi)
 
-Returns:
-        None (A/X/Y clobbered)
+Global Inputs
+	sentstk_top_idx         Current sentence stack top index
+	stacked_do_id_lo/hi     DO id pairs at each stack entry
+	stacked_io_id_lo/hi     IO id pairs at each stack entry
+
+Global Outputs
+	sentstk_top_idx         Incremented on successful push
+	stacked_verb_ids[x]     Written with PICK_UP_VERB
+	stacked_prep_ids[x]     Cleared to #$00 (no preposition)
+	stacked_do_id_lo/hi[x]  Written with selected object id
+
+Description
+	* Preserve X in temp_x.
+	* Read current stack top (sentstk_top_idx). Select DO or IO based on .A.
+	* Copy the chosen object id into object_ptr (lo/hi).
+	* Increment sentstk_top_idx and range-check against SENT_STACK_MAX_TOKENS.
+		  • On overflow: write debug_error_code (#$2D), map I/O (cpu_port ← MAP_IO_ON),
+		  and loop toggling vic_border_color_reg forever.
+		  • Otherwise: write PICK_UP_VERB, clear stacked_prep_ids, and store the
+		  object id into stacked_do_id_lo/hi at the new top.
+	* Restore X and return.
+
+Notes
+	* This is a push-only helper. It does not validate whether the object
+	  actually supports a Pick Up handler; call has_pickup_script_for_sentence_part
+	  beforehand to gate usage.
+	* The push writes the object into the DO fields by design; PICK_UP operates
+	  on a single direct object without a preposition or IO.
 ================================================================================
 */
 * = $0EE1
@@ -1537,7 +1940,7 @@ init_sentence_ui_and_queue:
         lda     #$00
         sta     direct_object_idx_lo          // clear direct object index (lo)
         sta     direct_object_idx_hi          // clear direct object index (hi)
-        sta     preposition                   // clear preposition field
+        sta     current_preposition                   // clear preposition field
         sta     indirect_object_idx_lo        // clear indirect object index (lo)
         sta     indirect_object_idx_hi        // clear indirect object index (hi)
 
