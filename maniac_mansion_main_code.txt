@@ -1376,8 +1376,8 @@ actor_dir_y_bit = $fe0b ;#00 = up, #01 = down
 
 ;===========================================================
 ;Index in the sentence queue
-sentq_index = $fe17
-sentq_free_slots = $fe18	
+sentstk_top_idx = $fe17
+sentstk_free_slots = $fe18	
 active_verb_id = $fe19
 active_do_id_lo = $fe1a
 active_do_id_hi = $fe1b
@@ -3387,9 +3387,9 @@ destination_obj_hi = $fe50
 
 dispatch_or_enqueue_action:
 .C:0af3  A9 06       LDA #$06
-.C:0af5  8D 18 FE    STA sentq_free_slots
+.C:0af5  8D 18 FE    STA sentstk_free_slots
 .C:0af8  A9 FF       LDA #$FF
-.C:0afa  8D 17 FE    STA sentq_index
+.C:0afa  8D 17 FE    STA sentstk_top_idx
 ;If verb is "What is", return, as there's nothing else to do
 .C:0afd  AD 1F FE    LDA current_verb_id
 .C:0b00  C9 0F       CMP WHAT_IS_VERB
@@ -3447,8 +3447,8 @@ exit:
 .C:0b55  60          RTS
 ;----------------------------------------------
 queue_sentence:
-.C:0b56  EE 17 FE    INC sentq_index
-.C:0b59  AE 17 FE    LDX sentq_index
+.C:0b56  EE 17 FE    INC sentstk_top_idx
+.C:0b59  AE 17 FE    LDX sentstk_top_idx
 ;Save each of the sentence parts into the queue
 .C:0b5c  AD 1F FE    LDA current_verb_id
 .C:0b5f  9D 25 FE    STA queued_verb_ids,X
@@ -3508,12 +3508,12 @@ process_sentence_queue_entry:
 ;Is there a destination entity?
 ;If it's #00, Z will be set, BEQ will be taken
 .C:0b9c  AD 51 FE    LDA destination_entity
-.C:0b9f  F0 01       BEQ check_sentq_index
+.C:0b9f  F0 01       BEQ check_sentstk_top_idx
 ;Destination entity set, exit
 .C:0ba1  60          RTS
-check_sentq_index:
+check_sentstk_top_idx:
 ;Do we have a valid queue index? If not, exit
-.C:0ba2  AE 17 FE    LDX sentq_index
+.C:0ba2  AE 17 FE    LDX sentstk_top_idx
 .C:0ba5  10 01       BPL check_if_complements_are_identical
 .C:0ba7  60          RTS
 check_if_complements_are_identical:
@@ -3533,7 +3533,7 @@ check_if_complements_are_identical:
 ;If they are not identical, check complements
 .C:0bbd  D0 04       BNE check_complements_in_inventory
 ;The direct and indirect objects are identical, move index to the next sentence and exit
-.C:0bbf  CE 17 FE    DEC sentq_index
+.C:0bbf  CE 17 FE    DEC sentstk_top_idx
 .C:0bc2  60          RTS
 ;--------------------------------------------------
 ;Check if the complements are in the inventory
@@ -3584,12 +3584,12 @@ check_indirect_obj_pickup_script:
 ;--------------------------------------------------
 no_custom_pickup_scripts:
 ;Nothing left to do, move the sentence index and exit
-.C:0bf9  CE 17 FE    DEC sentq_index
+.C:0bf9  CE 17 FE    DEC sentstk_top_idx
 .C:0bfc  60          RTS
 ;--------------------------------------------------
 set_active_sentence_parts:
 ;Copy all the sentence parts for the current sentence into the "active_" variables
-.C:0bfd  AC 17 FE    LDY sentq_index
+.C:0bfd  AC 17 FE    LDY sentstk_top_idx
 .C:0c00  B9 25 FE    LDA queued_verb_ids,Y
 .C:0c03  8D 19 FE    STA active_verb_id
 .C:0c06  B9 2B FE    LDA queued_do_id_lo,Y
@@ -3604,15 +3604,15 @@ set_active_sentence_parts:
 .C:0c21  8D 1E FE    STA active_io_id_hi
 ;--------------------------------------------------
 ;Move the sentence index and the free capacity
-.C:0c24  CE 17 FE    DEC sentq_index
-.C:0c27  CE 18 FE    DEC sentq_free_slots
+.C:0c24  CE 17 FE    DEC sentstk_top_idx
+.C:0c27  CE 18 FE    DEC sentstk_free_slots
 ;Is the capacity exhausted?
 .C:0c2a  10 0B       BPL available_queue_capacity
 ;Capacity exhausted - reset queue and exit
 .C:0c2c  A9 FF       LDA #$FF
-.C:0c2e  8D 17 FE    STA sentq_index
+.C:0c2e  8D 17 FE    STA sentstk_top_idx
 .C:0c31  A9 06       LDA #$06
-.C:0c33  8D 18 FE    STA sentq_free_slots
+.C:0c33  8D 18 FE    STA sentstk_free_slots
 .C:0c36  60          RTS
 ;--------------------------------------------------
 available_queue_capacity:
@@ -4123,7 +4123,7 @@ has_pickup_script_for_sentence_part:
 .C:0e73  8E 70 0E    STX temp_x
 .C:0e76  8C 71 0E    STY temp_y
 ;Load sentence queue index into .Y
-.C:0e79  AC 17 FE    LDY sentq_index
+.C:0e79  AC 17 FE    LDY sentstk_top_idx
 ;Check argument in .A - direct or indirect object?
 .C:0e7c  C9 01       CMP #$01
 .C:0e7e  D0 09       BNE part_is_indirect_object
@@ -4175,7 +4175,7 @@ temp = $0e70
 is_sentence_object_owned_by_current_kid:
 .C:0eae  8E 70 0E    STX temp_x
 ;Fetch index of current sentence part being analyzed
-.C:0eb1  AE 17 FE    LDX sentq_index
+.C:0eb1  AE 17 FE    LDX sentstk_top_idx
 ;Are we checking for a direct object?
 .C:0eb4  C9 01       CMP #$01
 .C:0eb6  D0 09       BNE fetch_indirect_object
@@ -4223,7 +4223,7 @@ temp = $0e70
 enqueue_pickup_for_sentence_part:
 .C:0ee1  8E 70 0E    STX temp
 ;Fetch index of current sentence part being analyzed
-.C:0ee4  AE 17 FE    LDX sentq_index
+.C:0ee4  AE 17 FE    LDX sentstk_top_idx
 ;Is it part #02 (Indirect object)?
 .C:0ee7  C9 02       CMP #$02
 .C:0ee9  D0 0D       BNE fetch_direct_object
@@ -4241,9 +4241,9 @@ fetch_direct_object:
 .C:0f00  85 16       STA >object_ptr
 next_sentence_index:
 ;Increment sentence index
-.C:0f02  EE 17 FE    INC sentq_index
+.C:0f02  EE 17 FE    INC sentstk_top_idx
 ;Are we still using a valid sentence part index?
-.C:0f05  AE 17 FE    LDX sentq_index
+.C:0f05  AE 17 FE    LDX sentstk_top_idx
 .C:0f08  E0 06       CPX #$06
 .C:0f0a  D0 0E       BNE queue_pickup
 ;---------------------------------------------
@@ -10276,10 +10276,10 @@ init_sentence_ui_and_queue:
 .C:29d3  8D 49 FE    STA sentence_bar_needs_refresh
 ;Reset the sentence queue capacity
 .C:29d6  A9 06       LDA #$06
-.C:29d8  8D 18 FE    STA sentq_free_slots
+.C:29d8  8D 18 FE    STA sentstk_free_slots
 ;Reset the sentence queue index
 .C:29db  A9 FF       LDA #$FF
-.C:29dd  8D 17 FE    STA sentq_index
+.C:29dd  8D 17 FE    STA sentstk_top_idx
 ;Set current verb to "Walk to"
 .C:29e0  A9 0D       LDA #$0D
 .C:29e2  8D 1F FE    STA current_verb_id
@@ -23667,9 +23667,9 @@ hi_byte = $d1
 input_opcode = $d2
 
 ;Move to the next queue index
-.C:6724  EE 17 FE    INC sentq_index
+.C:6724  EE 17 FE    INC sentstk_top_idx
 ;Use .Y as queue index
-.C:6727  AC 17 FE    LDY sentq_index
+.C:6727  AC 17 FE    LDY sentstk_top_idx
 ;Read the verb from the script and store it in the current sentence queue
 .C:672a  20 14 5E    JSR script_read_byte
 .C:672d  99 25 FE    STA queued_verb_ids,Y
@@ -25370,9 +25370,9 @@ loop:
 init_game_engine:
 ;Init sentence queue system
 .C:8586  A9 FF       LDA #$FF
-.C:8588  8D 17 FE    STA sentq_index
+.C:8588  8D 17 FE    STA sentstk_top_idx
 .C:858b  A9 06       LDA #$06
-.C:858d  8D 18 FE    STA sentq_free_slots
+.C:858d  8D 18 FE    STA sentstk_free_slots
 ;Set message bar standard delay
 .C:8590  A9 1E       LDA #$1E
 .C:8592  85 CD       STA <std_msg_countdown
