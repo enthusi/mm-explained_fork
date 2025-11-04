@@ -1407,7 +1407,7 @@ check_costume_presence:
         lda     costume_room_idx,x
         cmp     current_room
         beq     costume_in_current_room      // equal → handle; else fall through to skip
-        jmp     check_costume_presence
+        jmp     next_costume_2
 
 costume_in_current_room:
         // Make sure this costume’s asset is loaded before spawning an actor.
