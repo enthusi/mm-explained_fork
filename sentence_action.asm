@@ -179,8 +179,8 @@ Typical traces
 #import "sentence_text.asm"
 #import "destination.asm"
 
-.const SENT_QUEUE_MAX_TOKENS      = $06    // Max number of tokens allowed in the sentence stack
-.const SENT_QUEUE_EMPTY_IDX       = $FF    // Sentinel value: stack has no active entries
+.const SENT_STACK_MAX_TOKENS      = $06    // Max number of tokens allowed in the sentence stack
+.const SENT_STACK_EMPTY_IDX       = $FF    // Sentinel value: stack has no active entries
 .const DEFAULT_VERB_WALK_TO       = $0D    // Default “Walk to” verb ID
 .const REFRESH_UI_FLAG_ON         = $01    // Nonzero → force sentence bar redraw
 .const ENTITY_NONE                = $00    // No destination entity assigned
@@ -656,9 +656,9 @@ set_active_sentence_tokens:
         bpl     queue_capacity_ok
 
         // stack underflow → reset state
-        lda     #SENT_QUEUE_EMPTY_IDX
+        lda     #SENT_STACK_EMPTY_IDX
         sta     sentstk_top_idx
-        lda     #SENT_QUEUE_MAX_TOKENS
+        lda     #SENT_STACK_MAX_TOKENS
         sta     sentstk_free_slots
         rts
 
@@ -758,10 +758,10 @@ dispatch_or_push_action:
         // sentinel. Prepares stack for a new sentence; actual
         // capacity decrementing occurs elsewhere.
         // ------------------------------------------------------------		
-        lda     #SENT_QUEUE_MAX_TOKENS          
+        lda     #SENT_STACK_MAX_TOKENS          
         sta     sentstk_free_slots     // Reset free-slot counter; decremented elsewhere
 
-        lda     #SENT_QUEUE_EMPTY_IDX            
+        lda     #SENT_STACK_EMPTY_IDX            
         sta     sentstk_top_idx             // Reset head to “no entries” for pre-increment use
 
         // ------------------------------------------------------------
@@ -1392,7 +1392,7 @@ next_sentence_index:
         // ------------------------------------------------------------
         inc     sentstk_top_idx
         ldx     sentstk_top_idx
-        cpx     #SENT_QUEUE_MAX_TOKENS
+        cpx     #SENT_STACK_MAX_TOKENS
         bne     queue_pickup
 
         // ------------------------------------------------------------
@@ -1492,8 +1492,8 @@ Summary
 Global Outputs
 	destination_entity             ← ENTITY_NONE
 	sentence_bar_needs_refresh      ← TRUE
-	sentstk_free_slots   ← SENT_QUEUE_MAX_TOKENS
-	sentstk_top_idx           ← SENT_QUEUE_EMPTY_IDX
+	sentstk_free_slots   ← SENT_STACK_MAX_TOKENS
+	sentstk_top_idx           ← SENT_STACK_EMPTY_IDX
 	current_verb_id                   ← WALK_TO_VERB
 	direct_object_idx_lo           ← $00
 	direct_object_idx_hi           ← $00
@@ -1523,10 +1523,10 @@ init_sentence_ui_and_queue:
         lda     #TRUE
         sta     sentence_bar_needs_refresh     // force UI refresh of sentence bar
 
-        lda     #SENT_QUEUE_MAX_TOKENS
+        lda     #SENT_STACK_MAX_TOKENS
         sta     sentstk_free_slots  // reset available slots (max = 6)
 
-        lda     #SENT_QUEUE_EMPTY_IDX
+        lda     #SENT_STACK_EMPTY_IDX
         sta     sentstk_top_idx          // mark stack as empty (no active tokens)
 
         lda     #WALK_TO_VERB
