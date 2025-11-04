@@ -1,6 +1,7 @@
 #importonce
 #import "globals.inc"
 #import "constants.inc"
+#import "registers.inc"
 #import "sentence_text.asm"
 #import "destination.asm"
 
@@ -17,8 +18,6 @@
 .label find_actor_enclosing_cursor = $0
 .label get_object_enclosing_cursor = $0
 .label is_obj_in_current_kid_idx_inventory = $0
-.label has_object_a_pickup_script = $0
-.label run_pickup_on_sentence_complement = $0
 .label execute_verb_handler_for_object = $0
 
 //Queued sentence parts (verbs, direct objects, indirect objects, prepositions)
@@ -38,6 +37,11 @@
 .label active_io_hi = $fe1e
 .label sentence_parts = $fe1f
 
+.label temp_x = $0e70         // Temp storage for X across call
+.label temp_y = $0e71         // Temp storage for Y across call
+
+.const ARG_IS_DO          = $01    // Selector: A==#$01 → direct object, else indirect
+.const ARG_IS_IO          = $02    
 .const CLICK_TRIGGER_SET        = $01    // Force-run a sentence (click_trigger_sentence)
 .const CLICK_TRIGGER_CLEARED    = $FF    // Cleared state after forced trigger handled
 .const UI_REFRESH_REQUEST       = $01    // Request redraw (refresh_sentence_bar_flag)
@@ -432,20 +436,20 @@ verify_inventory_status:
 
         // try pickup for direct object
         lda     #$01
-        jsr     has_object_a_pickup_script
+        jsr     query_pickup_script_for_sentence_object
         cmp     #$01
         bne     try_indirect_object_pickup
         lda     #$01
-        jsr     run_pickup_on_sentence_complement
+        jsr     enqueue_pickup_for_sentence_part
         rts
 
 try_indirect_object_pickup:
         lda     #$02
-        jsr     has_object_a_pickup_script
+        jsr     query_pickup_script_for_sentence_object
         cmp     #$01
         bne     drop_sentence_no_pickup_available
         lda     #$02
-        jsr     run_pickup_on_sentence_complement
+        jsr     enqueue_pickup_for_sentence_part
         rts
 
 drop_sentence_no_pickup_available:
@@ -752,6 +756,297 @@ finalize_and_exit:
         lda     #$00                            // Prepare clear value
         sta     destination_entity              // Reset destination entity marker (none targeted)
         rts                                     // Return → sentence queued or action completed
+		
+/*
+================================================================================
+Get an object's script offset for a given verb.
+
+Summary:
+Scans the verb-handler list inside an object resource and returns the offset of
+the matching handler. Each handler occupies two bytes: {verb_id, script_offset}.
+A value of #$00 marks the end of the list, and #$0F indicates a default handler.
+
+Arguments:
+        .A = verb index
+        (object_rsrc_ptr) = base pointer to object resource
+
+Returns:
+        .A = script offset within the object resource, or:
+             #$00 if no handler and verb ≠ WALK_TO_VERB
+             #$0D if no handler and verb == WALK_TO_VERB
+
+Description:
+- The verb-handler list starts at offset #$0E from the resource base.
+- Each entry: {verb_id, offset}
+- The default handler (#$0F) matches any verb.
+================================================================================
+*/
+.label verb_index       = $0e6f           // Saved verb index for comparisons
+.label object_rsrc_ptr  = $15             // ZP pointer to object resource base
+
+.const VERB_TABLE_START_OFS   = $0E    // Start of verb-handler list in object resource
+.const VERB_SCAN_SEED_Y       = VERB_TABLE_START_OFS - 2   // Y seed so first INY,INY reads at +$0E
+.const DEFAULT_VERB           = $0F    // Default handler id; matches any verb
+.const NO_HANDLER_RET         = $00    // Return when no handler and verb ≠ WALK_TO_VERB
+
+* = $0E4A
+find_object_verb_handler_offset:
+        // ------------------------------------------------------------
+        // Store requested verb index
+        // ------------------------------------------------------------
+        sta     verb_index
+
+        // ------------------------------------------------------------
+        // Initialize scan offset (first entry at +VERB_TABLE_START_OFS)
+        // ------------------------------------------------------------
+        ldy     #VERB_SCAN_SEED_Y
+
+scan_next_verb_entry:
+        // ------------------------------------------------------------
+        // Advance two bytes to next handler entry
+        // ------------------------------------------------------------
+        iny
+        iny
+
+        // ------------------------------------------------------------
+        // Read verb id from handler pair
+        // ------------------------------------------------------------
+        lda     (object_rsrc_ptr),y
+
+        // ------------------------------------------------------------
+        // End of table marker?
+        // ------------------------------------------------------------
+        bne     evaluate_default_handler
+
+        // ------------------------------------------------------------
+        // Reached end of handlers list
+        // Return #$0D if WALK_TO_VERB, else #$00
+        // ------------------------------------------------------------
+        lda     verb_index
+        cmp     #WALK_TO_VERB
+        beq     return_no_handler
+        lda     #NO_HANDLER_RET
+return_no_handler:
+        rts
+
+evaluate_default_handler:
+        // ------------------------------------------------------------
+        // Default handler (#$0F) matches any verb
+        // ------------------------------------------------------------
+        cmp     #DEFAULT_VERB
+        bne     compare_verb_id
+        jmp     return_handler_offset
+
+compare_verb_id:
+        // ------------------------------------------------------------
+        // Compare handler’s verb id with requested verb
+        // ------------------------------------------------------------
+        cmp     verb_index
+        bne     scan_next_verb_entry
+
+return_handler_offset:
+        // ------------------------------------------------------------
+        // Return next byte as handler script offset
+        // ------------------------------------------------------------
+        iny
+        lda     (object_rsrc_ptr),y
+        rts
+		
+/*
+================================================================================
+Returns whether an object has a custom "pick up" script.
+
+Summary:
+Checks the queued sentence’s direct or indirect object for a custom Pick Up
+handler. Returns A = #$01 if a script exists, else #$00. Preserves X and Y.
+
+Arguments:
+        .A      #$01 → direct object
+                any other value → indirect object
+
+Returns:
+        .A      #$01 if custom Pick Up script exists
+                #$00 otherwise
+
+Description:
+- Selects DO or IO from the sentence queue slot at sentq_index.
+- Rejects objects with hi == #$02 as non-recipients.
+- Resolves object resource and queries verb handler for PICK_UP_VERB.
+================================================================================
+*/
+
+* = $0E73
+query_pickup_script_for_sentence_object:
+        // ------------------------------------------------------------
+        // Save X and Y
+        // ------------------------------------------------------------
+        stx     temp_x
+        sty     temp_y
+
+        // ------------------------------------------------------------
+        // Load current queue index into Y
+        // ------------------------------------------------------------
+        ldy     sentq_index
+
+        // ------------------------------------------------------------
+        // DO vs IO selector: A == #ARG_IS_DO → direct object
+        // ------------------------------------------------------------
+        cmp     #ARG_IS_DO
+        bne     load_indirect_object_index
+
+        // ------------------------------------------------------------
+        // Load direct object index (lo→X, hi→A)
+        // ------------------------------------------------------------
+        ldx     queued_do_lo,y
+        lda     queued_do_hi,y
+        jmp     check_actor_class
+
+load_indirect_object_index:
+        // ------------------------------------------------------------
+        // Load indirect object index (lo→X, hi→A)
+        // ------------------------------------------------------------
+        ldx     queued_io_lo,y
+        lda     queued_io_hi,y
+
+check_actor_class:
+        // ------------------------------------------------------------
+        // Recipient class gate: if it's an actor, it's not pickable
+        // ------------------------------------------------------------
+        cmp     #OBJ_TYPE_ACTOR
+        bne     resolve_and_check_pickup_handler
+
+        // ------------------------------------------------------------
+        // Not pickable → return False
+        // ------------------------------------------------------------
+        lda     #FALSE
+        rts
+
+resolve_and_check_pickup_handler:
+        // ------------------------------------------------------------
+        // Resolve object and query Pick Up handler
+        // ------------------------------------------------------------
+        jsr     resolve_object_resource
+        lda     PICK_UP_VERB
+        jsr     find_object_verb_handler_offset
+
+        // ------------------------------------------------------------
+        // Nonzero → script exists
+        // ------------------------------------------------------------
+        bne     pickup_handler_present
+
+        // ------------------------------------------------------------
+        // No script → return False
+        // ------------------------------------------------------------
+        lda     #FALSE
+        jmp     has_object_pickup_exit
+
+pickup_handler_present:
+        // ------------------------------------------------------------
+        // Script present → return True
+        // ------------------------------------------------------------
+        lda     #TRUE
+
+has_object_pickup_exit:
+        // ------------------------------------------------------------
+        // Restore X and Y, then return
+        // ------------------------------------------------------------
+        ldx     temp_x
+        ldy     temp_y
+        rts
+
+/*
+================================================================================
+Queues a “Pick Up” sentence for the current sentence complement.
+
+Summary:
+Takes either the direct or indirect object from the current queued sentence
+and appends a new “Pick Up <object>” command to the sentence queue. Ensures
+the queue index remains valid and halts with a debug indicator on overflow.
+
+Arguments:
+        .A = #$01 → direct object
+             #$02 → indirect object
+
+Returns:
+        None (A/X/Y clobbered)
+================================================================================
+*/
+.label object_ptr = $15                     // ZP pointer for target object index
+
+enqueue_pickup_for_sentence_part:
+        // ------------------------------------------------------------
+        // Save X
+        // ------------------------------------------------------------
+        stx     temp_x
+
+        // ------------------------------------------------------------
+        // Fetch current queue index
+        // ------------------------------------------------------------
+        ldx     sentq_index
+
+        // ------------------------------------------------------------
+        // Is it the indirect object? 
+        // ------------------------------------------------------------
+        cmp     #ARG_IS_IO
+        bne     fetch_direct_object
+
+        // ------------------------------------------------------------
+        // Indirect object → copy indices into object_ptr
+        // ------------------------------------------------------------
+        lda     queued_io_lo,x
+        sta     <object_ptr
+        lda     queued_io_hi,x
+        sta     >object_ptr
+        jmp     next_sentence_index
+
+fetch_direct_object:
+        // ------------------------------------------------------------
+        // Direct object → copy indices into object_ptr
+        // ------------------------------------------------------------
+        lda     queued_do_lo,x
+        sta     <object_ptr
+        lda     queued_do_hi,x
+        sta     >object_ptr
+
+next_sentence_index:
+        // ------------------------------------------------------------
+        // Advance queue index and validate range
+        // ------------------------------------------------------------
+        inc     sentq_index
+        ldx     sentq_index
+        cpx     #SENT_QUEUE_MAX_TOKENS
+        bne     queue_pickup
+
+        // ------------------------------------------------------------
+        // Invalid sentence part index → debug hang
+        // ------------------------------------------------------------
+        lda     #$2D
+        sta     debug_error_code
+        ldy     #MAP_IO_ON
+        sty     cpu_port
+hangup_loop:
+        sta     vic_border_color_reg
+        jmp     hangup_loop
+
+queue_pickup:
+        // ------------------------------------------------------------
+        // Queue a new “Pick Up” sentence for the selected object
+        // ------------------------------------------------------------
+        lda     PICK_UP_VERB
+        sta     queued_verbs,x
+        lda     #$00
+        sta     queued_preps,x
+        lda     <object_ptr
+        sta     queued_do_lo,x
+        lda     >object_ptr
+        sta     queued_do_hi,x
+
+        // ------------------------------------------------------------
+        // Restore X and return
+        // ------------------------------------------------------------
+        ldx     temp_x
+        rts
+		
 /*
 ================================================================================
   switch_active_kid_if_different
