@@ -565,8 +565,8 @@ They were definitely intended as debugging aids.
 .label sentence_bar_needs_refresh = $fe49	//#00 = don't refresh the sentence bar, #01 = refresh it
 									//By "refresh", we mean to update its contents
 .label init_sentence_ui_flag = $fe8f
-.label sentq_index = $fe17
-.label sentq_free_slots = $fe18	
+.label sentstk_top_idx = $fe17
+.label sentstk_free_slots = $fe18	
 .label current_verb_id = $fe1f
 .label direct_object_idx_lo = $fe20
 .label direct_object_idx_hi = $fe21
