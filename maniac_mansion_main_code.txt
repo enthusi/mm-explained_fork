@@ -1397,12 +1397,12 @@ indirect_object_idx_hi = $fe24
 
 ;Queued sentence parts (verbs, direct objects, indirect objects, prepositions)
 ;Each queue has a maximum size of 6 elements
-queued_sentence_verbs = $fe25
-queued_sentence_direct_objects_lo = $fe2b
-queued_sentence_direct_objects_hi = $fe31
-queued_sentence_prepositions = $fe37
-queued_sentence_indirect_objects_lo = $fe3d
-queued_sentence_indirect_objects_hi = $fe43
+queued_verbs = $fe25
+queued_do_lo = $fe2b
+queued_do_hi = $fe31
+queued_preps = $fe37
+queued_io_lo = $fe3d
+queued_io_hi = $fe43
 
 refresh_sentence_bar_flag = $fe49	;#00 = don't refresh the sentence bar, #01 = refresh it
 									;By "refresh", we mean to update its contents
@@ -1428,7 +1428,7 @@ current_script_slot = $fe89			;Script engine's slot index for script being execu
 current_script_rsrc_base_lo = $fe8a			;Resource base address of script being executed
 current_script_rsrc_base_hi = $fe8b
 opcode = $fe8c
-reset_sentence_queue_system_flag = $fe8f
+init_sentence_ui_and_queue_flag = $fe8f
 
 current_room_layers_rsrc = $fe98
 
@@ -2504,7 +2504,7 @@ do_nothing:
 ;=========================================== 
 process_sentence:
 ;Do we need to reset the sentence? If not, continue
-.C:077c  AD 8F FE    LDA reset_sentence_queue_system_flag
+.C:077c  AD 8F FE    LDA init_sentence_ui_and_queue_flag
 .C:077f  F0 19       BEQ limit_verbs
 ;-------------------------------------------
 ; Reset sentence
@@ -2521,7 +2521,7 @@ process_sentence:
 .C:0791  8D 20 FE    STA direct_object_idx_lo
 .C:0794  8D 21 FE    STA direct_object_idx_hi
 clear_sentence_reset:
-.C:0797  8D 8F FE    STA reset_sentence_queue_system_flag
+.C:0797  8D 8F FE    STA init_sentence_ui_and_queue_flag
 ;-------------------------------------------
 ; Limit verbs if dead or in the radiation suit
 ;-------------------------------------------
@@ -3037,7 +3037,7 @@ select_kid:
 .C:09c6  20 C6 08    JSR refresh_sentence_bar
 ;Restore the selected kid index and execute the kid change
 .C:09c9  68          PLA
-.C:09ca  20 AE 29    JSR validate_new_kid_change
+.C:09ca  20 AE 29    JSR switch_active_kid_if_different
 ;--------------------------------------
 ;Set verb to "walk to", refresh sentence again, and exit
 set_walk_and_exit:
@@ -3079,7 +3079,7 @@ resolve_object_name:
 .C:09e6  C9 FF       CMP #$FF
 .C:09e8  D0 04       BNE update_pointer
 ;If not, invalidate the sentence and return
-.C:09ea  20 CC 29    JSR reset_sentence_queue_system
+.C:09ea  20 CC 29    JSR init_sentence_ui_and_queue
 .C:09ed  60          RTS
 update_pointer:
 ;Read offset to object's name from pointer + #0D
@@ -3451,17 +3451,17 @@ queue_sentence:
 .C:0b59  AE 17 FE    LDX sentence_queue_index
 ;Save each of the sentence parts into the queue
 .C:0b5c  AD 1F FE    LDA current_verb
-.C:0b5f  9D 25 FE    STA queued_sentence_verbs,X
+.C:0b5f  9D 25 FE    STA queued_verbs,X
 .C:0b62  AD 20 FE    LDA direct_object_idx_lo
-.C:0b65  9D 2B FE    STA queued_sentence_direct_objects_lo,X
+.C:0b65  9D 2B FE    STA queued_do_lo,X
 .C:0b68  AD 21 FE    LDA direct_object_idx_hi
-.C:0b6b  9D 31 FE    STA queued_sentence_direct_objects_hi,X
+.C:0b6b  9D 31 FE    STA queued_do_hi,X
 .C:0b6e  AD 22 FE    LDA preposition
-.C:0b71  9D 37 FE    STA queued_sentence_prepositions,X
+.C:0b71  9D 37 FE    STA queued_preps,X
 .C:0b74  AD 23 FE    LDA indirect_object_idx_lo
-.C:0b77  9D 3D FE    STA queued_sentence_indirect_objects_lo,X
+.C:0b77  9D 3D FE    STA queued_io_lo,X
 .C:0b7a  AD 24 FE    LDA indirect_object_idx_hi
-.C:0b7d  9D 43 FE    STA queued_sentence_indirect_objects_hi,X
+.C:0b7d  9D 43 FE    STA queued_io_hi,X
 ;Reset sentence parts after queuing
 ;If verb is "Walk to", we don't need to reset anything already, just exit
 .C:0b80  AD 1F FE    LDA current_verb
@@ -3518,18 +3518,18 @@ check_sentence_queue_index:
 .C:0ba7  60          RTS
 check_if_complements_are_identical:
 ;If there's no preposition set, continue, as there's only one complement
-.C:0ba8  BD 37 FE    LDA queued_sentence_prepositions,X
+.C:0ba8  BD 37 FE    LDA queued_preps,X
 .C:0bab  F0 50       BEQ set_active_sentence_parts
 ;Is there a direct object set? If not, check complements
-.C:0bad  BD 2B FE    LDA queued_sentence_direct_objects_lo,X
+.C:0bad  BD 2B FE    LDA queued_do_lo,X
 .C:0bb0  F0 11       BEQ check_complements_in_inventory
 ;Is the low byte identical to the indirect object low byte?
 ;If not, check complements
-.C:0bb2  DD 3D FE    CMP queued_sentence_indirect_objects_lo,X
+.C:0bb2  DD 3D FE    CMP queued_io_lo,X
 .C:0bb5  D0 0C       BNE check_complements_in_inventory
 ;It's identical - compare the hi bytes now
-.C:0bb7  BD 31 FE    LDA queued_sentence_direct_objects_hi,X
-.C:0bba  DD 43 FE    CMP queued_sentence_indirect_objects_hi,X
+.C:0bb7  BD 31 FE    LDA queued_do_hi,X
+.C:0bba  DD 43 FE    CMP queued_io_hi,X
 ;If they are not identical, check complements
 .C:0bbd  D0 04       BNE check_complements_in_inventory
 ;The direct and indirect objects are identical, move index to the next sentence and exit
@@ -3590,17 +3590,17 @@ no_custom_pickup_scripts:
 set_active_sentence_parts:
 ;Copy all the sentence parts for the current sentence into the "active_" variables
 .C:0bfd  AC 17 FE    LDY sentence_queue_index
-.C:0c00  B9 25 FE    LDA queued_sentence_verbs,Y
+.C:0c00  B9 25 FE    LDA queued_verbs,Y
 .C:0c03  8D 19 FE    STA active_verb
-.C:0c06  B9 2B FE    LDA queued_sentence_direct_objects_lo,Y
+.C:0c06  B9 2B FE    LDA queued_do_lo,Y
 .C:0c09  8D 1A FE    STA active_object_lo
-.C:0c0c  B9 31 FE    LDA queued_sentence_direct_objects_hi,Y
+.C:0c0c  B9 31 FE    LDA queued_do_hi,Y
 .C:0c0f  8D 1B FE    STA active_object_hi
-.C:0c12  B9 37 FE    LDA queued_sentence_prepositions,Y
+.C:0c12  B9 37 FE    LDA queued_preps,Y
 .C:0c15  8D 1C FE    STA active_preposition
-.C:0c18  B9 3D FE    LDA queued_sentence_indirect_objects_lo,Y
+.C:0c18  B9 3D FE    LDA queued_io_lo,Y
 .C:0c1b  8D 1D FE    STA active_indirect_object
-.C:0c1e  B9 43 FE    LDA queued_sentence_indirect_objects_hi,Y
+.C:0c1e  B9 43 FE    LDA queued_io_hi,Y
 .C:0c21  8D 1E FE    STA active_indirect_object_hi
 ;--------------------------------------------------
 ;Move the sentence index and the free capacity
@@ -4129,13 +4129,13 @@ has_object_a_pickup_script:
 .C:0e7e  D0 09       BNE part_is_indirect_object
 ;#01 - direct object
 ;Load the object index
-.C:0e80  BE 2B FE    LDX queued_sentence_direct_objects_lo,Y		
-.C:0e83  B9 31 FE    LDA queued_sentence_direct_objects_hi,Y				
+.C:0e80  BE 2B FE    LDX queued_do_lo,Y		
+.C:0e83  B9 31 FE    LDA queued_do_hi,Y				
 .C:0e86  4C 8F 0E    JMP is_object_givable
 part_is_indirect_object:
 ;#02 - indirect object - load the object index
-.C:0e89  BE 3D FE    LDX queued_sentence_indirect_objects_lo,Y		
-.C:0e8c  B9 43 FE    LDA queued_sentence_indirect_objects_hi,Y				
+.C:0e89  BE 3D FE    LDX queued_io_lo,Y		
+.C:0e8c  B9 43 FE    LDA queued_io_hi,Y				
 check_if_recipient:
 ;Can the object be a recipient of another object?
 ;That is, is the hi part of the index #02?
@@ -4180,13 +4180,13 @@ is_obj_in_current_kid_inventory:
 .C:0eb4  C9 01       CMP #$01
 .C:0eb6  D0 09       BNE fetch_indirect_object
 ;It's the direct object
-.C:0eb8  BC 2B FE    LDY queued_sentence_direct_objects_lo,X
-.C:0ebb  BD 31 FE    LDA queued_sentence_direct_objects_hi,X
+.C:0eb8  BC 2B FE    LDY queued_do_lo,X
+.C:0ebb  BD 31 FE    LDA queued_do_hi,X
 .C:0ebe  4C C7 0E    JMP check_item_state
 ;It's not, so it must be the indirect object
 fetch_indirect_object:
-.C:0ec1  BC 3D FE    LDY queued_sentence_indirect_objects_lo,X
-.C:0ec4  BD 43 FE    LDA queued_sentence_indirect_objects_hi,X
+.C:0ec1  BC 3D FE    LDY queued_io_lo,X
+.C:0ec4  BD 43 FE    LDA queued_io_hi,X
 check_object_state: 
 ;The object's hi byte represents if it's in _somebody's_ inventory or not (#00 == in inventory)
 .C:0ec7  F0 03       BEQ check_in_current_kid_inventory
@@ -4228,16 +4228,16 @@ run_pickup_on_sentence_complement:
 .C:0ee7  C9 02       CMP #$02
 .C:0ee9  D0 0D       BNE fetch_direct_object
 ;It's the indirect object - store data into $15/16
-.C:0eeb  BD 3D FE    LDA queued_sentence_indirect_objects_lo,X
+.C:0eeb  BD 3D FE    LDA queued_io_lo,X
 .C:0eee  85 15       STA <object_ptr
-.C:0ef0  BD 43 FE    LDA queued_sentence_indirect_objects_hi,X
+.C:0ef0  BD 43 FE    LDA queued_io_hi,X
 .C:0ef3  85 16       STA >object_ptr
 .C:0ef5  4C 02 0F    JMP next_sentence_index
 fetch_direct_object:
 ;It's not, so it must be the direct object  - store data into $15/16
-.C:0ef8  BD 2B FE    LDA queued_sentence_direct_objects_lo,X
+.C:0ef8  BD 2B FE    LDA queued_do_lo,X
 .C:0efb  85 15       STA <object_ptr
-.C:0efd  BD 31 FE    LDA queued_sentence_direct_objects_hi,X
+.C:0efd  BD 31 FE    LDA queued_do_hi,X
 .C:0f00  85 16       STA >object_ptr
 next_sentence_index:
 ;Increment sentence index
@@ -4261,13 +4261,13 @@ hangup_loop:
 queue_pickup:
 ;Queue the "pick up" sentence for the object
 .C:0f1a  A9 0E       LDA PICK_UP_VERB
-.C:0f1c  9D 25 FE    STA queued_sentence_verbs,X
+.C:0f1c  9D 25 FE    STA queued_verbs,X
 .C:0f1f  A9 00       LDA #$00
-.C:0f21  9D 37 FE    STA queued_sentence_prepositions,X
+.C:0f21  9D 37 FE    STA queued_preps,X
 .C:0f24  A5 15       LDA <object_ptr
-.C:0f26  9D 2B FE    STA queued_sentence_direct_objects_lo,X
+.C:0f26  9D 2B FE    STA queued_do_lo,X
 .C:0f29  A5 16       LDA >object_ptr
-.C:0f2b  9D 31 FE    STA queued_sentence_direct_objects_hi,X
+.C:0f2b  9D 31 FE    STA queued_do_hi,X
 .C:0f2e  AE 70 0E    LDX temp
 .C:0f31  60          RTS
 ;===========================================
@@ -10228,23 +10228,23 @@ check_new_kid_key:
 .C:2994  D0 05       BNE check_f3_key
 ;F1 pressed - set kid index to #00
 .C:2996  A9 00       LDA #$00
-.C:2998  4C AE 29    JMP validate_new_kid_change
+.C:2998  4C AE 29    JMP switch_active_kid_if_different
 check_f3_key:
 .C:299b  C9 02       CMP #$02		;F3 key?
 .C:299d  D0 05       BNE check_f5_key
 ;F3 pressed - set kid index to #01
 .C:299f  A9 01       LDA #$01
-.C:29a1  4C AE 29    JMP validate_new_kid_change
+.C:29a1  4C AE 29    JMP switch_active_kid_if_different
 check_f5_key:
 .C:29a4  C9 03       CMP #$03		;F5 key?
 .C:29a6  D0 05       BNE exit
 ;F5 pressed - set kid index to #02
 .C:29a8  A9 02       LDA #$02
-.C:29aa  4C AE 29    JMP validate_new_kid_change
+.C:29aa  4C AE 29    JMP switch_active_kid_if_different
 exit:
 .C:29ad  60          RTS
 ;---------------------------------
-validate_new_kid_change:
+switch_active_kid_if_different:
 ;.X = index of F key (0/1/2 for F1/F3/F5 respectively)
 .C:29ae  AA          TAX			
 ;Fetch the kid ID for the index
@@ -10268,7 +10268,7 @@ change_to_new_kid:
 ;===========================================
 ; Resets all components of the sentence queue system
 ;===========================================
-reset_sentence_queue_system:
+init_sentence_ui_and_queue:
 ;Clear the destination entity
 .C:29cc  A9 00       LDA #$00
 .C:29ce  8D 51 FE    STA destination_entity
@@ -12575,7 +12575,7 @@ load_room:
 .C:3466  8A          TXA
 .C:3467  48          PHA
 ;Reset the sentence queue
-.C:3468  20 CC 29    JSR reset_sentence_queue_system
+.C:3468  20 CC 29    JSR init_sentence_ui_and_queue
 ;Execute the current room's exit script
 .C:346b  20 9D 3A    JSR execute_room_exit_script
 .C:346e  20 CE 3B    JSR hide_all_actors_and_release_sprites
@@ -22856,7 +22856,7 @@ object_found:
 .C:6381  A9 C8       LDA #$C8
 .C:6383  8D 67 06    STA camera_current_position
 ;Reset the sentence queue
-.C:6386  20 CC 29    JSR reset_sentence_queue_system
+.C:6386  20 CC 29    JSR init_sentence_ui_and_queue
 ;???
 .C:6389  A9 00       LDA #$00
 .C:638b  8D 8E FE    STA click_trigger_sentence
@@ -23672,7 +23672,7 @@ input_opcode = $d2
 .C:6727  AC 17 FE    LDY sentence_queue_index
 ;Read the verb from the script and store it in the current sentence queue
 .C:672a  20 14 5E    JSR script_read_byte
-.C:672d  99 25 FE    STA queued_sentence_verbs,Y
+.C:672d  99 25 FE    STA queued_verbs,Y
 ;Setup the opcode for the script object helper
 .C:6730  AD 8C FE    LDA opcode
 .C:6733  85 D2       STA input_opcode
@@ -23680,19 +23680,19 @@ input_opcode = $d2
 .C:6735  20 85 60    JSR get_script_object_for_sentence
 ;Store object index as direct object for the sentence
 .C:6738  A5 D0       LDA low_byte
-.C:673a  99 2B FE    STA queued_sentence_direct_objects_lo,Y
+.C:673a  99 2B FE    STA queued_do_lo,Y
 .C:673d  A5 D1       LDA hi_byte
-.C:673f  99 31 FE    STA queued_sentence_direct_objects_hi,Y
+.C:673f  99 31 FE    STA queued_do_hi,Y
 .C:6742  06 D2       ASL input_opcode
 ;Get the object index into low_byte/hi_byte (based on the opcode and next script byte)
 .C:6744  20 85 60    JSR get_script_object_for_sentence
 ;Store object index as indirect object for the sentence 
 .C:6747  A5 D0       LDA low_byte
-.C:6749  99 3D FE    STA queued_sentence_indirect_objects_lo,Y
+.C:6749  99 3D FE    STA queued_io_lo,Y
 ;Store something in the preposition as well to allow the sentence evaluator to consider it complete
-.C:674c  99 37 FE    STA queued_sentence_prepositions,Y
+.C:674c  99 37 FE    STA queued_preps,Y
 .C:674f  A5 D1       LDA hi_byte
-.C:6751  99 43 FE    STA queued_sentence_indirect_objects_hi,Y
+.C:6751  99 43 FE    STA queued_io_hi,Y
 .C:6754  60          RTS
 ;===========================================
 ; Freeze all noncurrent scripts 
@@ -23746,11 +23746,11 @@ unfreeze_script:
 .C:678c  A2 05       LDX #$05
 save_sentence_part:
 .C:678e  BD 1F FE    LDA sentence_parts,X
-.C:6791  9D 43 FE    STA queued_sentence_indirect_objects_hi,X
+.C:6791  9D 43 FE    STA queued_io_hi,X
 .C:6794  CA          DEX
 .C:6795  10 F7       BPL save_sentence_part
 ;Reset the sentence queue
-.C:6797  20 CC 29    JSR reset_sentence_queue_system
+.C:6797  20 CC 29    JSR init_sentence_ui_and_queue
 ;???
 .C:679a  A9 00       LDA #$00
 .C:679c  8D 8E FE    STA click_trigger_sentence
@@ -23804,7 +23804,7 @@ other_control_modes:
 ;Restore sentence parts
 .C:67ec  A2 05       LDX #$05
 restore_sentence_part:
-.C:67ee  BD 43 FE    LDA queued_sentence_indirect_objects_hi,X
+.C:67ee  BD 43 FE    LDA queued_io_hi,X
 .C:67f1  9D 1F FE    STA sentence_parts,X
 .C:67f4  CA          DEX
 .C:67f5  10 F7       BPL restore_sentence_part
@@ -26630,15 +26630,15 @@ handle_click_on_verb:
 ;Set it as the current verb
 .C:f433  8D 1F FE    STA current_verb
 .C:f436  AD 8A CB    LDA button_presses
-.C:f439  F0 07       BEQ reset_sentence_queue_system
+.C:f439  F0 07       BEQ init_sentence_ui_and_queue
 ;Rebuild the action sentence
 .C:f43b  A9 01       LDA #$01
 .C:f43d  85 95       STA rebuild_action_sentence
 .C:f43f  4C 47 F4    JMP refresh_sentence
-reset_sentence_queue_system:
+init_sentence_ui_and_queue:
 ;Reset the sentence queue
 .C:f442  A9 01       LDA #$01
-.C:f444  8D 8F FE    STA reset_sentence_queue_system_flag
+.C:f444  8D 8F FE    STA init_sentence_ui_and_queue_flag
 refresh_sentence:
 .C:f447  A9 01       LDA #$01
 .C:f449  8D 49 FE    STA refresh_sentence_bar_flag
