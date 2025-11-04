@@ -105,7 +105,7 @@ build_sentence_bar_text:
         // Check if current verb is "NEW KID"
         // If so, directly print kid names and exit routine
         // ------------------------------------------------------------
-        lda     current_verb                      // load currently selected verb id
+        lda     current_verb_id                      // load currently selected verb id
         cmp     #NEW_KID_VERB                     // compare against "NEW KID" verb id
         bne     ensure_default_verb               // not equal → continue with regular sentence build
         jmp     write_kid_names_to_sentence_bar   // equal → delegate to kid-name writer and return
@@ -117,7 +117,7 @@ ensure_default_verb:
         cmp     #$00                              // check if no verb currently selected
         bne     append_verb                       // if not zero → a verb already exists, skip default
         lda     #WALK_TO_VERB                     // load default verb id ("WALK TO")
-        sta     current_verb                      // store it as the active verb
+        sta     current_verb_id                      // store it as the active verb
 
 append_verb:
         // ------------------------------------------------------------
@@ -170,7 +170,7 @@ append_preposition_if_any:
         // ------------------------------------------------------------
         // "Give" verb special case: validate indirect object type
         // ------------------------------------------------------------
-        lda     current_verb                  // A := current verb id
+        lda     current_verb_id                  // A := current verb id
         cmp     #GIVE_VERB                    // GIVE verb?
         bne     append_indirect_if_present    // no → skip validation
 
@@ -738,7 +738,7 @@ Summary
 	fixed prepositions. Otherwise return none.
 
 Arguments
-	current_verb                  verb selector
+	current_verb_id                  verb selector
 	direct_object_idx_lo/hi       object id used only when verb = USE
 
 Returns
@@ -768,7 +768,7 @@ select_preposition_for_verb:
 		// Dispatch by verb. USE reads object’s preposition bits at +OBJ_PREP_BYTE_OFS.
 		// GIVE → "to". NEW_KID/UNLOCK/FIX → "with". Otherwise none.
 		// ------------------------------------------------------------
-		lda     current_verb
+		lda     current_verb_id
 		cmp     #USE_VERB
 		bne     verb_is_give
 
