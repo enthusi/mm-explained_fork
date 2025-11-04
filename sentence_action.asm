@@ -179,52 +179,67 @@ Typical traces
 #import "sentence_text.asm"
 #import "destination.asm"
 
-.const SENT_STACK_MAX_TOKENS      = $06    // Max number of tokens allowed in the sentence stack
-.const SENT_STACK_EMPTY_IDX       = $FF    // Sentinel value: stack has no active entries
-.const DEFAULT_VERB_WALK_TO       = $0D    // Default “Walk to” verb ID
-.const REFRESH_UI_FLAG_ON         = $01    // Nonzero → force sentence bar redraw
-.const ENTITY_NONE                = $00    // No destination entity assigned
-
-.const SECOND_KID_NAME_COLUMN = $0B
-.const THIRD_KID_NAME_COLUMN = $18
-
-
 .label find_actor_enclosing_cursor = $0
 .label get_object_enclosing_cursor = $0
 .label set_script_resource_base_address = $0
 .label set_current_script_read_address = $0
 .label execute_next_operation = $0
 
-//Queued sentence parts (verbs, direct objects, indirect objects, prepositions)
-//Each stack has a maximum size of 6 elements
-.label stacked_verb_ids = $fe25
-.label stacked_do_id_lo = $fe2b
-.label stacked_do_id_hi = $fe31
-.label stacked_prep_ids = $fe37
-.label stacked_io_id_lo = $fe3d
-.label stacked_io_id_hi = $fe43
+// Queued sentence parts (parallel LIFO stacks, max depth = 6)
+.label stacked_verb_ids        = $fe25    // Stack of verb IDs (index 0..5; top tracked separately)
+.label stacked_do_id_lo        = $fe2b    // Stack of direct-object IDs: low byte per entry
+.label stacked_do_id_hi        = $fe31    // Stack of direct-object IDs: high byte per entry
+.label stacked_prep_ids        = $fe37    // Stack of preposition IDs (one byte per entry)
+.label stacked_io_id_lo        = $fe3d    // Stack of indirect-object IDs: low byte per entry
+.label stacked_io_id_hi        = $fe43    // Stack of indirect-object IDs: high byte per entry
 
-.label active_verb_id = $fe19
-.label active_do_id_lo = $fe1a
-.label active_do_id_hi = $fe1b
-.label active_prep_id = $fe1c
-.label active_io_id_lo = $fe1d
-.label active_io_id_hi = $fe1e
-.label sentence_parts = $fe1f
+// Active (dequeued) sentence snapshot
+.label active_verb_id          = $fe19    // Active verb ID being processed
+.label active_do_id_lo         = $fe1a    // Active direct-object ID: low byte
+.label active_do_id_hi         = $fe1b    // Active direct-object ID: high byte
+.label active_prep_id          = $fe1c    // Active preposition ID (0 = none)
+.label active_io_id_lo         = $fe1d    // Active indirect-object ID: low byte
+.label active_io_id_hi         = $fe1e    // Active indirect-object ID: high byte
 
-.label temp_x = $0e70         // Temp storage for X across call
-.label temp_y = $0e71         // Temp storage for Y across call
+// Scratch / helpers
+.label verb_index              = $0e6f    // Latched verb ID for comparisons/table scans
+.label object_rsrc_ptr         = $15      // ZP pointer to object resource base (lo at $15, hi at $16)
+.label temp_x                  = $0e70    // Saves X across calls where X must be preserved
+.label temp_y                  = $0e71    // Saves Y across calls where Y must be preserved
+.label object_ptr              = $15      // ZP pointer used for target object index lookups (alias of object_rsrc_ptr)
 
-.const ARG_IS_DO          = $01    // Selector: A==#$01 → direct object, else indirect
-.const ARG_IS_IO          = $02    
-.const CLICK_TRIGGER_SET        = $01    // Force-run a sentence (forced_sentence_trigger)
-.const CLICK_TRIGGER_CLEARED    = $FF    // Cleared state after forced trigger handled
-.const UI_REFRESH_REQUEST       = $01    // Request redraw (sentence_bar_needs_refresh)
-.const REBUILD_SENTENCE_ON      = $01    // Rebuild action sentence now (needs_sentence_rebuild)
-.const OBJ_IDX_NONE             = $00    // No object selected (lo byte sentinel)
-.const PREPOSITION_NONE         = $00    // No preposition selected
-.const SCRIPT_SLOT_NONE              = $FF    // No script running sentinel
-.const GLOBAL_DEFAULTS_SCRIPT_ID     = $03    // Global “verb defaults” script number
+
+.const VERB_TABLE_START_OFS       = $0E    // Byte offset in object resource where {verb,ofs} pairs begin
+.const VERB_SCAN_SEED_Y           = VERB_TABLE_START_OFS - 2   // Y init so first INY,INY lands at +$0E entry
+.const DEFAULT_VERB               = $0F    // Wildcard verb id; matches any verb in handler scan
+.const NO_HANDLER_RET             = $00    // find_object_verb_handler_offset: no handler and verb ≠ WALK_TO
+
+.const INVCHK_RET_FOUND           = $01    // Inventory check result: object owned by current kid
+.const INVCHK_RET_NOT_FOUND       = $00    // Inventory check result: object not owned by current kid
+
+.const ARG_IS_DO                  = $01    // Selector A value: operate on direct object
+.const ARG_IS_IO                  = $02    // Selector A value: operate on indirect object
+
+.const FORCED_TRIGGER_SET          = $01    // forced_sentence_trigger: set → run sentence immediately
+.const FORCED_TRIGGER_CLEARED      = $FF    // forced_sentence_trigger: cleared after handling
+
+.const UI_REFRESH_REQUEST         = $01    // sentence_bar_needs_refresh flag value: request redraw
+.const REBUILD_SENTENCE_ON        = $01    // needs_sentence_rebuild flag value: rebuild now
+
+.const OBJ_IDX_NONE               = $00    // Sentinel lo byte for “no object selected”
+.const PREPOSITION_NONE           = $00    // No preposition selected
+
+.const SCRIPT_SLOT_NONE           = $FF    // No script running (idle slot sentinel)
+.const GLOBAL_DEFAULTS_SCRIPT_ID  = $03    // Global “verb defaults” script identifier
+
+.const SENT_STACK_MAX_TOKENS      = $06    // Max entries allowed on the sentence stack
+.const SENT_STACK_EMPTY_IDX       = $FF    // Stack top sentinel for “no entries”
+
+.const DEFAULT_VERB_WALK_TO       = WALK_TO_VERB    // Verb id for “Walk to” default case
+.const ENTITY_NONE                = $00    // No destination entity selected/active
+
+.const SECOND_KID_NAME_COLUMN     = $0B    // Column threshold for kid #2 selection in UI
+.const THIRD_KID_NAME_COLUMN      = $18    // Column threshold for kid #3 selection in UI
 
 * = $077C
 process_sentence:
@@ -294,12 +309,12 @@ handle_normal_mode:
         lda     current_verb_id
         cmp     #WHAT_IS_VERB
         bne     handle_click_trigger_or_defer
-        lda     #CLICK_TRIGGER_SET
+        lda     #FORCED_TRIGGER_SET
         sta     forced_sentence_trigger           // “What is” → force sentence trigger
 
 handle_click_trigger_or_defer:
         lda     forced_sentence_trigger
-        cmp     #CLICK_TRIGGER_SET
+        cmp     #FORCED_TRIGGER_SET
         beq     on_forced_trigger
         jmp     run_sentence_if_complete          // no forced trigger → check normally
 
@@ -307,7 +322,7 @@ handle_click_trigger_or_defer:
         // Forced-trigger path
         // ------------------------------------------------------------
 on_forced_trigger:
-        lda     #CLICK_TRIGGER_CLEARED
+        lda     #FORCED_TRIGGER_CLEARED
         sta     forced_sentence_trigger            // clear trigger flag
 
         lda     current_verb_id
@@ -543,7 +558,7 @@ select_kid:
         pha                                      // save kid index
         lda     #WALK_TO_VERB
         sta     current_verb_id                     // reset verb to “Walk to”
-        lda     #REFRESH_UI_FLAG_ON
+        lda     #UI_REFRESH_REQUEST
         sta     sentence_bar_needs_refresh
         jsr     refresh_sentence_bar             // update UI
         pla                                      // restore kid index
@@ -553,7 +568,7 @@ select_kid:
 set_walk_and_exit:		
         lda     #WALK_TO_VERB
         sta     current_verb_id
-        lda     #REFRESH_UI_FLAG_ON
+        lda     #UI_REFRESH_REQUEST
         sta     sentence_bar_needs_refresh
         rts
 
@@ -1070,14 +1085,6 @@ Description:
 - The default handler (#$0F) matches any verb.
 ================================================================================
 */
-.label verb_index       = $0e6f           // Saved verb index for comparisons
-.label object_rsrc_ptr  = $15             // ZP pointer to object resource base
-
-.const VERB_TABLE_START_OFS   = $0E    // Start of verb-handler list in object resource
-.const VERB_SCAN_SEED_Y       = VERB_TABLE_START_OFS - 2   // Y seed so first INY,INY reads at +$0E
-.const DEFAULT_VERB           = $0F    // Default handler id; matches any verb
-.const NO_HANDLER_RET         = $00    // Return when no handler and verb ≠ WALK_TO_VERB
-
 * = $0E4A
 find_object_verb_handler_offset:
         // ------------------------------------------------------------
@@ -1255,8 +1262,6 @@ has_object_pickup_exit:
 //     .A = #$01 if object is in current kid's inventory
 //           #$00 otherwise
 // ------------------------------------------------------------
-.const INVCHK_RET_FOUND            = $01    // Function return: in current kid’s inventory
-.const INVCHK_RET_NOT_FOUND        = $00    // Function return: not in current kid’s inventory
 
 * = $0EAE
 is_sentence_object_owned_by_current_kid:
@@ -1329,9 +1334,7 @@ exit_inv_check:
         // Restore X register and return
         // ------------------------------------------------------------
         ldx     temp_x
-        rts
-		
-
+        rts	
 /*
 ================================================================================
 Queues a “Pick Up” sentence for the current sentence complement.
@@ -1349,7 +1352,6 @@ Returns:
         None (A/X/Y clobbered)
 ================================================================================
 */
-.label object_ptr = $15                     // ZP pointer for target object index
 * = $0EE1
 push_pickup_for_sentence_part:
         // ------------------------------------------------------------
@@ -1363,7 +1365,7 @@ push_pickup_for_sentence_part:
         ldx     sentstk_top_idx
 
         // ------------------------------------------------------------
-        // Is it the indirect object? 
+        // Is the complement the indirect object? 
         // ------------------------------------------------------------
         cmp     #ARG_IS_IO
         bne     fetch_direct_object
@@ -1439,11 +1441,11 @@ Arguments
 
 Global Inputs
 	kid_ids[]                  lookup table: UI slot → kid id
-	current_kid_idx                active kid id
+	current_kid_idx            active kid id
 	current_script_slot        active script slot id
 
 Global Outputs
-	current_kid_idx                ← kid_ids[X]        (if different)
+	current_kid_idx            ← kid_ids[X]        (if different)
 	current_script_slot        ← $FF               (script stopped)
 
 Description
@@ -1491,10 +1493,10 @@ Summary
 
 Global Outputs
 	destination_entity             ← ENTITY_NONE
-	sentence_bar_needs_refresh      ← TRUE
-	sentstk_free_slots   ← SENT_STACK_MAX_TOKENS
-	sentstk_top_idx           ← SENT_STACK_EMPTY_IDX
-	current_verb_id                   ← WALK_TO_VERB
+	sentence_bar_needs_refresh     ← TRUE
+	sentstk_free_slots   		   ← SENT_STACK_MAX_TOKENS
+	sentstk_top_idx           	   ← SENT_STACK_EMPTY_IDX
+	current_verb_id                ← WALK_TO_VERB
 	direct_object_idx_lo           ← $00
 	direct_object_idx_hi           ← $00
 	preposition                    ← $00
