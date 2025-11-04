@@ -1012,9 +1012,9 @@ set_cursor_color:
         ldy     cia1_irq_status_reg                  // dummy read → clear pending CIA1 IRQ edge latch
 
 		//Set next IRQ handler as irq_handler3
-        ldy     <irq_handler3                        
+        ldy.zp  <irq_handler3                        
         sty     <irq_handler                         
-        ldy     >irq_handler3                        
+        ldy.zp  >irq_handler3                        
         sty     >irq_handler                         
 
         // ------------------------------------------------------------
@@ -1135,9 +1135,9 @@ irq_handler3:
         // ------------------------------------------------------------
         // Install next handler: irq_handler4
         // ------------------------------------------------------------
-        ldy     <irq_handler4
+        ldy.zp  <irq_handler4
         sty     <irq_handler
-        ldy     >irq_handler4
+        ldy.zp  >irq_handler4
         sty     >irq_handler
 
         // ------------------------------------------------------------
@@ -1235,9 +1235,9 @@ irq_handler4:
         ldy     #NEXT_RASTER_LINE_H5
         sty     vic_raster_line_reg
 
-        ldy     <irq_handler5
+        ldy.zp  <irq_handler5
         sty     <irq_handler
-        ldy     >irq_handler5
+        ldy.zp  >irq_handler5
         sty     >irq_handler
 
         // ------------------------------------------------------------
@@ -1300,9 +1300,9 @@ irq_handler5:
         // ------------------------------------------------------------
         ldy     #NEXT_RASTER_LINE_H6
         sty     vic_raster_line_reg
-        ldy     <irq_handler6
+        ldy.zp  <irq_handler6
         sty     <irq_handler
-        ldy     >irq_handler6
+        ldy.zp  >irq_handler6
         sty     >irq_handler
 
         // ------------------------------------------------------------
@@ -1380,9 +1380,9 @@ irq_handler6:
         ldy     #NEXT_RASTER_LINE_H7
         sty     vic_raster_line_reg
 
-        ldy     <irq_handler7
+        ldy.zp  <irq_handler7
         sty     <irq_handler
-        ldy     >irq_handler7
+        ldy.zp  >irq_handler7
         sty     >irq_handler
 
         // ------------------------------------------------------------
@@ -1442,9 +1442,9 @@ irq_handler7:
         // ------------------------------------------------------------
         ldy     #NEXT_RASTER_LINE_H8
         sty     vic_raster_line_reg
-        ldy     <irq_handler8
+        ldy.zp  <irq_handler8
         sty     <irq_handler
-        ldy     >irq_handler8
+        ldy.zp  >irq_handler8
         sty     >irq_handler
 
         // ------------------------------------------------------------
@@ -1522,9 +1522,9 @@ irq_handler8:
         ldy     #NEXT_RASTER_LINE_H9
         sty     vic_raster_line_reg
 
-        ldy     <irq_handler9
+        ldy.zp  <irq_handler9
         sty     <irq_handler
-        ldy     >irq_handler9
+        ldy.zp  >irq_handler9
         sty     >irq_handler
 
         // ------------------------------------------------------------
@@ -1584,9 +1584,9 @@ irq_handler9:
         // ------------------------------------------------------------
         ldy     #NEXT_RASTER_LINE_H10
         sty     vic_raster_line_reg
-        ldy     <irq_handler10
+        ldy.zp  <irq_handler10
         sty     <irq_handler
-        ldy     >irq_handler10
+        ldy.zp  >irq_handler10
         sty     >irq_handler
 
         // ------------------------------------------------------------
@@ -1665,9 +1665,9 @@ irq_handler10:
         ldy     #NEXT_RASTER_LINE_H11
         sty     vic_raster_line_reg
 
-        ldy     <irq_handler11
+        ldy.zp  <irq_handler11
         sty     <irq_handler
-        ldy     >irq_handler11
+        ldy.zp  >irq_handler11
         sty     >irq_handler
 
         // ------------------------------------------------------------
@@ -1727,9 +1727,9 @@ irq_handler11:
         // ------------------------------------------------------------
         ldy     #NEXT_RASTER_LINE_H12
         sty     vic_raster_line_reg
-        ldy     <irq_handler12
+        ldy.zp  <irq_handler12
         sty     <irq_handler
-        ldy     >irq_handler12
+        ldy.zp  >irq_handler12
         sty     >irq_handler
 
         // ------------------------------------------------------------
@@ -1806,9 +1806,9 @@ irq_handler12:
         // ------------------------------------------------------------
         ldy     #NEXT_RASTER_LINE_H13
         sty     vic_raster_line_reg
-        ldy     <irq_handler13
+        ldy.zp  <irq_handler13
         sty     <irq_handler
-        ldy     >irq_handler13
+        ldy.zp  >irq_handler13
         sty     >irq_handler
 
         // ------------------------------------------------------------
@@ -1868,9 +1868,9 @@ irq_handler13:
         // ------------------------------------------------------------
         ldy     #NEXT_RASTER_LINE_H14
         sty     vic_raster_line_reg
-        ldy     <irq_handler14
+        ldy.zp  <irq_handler14
         sty     <irq_handler
-        ldy     >irq_handler14
+        ldy.zp  >irq_handler14
         sty     >irq_handler
 
         // ------------------------------------------------------------
@@ -1947,9 +1947,9 @@ irq_handler14:
         // ------------------------------------------------------------
         ldy     #NEXT_RASTER_LINE_H15
         sty     vic_raster_line_reg
-        ldy     <irq_handler15
+        ldy.zp  <irq_handler15
         sty     <irq_handler
-        ldy     >irq_handler15
+        ldy.zp  >irq_handler15
         sty     >irq_handler
 
         // ------------------------------------------------------------
@@ -2009,9 +2009,9 @@ irq_handler15:
         // ------------------------------------------------------------
         ldy     #NEXT_RASTER_LINE_H16
         sty     vic_raster_line_reg
-        ldy     <irq_handler16
+        ldy.zp  <irq_handler16
         sty     <irq_handler
-        ldy     >irq_handler16
+        ldy.zp  >irq_handler16
         sty     >irq_handler
 
         // ------------------------------------------------------------
@@ -2088,9 +2088,9 @@ irq_handler16:
         // ------------------------------------------------------------
         ldy     #NEXT_RASTER_LINE_H17
         sty     vic_raster_line_reg
-        ldy     <irq_handler17
+        ldy.zp  <irq_handler17
         sty     <irq_handler
-        ldy     >irq_handler17
+        ldy.zp  >irq_handler17
         sty     >irq_handler
 
         // ------------------------------------------------------------
@@ -2197,9 +2197,9 @@ irq_handler17:
         // ------------------------------------------------------------
         // Return to start of chain: install irq_handler1
         // ------------------------------------------------------------
-        ldy     <irq_handler1
+        ldy.zp  <irq_handler1
         sty     <irq_handler
-        ldy     >irq_handler1
+        ldy.zp  >irq_handler1
         sty     >irq_handler
 
         // ------------------------------------------------------------
