@@ -732,12 +732,12 @@ h1_check_hide_cursor_flag:
         // Click latch and sound handling
         // ------------------------------------------------------------
 h1_click_latch:
-        lda     click_trigger_sentence        // A := current click/verb trigger state (0 = none, 1 = pending)
+        lda     forced_sentence_trigger        // A := current click/verb trigger state (0 = none, 1 = pending)
         cmp     #$01                          // is a trigger already latched?
         beq     h1_sound                      // yes → keep existing trigger; skip latching
 
         lda     room_scene_clicked_flag       // A := per-frame room click latch (0/1)
-        sta     click_trigger_sentence        // propagate click into verb system trigger
+        sta     forced_sentence_trigger        // propagate click into verb system trigger
 
 h1_sound:
         // map I/O; optionally reload music pointers; call sound IRQ
