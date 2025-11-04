@@ -18,7 +18,7 @@ Core data
 
 	* Current picks (UI state): current_verb_id, direct_object_idx_{lo,hi},
 	  preposition, indirect_object_idx_{lo,hi}.
-	* Queue (up to 6): parallel arrays of verb/prep/DO/IO plus sentstk_top_idx
+	* Stack (up to 6): parallel arrays of verb/prep/DO/IO plus sentstk_top_idx
 	  (top) and sentstk_free_slots (capacity).
 	* “Active” copy: once a stacked sentence is selected to run, its tokens are
 	  mirrored into active_* so execution code has a stable snapshot.
@@ -87,7 +87,7 @@ Dispatch vs stack
 		  * Otherwise write actor_x_dest/y_dest and call snap_and_stage_path_update.
 
 Queued execution
-	process_sentence_queue_entry:
+	process_sentence_stack_entry:
 
 		* If a destination is already active, exit. If stack empty, exit.
 		* Drop sentences whose DO == IO.
@@ -153,9 +153,9 @@ Kid switching and UI reset
 	switch_active_kid_if_different:
 
 		* Change current_kid_idx if needed, stop any running script, recenter the
-		  camera, refresh inventory, then fall through to init_sentence_ui_and_queue.
+		  camera, refresh inventory, then fall through to init_sentence_ui_and_stack.
 
-	init_sentence_ui_and_queue:
+	init_sentence_ui_and_stack:
 
 		* Clear destination, force a bar refresh, reset stack capacity and head,
 		  set default verb to WALK TO, and clear DO/prep/IO.
@@ -724,7 +724,7 @@ set_walk_and_exit:
 
 /*
 ================================================================================
-  process_sentence_queue_entry
+  process_sentence_stack_entry
 ================================================================================
 
 Summary
@@ -781,7 +781,7 @@ Notes
 ================================================================================
 */
 * = $0B9C
-process_sentence_queue_entry:
+process_sentence_stack_entry:
         // ------------------------------------------------------------
         // Handle one stacked sentence.
         //
@@ -793,10 +793,10 @@ process_sentence_queue_entry:
         // the stack pointer.
         // ------------------------------------------------------------
         lda     destination_entity
-        beq     check_queue_nonempty     // skip if no current destination
+        beq     check_stack_nonempty     // skip if no current destination
         rts                                    // destination active → exit
 
-check_queue_nonempty:
+check_stack_nonempty:
         ldx     sentstk_top_idx
         bpl     check_same_complements
         rts                                    // stack empty → exit
@@ -875,7 +875,7 @@ set_active_sentence_tokens:
 
         dec     sentstk_top_idx
         dec     sentstk_free_slots
-        bpl     queue_capacity_ok
+        bpl     stack_capacity_ok
 
         // stack underflow → reset state
         lda     #SENT_STACK_EMPTY_IDX
@@ -887,7 +887,7 @@ set_active_sentence_tokens:
         // ------------------------------------------------------------
         // Determine if we must walk or execute
         // ------------------------------------------------------------
-queue_capacity_ok:
+stack_capacity_ok:
         ldx     active_do_id_lo
         lda     active_do_id_hi
         jsr     resolve_object_if_not_costume   // 0 = in inv, ≠0 = world
@@ -926,7 +926,7 @@ init_walk_to_indirect_object:
         bne     exit_hsq
         jsr     set_actor_destination
 exit_hsq:
-        jmp     exit_process_sentence_queue_entry
+        jmp     exit_process_sentence_stack_entry
 
         // ------------------------------------------------------------
         // Execute verb directly
@@ -965,10 +965,10 @@ init_walk_to_direct_object:
         tax
         lda     actor_vars,x
         and     ACTOR_IS_FROZEN
-        bne     exit_process_sentence_queue_entry
+        bne     exit_process_sentence_stack_entry
         jsr     set_actor_destination
 
-exit_process_sentence_queue_entry:
+exit_process_sentence_stack_entry:
         rts
 
 /*
@@ -990,8 +990,6 @@ Global Inputs
 	current_kid_idx
 	actor_for_costume[]               costume → actor index map
 	actor_vars[]                      includes ACTOR_IS_FROZEN flag
-	WALK_TO_VERB, WHAT_IS_VERB
-	SENT_STACK_MAX_TOKENS, SENT_STACK_EMPTY_IDX
 
 Global Outputs
 	sentstk_free_slots                reset to SENT_STACK_MAX_TOKENS
@@ -1152,7 +1150,7 @@ exit_dispatch_or_push_action:
         rts
 
         // ------------------------------------------------------------
-        // Queue a complete sentence for later execution
+        // Push a complete sentence for later execution
         // ------------------------------------------------------------
 push_sentence:
         // ------------------------------------------------------------
@@ -1214,14 +1212,12 @@ push_sentence:
         // Finalize and exit
 		//
         // Clears destination_entity to indicate no pending target and
-        // returns. Queue state and tokens remain committed.
+        // returns. Stack state and tokens remain committed.
         // ------------------------------------------------------------
 finalize_and_exit:
         lda     #$00                            // Prepare clear value
         sta     destination_entity              // Reset destination entity marker (none targeted)
         rts                                     // Return → sentence stacked or action completed
-
-
 /*
 ================================================================================
   execute_verb_handler_for_object
@@ -1798,7 +1794,7 @@ next_sentence_index:
         inc     sentstk_top_idx
         ldx     sentstk_top_idx
         cpx     #SENT_STACK_MAX_TOKENS
-        bne     queue_pickup
+        bne     push_pickup
 
         // ------------------------------------------------------------
         // Invalid sentence part index → debug hang
@@ -1811,9 +1807,9 @@ hangup_loop:
         sta     vic_border_color_reg
         jmp     hangup_loop
 
-queue_pickup:
+push_pickup:
         // ------------------------------------------------------------
-        // Queue a new “Pick Up” sentence for the selected object
+        // Push a new “Pick Up” sentence for the selected object
         // ------------------------------------------------------------
         lda     PICK_UP_VERB
         sta     stacked_verb_ids,x
@@ -1859,7 +1855,7 @@ Description
 		– Stop any running script by setting current_script_slot to $FF.
 		– Recenter camera on the new kid’s actor.
 		– Refresh the items/inventory display.
-	• Execution then falls through to init_sentence_ui_and_queue to reset
+	• Execution then falls through to init_sentence_ui_and_stack to reset
 	the verb/sentence UI.
 ================================================================================
 */
@@ -1885,10 +1881,10 @@ commit_kid_change:
         lda     current_kid_idx
         jsr     fix_camera_on_actor
         jsr     refresh_items_displayed
-		//Fall through to init_sentence_ui_and_queue
+		//Fall through to init_sentence_ui_and_stack
 /*
 ================================================================================
-  init_sentence_ui_and_queue
+  init_sentence_ui_and_stack
 ================================================================================
 Summary
 	Reset the verb/sentence UI to a known baseline and clear any pending
@@ -1915,7 +1911,7 @@ Description
 ================================================================================
 */
 * = $29CC
-init_sentence_ui_and_queue:
+init_sentence_ui_and_stack:
         // ------------------------------------------------------------
         // Reset all components of the sentence stack system
         //

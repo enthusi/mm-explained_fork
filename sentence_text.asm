@@ -318,7 +318,7 @@ Global Outputs
 
 Description
 	• Calls resolve_object_resource to find the object resource base.
-	• If not found, calls init_sentence_ui_and_queue and returns.
+	• If not found, calls init_sentence_ui_and_stack and returns.
 	• If found, reads byte at offset OBJ_NAME_OFS, adds it to obj_ptr_lo/hi to
 	relocate pointer to the object’s name string.
 	• Returns with A = OBJ_NAME_FOUND and obj_ptr_* pointing directly to the
@@ -341,7 +341,7 @@ resolve_object_name:
 		// ------------------------------------------------------------
 		// Object not found → invalidate sentence and return
 		// ------------------------------------------------------------
-		jsr     init_sentence_ui_and_queue
+		jsr     init_sentence_ui_and_stack
 		rts
 
 object_found:

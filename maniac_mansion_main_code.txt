@@ -3079,7 +3079,7 @@ resolve_object_name:
 .C:09e6  C9 FF       CMP #$FF
 .C:09e8  D0 04       BNE update_pointer
 ;If not, invalidate the sentence and return
-.C:09ea  20 CC 29    JSR init_sentence_ui_and_queue
+.C:09ea  20 CC 29    JSR init_sentence_ui_and_stack
 .C:09ed  60          RTS
 update_pointer:
 ;Read offset to object's name from pointer + #0D
@@ -10268,7 +10268,7 @@ change_to_new_kid:
 ;===========================================
 ; Resets all components of the sentence queue system
 ;===========================================
-init_sentence_ui_and_queue:
+init_sentence_ui_and_stack:
 ;Clear the destination entity
 .C:29cc  A9 00       LDA #$00
 .C:29ce  8D 51 FE    STA destination_entity
@@ -12575,7 +12575,7 @@ load_room:
 .C:3466  8A          TXA
 .C:3467  48          PHA
 ;Reset the sentence queue
-.C:3468  20 CC 29    JSR init_sentence_ui_and_queue
+.C:3468  20 CC 29    JSR init_sentence_ui_and_stack
 ;Execute the current room's exit script
 .C:346b  20 9D 3A    JSR execute_room_exit_script
 .C:346e  20 CE 3B    JSR hide_all_actors_and_release_sprites
@@ -22856,7 +22856,7 @@ object_found:
 .C:6381  A9 C8       LDA #$C8
 .C:6383  8D 67 06    STA camera_current_position
 ;Reset the sentence queue
-.C:6386  20 CC 29    JSR init_sentence_ui_and_queue
+.C:6386  20 CC 29    JSR init_sentence_ui_and_stack
 ;???
 .C:6389  A9 00       LDA #$00
 .C:638b  8D 8E FE    STA forced_sentence_trigger
@@ -23750,7 +23750,7 @@ save_sentence_part:
 .C:6794  CA          DEX
 .C:6795  10 F7       BPL save_sentence_part
 ;Reset the sentence queue
-.C:6797  20 CC 29    JSR init_sentence_ui_and_queue
+.C:6797  20 CC 29    JSR init_sentence_ui_and_stack
 ;???
 .C:679a  A9 00       LDA #$00
 .C:679c  8D 8E FE    STA forced_sentence_trigger
@@ -26630,12 +26630,12 @@ handle_click_on_verb:
 ;Set it as the current verb
 .C:f433  8D 1F FE    STA current_verb_id
 .C:f436  AD 8A CB    LDA button_presses
-.C:f439  F0 07       BEQ init_sentence_ui_and_queue
+.C:f439  F0 07       BEQ init_sentence_ui_and_stack
 ;Rebuild the action sentence
 .C:f43b  A9 01       LDA #$01
 .C:f43d  85 95       STA needs_sentence_rebuild
 .C:f43f  4C 47 F4    JMP refresh_sentence
-init_sentence_ui_and_queue:
+init_sentence_ui_and_stack:
 ;Reset the sentence queue
 .C:f442  A9 01       LDA #$01
 .C:f444  8D 8F FE    STA init_sentence_ui_flag

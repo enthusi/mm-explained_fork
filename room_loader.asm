@@ -165,7 +165,7 @@ load_room:
 		pha
 
 		// Teardown (in order) to leave no stale UI/actors before switching rooms
-		jsr     init_sentence_ui_and_queue      // flush pending verb/noun input so scripts don’t consume old commands
+		jsr     init_sentence_ui_and_stack      // flush pending verb/noun input so scripts don’t consume old commands
 		jsr     execute_room_exit_script         // run the CURRENT room’s exit logic while its data is still valid
 		jsr     hide_all_actors_and_release_sprites // hide all actors to avoid one-frame carryover/flicker during reload
 
