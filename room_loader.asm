@@ -5,6 +5,7 @@
 #import "rsrc_mgmt.asm"
 #import "decompressor.asm"
 #import "room_gfx_rsrc.asm"
+#import "sentence_action.asm"
 
 
 
@@ -103,7 +104,7 @@
 
 // room_read_objects vars
 .label obj_count_remaining = $1d
-.label obj_idx = $1b
+.label object_idx = $1b
 
 // room_load_sounds_and_scripts vars
 .label room_sounds_base = $15
@@ -164,7 +165,7 @@ load_room:
 		pha
 
 		// Teardown (in order) to leave no stale UI/actors before switching rooms
-		jsr     reset_sentence_queue_system      // flush pending verb/noun input so scripts don’t consume old commands
+		jsr     init_sentence_ui_and_queue      // flush pending verb/noun input so scripts don’t consume old commands
 		jsr     execute_room_exit_script         // run the CURRENT room’s exit logic while its data is still valid
 		jsr     hide_all_actors_and_release_sprites // hide all actors to avoid one-frame carryover/flicker during reload
 
@@ -768,8 +769,8 @@ room_get_sounds_base:
  *   - Immediately following, copy N 16-bit entries into room_obj_ofs_tbl.
  *     (Tables are written starting at byte index 2: arrays are effectively 1-based,
  *      with bytes 0..1 reserved.)
- *   - For obj_idx = 1..N:
- *       • Form record pointer: room_base + room_obj_ofs_tbl[obj_idx].
+ *   - For object_idx = 1..N:
+ *       • Form record pointer: room_base + room_obj_ofs_tbl[object_idx].
  *       • Extract fields
  *   - No residency guard is performed in this routine; callers must ensure
  *     room_ptr_hi_tbl[current_room] ≠ 0.
@@ -806,9 +807,9 @@ room_read_objects:
 
 		// Build the per-object gfx compressed-stream offset table.
 		// Later code can jump straight to each object’s compressed gfx data.
-		// Loop: for each object (obj_idx times), copy a 16-bit offset (lo/hi) and advance.
+		// Loop: for each object (object_idx times), copy a 16-bit offset (lo/hi) and advance.
 copy_obj_comp_ofs:
-		sta     obj_idx              // obj_idx := object_count (pair counter)
+		sta     object_idx              // object_idx := object_count (pair counter)
 		ldy     #ROOM_META_OBJ_GFX_OFS   // source cursor: start of offsets block
 		ldx     #$02                 // dest cursor: table starts at index 2 (slot 0 reserved)
 
@@ -821,20 +822,20 @@ copy_obj_comp_ofs_loop:
 		sta     obj_gfx_ptr_tbl,x
 		iny
 		inx
-		dec     obj_idx              // exit when all object pairs consumed (Z=1)
+		dec     object_idx              // exit when all object pairs consumed (Z=1)
 		bne     copy_obj_comp_ofs_loop
 
 		// Stage copy of per-object record starts (offsets within the room blob).
-		// obj_idx := remaining objects; Y already points past previous table.
+		// object_idx := remaining objects; Y already points past previous table.
 		lda     obj_count_remaining
-		sta     obj_idx
+		sta     object_idx
 		lda     $1e                 // Unknown purpose of this copy
 		sta     $1c
 		ldx     #$02                // destination pairs start at index 2 (slot 0 reserved)
 
 copy_obj_record_ofs_loop:
 		// For each object: copy a 16-bit start offset (lo,hi) from metadata.
-		// Loop exits when obj_idx reaches 0.
+		// Loop exits when object_idx reaches 0.
 		lda     (read_ptr),y
 		sta     room_obj_ofs_tbl,x       // lo byte
 		iny
@@ -843,16 +844,16 @@ copy_obj_record_ofs_loop:
 		sta     room_obj_ofs_tbl,x       // hi byte
 		iny
 		inx
-		dec     obj_idx
+		dec     object_idx
 		bne     copy_obj_record_ofs_loop
 
 		// Walk objects; for each, fetch its record and fan out fields.
 		lda     #$01
-		sta     obj_idx
+		sta     object_idx
 
 load_obj_records:
-		// Compute pair index into the offset table: idx2 = obj_idx * 2.
-		lda     obj_idx
+		// Compute pair index into the offset table: idx2 = object_idx * 2.
+		lda     object_idx
 		asl     
 		tax
 
@@ -871,7 +872,7 @@ load_obj_records:
 		sta     >read_ptr
 
 		// Switch X to the object index for attribute table writes.
-		ldx     obj_idx
+		ldx     object_idx
 
 		// Capture the object’s identifier from the record header:
 		ldy     #OBJ_META_IDX_HI_OFS
@@ -941,9 +942,9 @@ set_result:
 		lsr     
 		sta     obj_height_tbl,x
 
-		// Advance to next object: obj_idx is 1-based; obj_count_remaining tracks loop bound.
+		// Advance to next object: object_idx is 1-based; obj_count_remaining tracks loop bound.
 		// Exit when obj_count_remaining reaches 0 (Z=1 after DEC); otherwise process next.
-		inc     obj_idx
+		inc     object_idx
 		dec     obj_count_remaining
 		bne     load_obj_records
 
