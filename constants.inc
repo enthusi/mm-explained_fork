@@ -160,3 +160,37 @@ game_paused_flag_msg:
 
 //CC00-CECF - graphics area (including parts not visible)
 .const SENTENCE_BAR_BASE = $ced0
+
+//========================
+//Verbs
+//========================
+.const OPEN_VERB = $01
+.const CLOSE_VERB = $02
+.const GIVE_VERB = $03
+.const TURN_ON_VERB = $04
+.const TURN_OFF_VERB = $05
+.const FIX_VERB = $06
+.const NEW_KID_VERB = $07
+.const UNLOCK_VERB = $08
+.const PUSH_VERB = $09
+.const PULL_VERB = $0A
+.const USE_VERB = $0B
+.const READ_VERB = $0C
+.const WALK_TO_VERB = $0D
+.const PICK_UP_VERB = $0E
+.const WHAT_IS_VERB = $0F
+
+//=========================
+//Prepositions
+//=========================
+.const PREPOSITION_NONE_NEEDED = $00
+.const PREPOSITION_WITH = $02
+.const PREPOSITION_TO = $04
+
+//=========================
+//Control modes
+//=========================
+.const CUTSCENE_CONTROL_MODE = $00
+.const KEYPAD_CONTROL_MODE = $01
+.const NO_KID_CHANGE_CONTROL_MODE = $02
+.const NORMAL_CONTROL_MODE = $03
