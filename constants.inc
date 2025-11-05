@@ -1,5 +1,14 @@
 #importonce
 
+// Generic booleans
+.const FALSE                       = $00
+.const TRUE                        = $01
+
+// Generic signal set/clear
+.const SIGNAL_SET                  = $01
+.const SIGNAL_CLEAR				   = $00
+.const LOCK_SET                    = $01
+.const LOCK_CLEAR				   = $00
 
 .const PTR_NULL = $00
 .const MSK_LOW_NIBBLE              = $0F    // Mask: keep low 4 bits
@@ -113,15 +122,6 @@
 // Control mode values
 .const CONTROL_MODE_CUTSCENE       = $00   // Cutscene active → hide cursor
 
-// Generic booleans
-.const FALSE                       = $00
-.const TRUE                        = $01
-
-// Generic signal set/clear
-.const SIGNAL_SET                  = $01
-.const SIGNAL_CLEAR				   = $00
-.const LOCK_SET                  = $01
-.const LOCK_CLEAR				   = $00
 
 .const COLOR_BLACK                 = $00   // Background color 0 = black
 
