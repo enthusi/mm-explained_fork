@@ -516,7 +516,7 @@ ACTOR_IS_FROZEN = #$40
 ; We'll just mention this as "map_out_io" or "map_in_io" as a comment.
 ;
 ;====================================================
-processor_data_direction_reg = $00
+cpu_port_ddr = $00
 cpu_port = $01
 ;Video memory mode values
 ;	#00		Do nothing
@@ -1152,7 +1152,7 @@ vic_screen_control_reg_2 = $d016
 ;	Last 8 bytes are pointers to 64-byte blocks for sprites shape data
 vic_memory_layout_reg = $d018
 vic_irq_flag_reg = $d019
-vic_irq_mask_register = $d01a
+vic_irq_mask_reg = $d01a
 vic_sprite_x_expand_reg = $d01d
 vic_border_color_reg_register = $d020
 vic_bkg_color0_register = $d021
@@ -12543,7 +12543,7 @@ raster_setup:
 .C:343d  A9 81       LDA #$81	
 .C:343f  8D 19 D0    STA vic_irq_flag_reg
 ;Set raster interrupt as the only VIC interrupt enabled
-.C:3442  8D 1A D0    STA vic_irq_mask_register
+.C:3442  8D 1A D0    STA vic_irq_mask_reg
 .C:3445  AD 0D DC    LDA cia1_irq_status_reg
 .C:3448  AD 00 DD    LDA cia2_port_a_data_register
 ;Set border color to black
@@ -24634,7 +24634,7 @@ setup_vectors_and_drive_code:
 ;Set bits 2-0 for output, bits 7-3 for input
 ;This will effectively not change anything related to the cassette and will allow changing the 3 memory mapping bits
 .C:7fff  A9 07       LDA #$07
-.C:8001  85 00       STA processor_data_direction_reg
+.C:8001  85 00       STA cpu_port_ddr
 ;Map I/O and KERNAL, map RAM instead of BASIC
 .C:8003  A9 06       LDA #$06	
 .C:8005  85 01       STA cpu_port
@@ -24906,7 +24906,7 @@ init_memory_sound_and_video:
 .C:82f4  78          SEI
 ;Processor data port direction - ignore cassette bits, allow changing memory mapping
 .C:82f5  A9 07       LDA #$07
-.C:82f7  85 00       STA processor_data_direction_reg
+.C:82f7  85 00       STA cpu_port_ddr
 ;Enable blank screen (clear bit 4)
 .C:82f9  AD 11 D0    LDA vic_screen_control_register_1
 .C:82fc  29 EF       AND #$EF		
@@ -24930,7 +24930,7 @@ init_memory_sound_and_video:
 .C:831f  A9 18       LDA #$18
 .C:8321  8D FB FF    STA nmi_handler_hi
 ;
-.C:8324  20 6A 85    JSR init_character_data
+.C:8324  20 6A 85    JSR init_actor_render_state
 ;------------------------------------------------
 ;Initialize sound
 ;------------------------------------------------
@@ -24975,7 +24975,7 @@ init_memory_sound_and_video:
 .C:835d  A9 81       LDA #$81		
 .C:835f  8D 19 D0    STA vic_irq_flag_reg
 ;Enable raster interrupt - bit 7 is ignored?
-.C:8362  8D 1A D0    STA vic_irq_mask_register
+.C:8362  8D 1A D0    STA vic_irq_mask_reg
 ;Read out pending interrupts on CIA #1
 .C:8365  AD 0D DC    LDA cia1_irq_status_reg
 ;Clear out bits 0-1 - Set VIC bank base to C000
@@ -25351,7 +25351,7 @@ fill_color_loop:
 .C:8567  84 01       STY cpu_port
 .C:8569  60          RTS
 ;===========================================
-init_character_data:
+init_actor_render_state:
 .C:856a  A9 E0       LDA #$E0
 .C:856c  8D 2F FC    STA >actor_sprite_base
 .C:856f  A9 E1       LDA #$E1
