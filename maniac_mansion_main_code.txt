@@ -20916,7 +20916,7 @@ SAVED_GAME_DISK_ID = #$33
 disk_id = $15
 
 save_state_to_disk:
-.C:5c3b  20 FC 5C    JSR load_and_validate_disk_id
+.C:5c3b  20 FC 5C    JSR probe_game_disk_and_skip_caller
 ;Set the saved game Disk ID
 .C:5c3e  A9 33       LDA SAVED_GAME_DISK_ID
 .C:5c40  85 15       STA disk_id
@@ -20977,7 +20977,7 @@ SAVED_GAME_DISK_ID = #$33
 
 load_state_from_disk:
 ;Check if the disk ID is valid - if it's the game disk, return directly
-.C:5ca5  20 FC 5C    JSR load_and_validate_disk_id
+.C:5ca5  20 FC 5C    JSR probe_game_disk_and_skip_caller
 ;Not the game disk, check if it's a savegame disk by comparing the Disk ID
 .C:5ca8  A5 15       LDA disk_id
 .C:5caa  C9 33       CMP SAVED_GAME_DISK_ID
@@ -21039,7 +21039,7 @@ load_state_from_sectors:
 ;===========================================
 disk_id = $15
 
-load_and_validate_disk_id:
+probe_game_disk_and_skip_caller:
 ;Read first byte of track 1, sector 0 (Disk ID), store it in $15
 ;Track 1, sector 0
 .C:5cfc  A2 00       LDX #$00
