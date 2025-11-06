@@ -373,7 +373,6 @@ Typical traces
 .const FORCED_TRIGGER_SET          = $01    // forced_sentence_trigger: set → run sentence immediately
 .const FORCED_TRIGGER_CLEARED      = $FF    // forced_sentence_trigger: cleared after handling
 
-.const UI_REFRESH_REQUEST         = $01    // sentence_bar_needs_refresh flag value: request redraw
 .const REBUILD_SENTENCE_ON        = $01    // needs_sentence_rebuild flag value: rebuild now
 
 .const OBJ_IDX_NONE               = $00    // Sentinel lo byte for “no object selected”
@@ -381,9 +380,6 @@ Typical traces
 
 .const SCRIPT_SLOT_NONE           = $FF    // No script running (idle slot sentinel)
 .const GLOBAL_DEFAULTS_SCRIPT_ID  = $03    // Global “verb defaults” script identifier
-
-.const SENT_STACK_MAX_TOKENS      = $06    // Max entries allowed on the sentence stack
-.const SENT_STACK_EMPTY_IDX       = $FF    // Stack top sentinel for “no entries”
 
 .const DEFAULT_VERB_WALK_TO       = WALK_TO_VERB    // Verb id for “Walk to” default case
 .const ENTITY_NONE                = $00    // No destination entity selected/active
@@ -641,7 +637,7 @@ update_or_confirm_direct_object:
 commit_new_direct_object:               
         stx     direct_object_idx_lo     		// DO id lo := hit object lo
         sta     direct_object_idx_hi     		// DO id hi := hit object hi
-        lda     #UI_REFRESH_REQUEST      		// Flag a sentence-bar redraw
+        lda     #TRUE      		// Flag a sentence-bar redraw
         sta     sentence_bar_needs_refresh
 
 		//Keypad control mode?
@@ -658,7 +654,7 @@ commit_new_direct_object:
         // ------------------------------------------------------------
 finalize_and_maybe_execute:           			// Finalize selections, then run completeness gate
 		// Request a sentence-bar redraw this frame
-        lda     #UI_REFRESH_REQUEST    			
+        lda     #TRUE    			
         sta     sentence_bar_needs_refresh
 
 		// Verb is "Walk to"?
@@ -830,7 +826,7 @@ save_preposition_and_request_ui_refresh:
         // ------------------------------------------------------------
         sta     current_preposition              // commit selected preposition
 
-        lda     #UI_REFRESH_REQUEST              // flag the sentence bar for redraw
+        lda     #TRUE              // flag the sentence bar for redraw
         sta     sentence_bar_needs_refresh       // UI will update on next refresh path
 
         // Fall through to refresh_sentence_bar
@@ -850,7 +846,7 @@ Global Inputs
 
 Global Outputs
 	current_verb_id                  Set to WALK_TO_VERB
-	sentence_bar_needs_refresh       Set to UI_REFRESH_REQUEST
+	sentence_bar_needs_refresh       Set to TRUE
 	(current_kid_idx)                May change via switch_active_kid_if_different
 
 Description
@@ -912,7 +908,7 @@ select_kid:
 		
         lda     #WALK_TO_VERB
         sta     current_verb_id                  // normalize verb to "Walk to" before switching
-        lda     #UI_REFRESH_REQUEST
+        lda     #TRUE
         sta     sentence_bar_needs_refresh       // request sentence-bar redraw
         jsr     refresh_sentence_bar             // sync UI to reflect pending change
 		
@@ -928,7 +924,7 @@ set_walk_and_exit:
         // ------------------------------------------------------------
         lda     #WALK_TO_VERB                    // restore default verb
         sta     current_verb_id                  // update parser verb state
-        lda     #UI_REFRESH_REQUEST
+        lda     #TRUE
         sta     sentence_bar_needs_refresh       // flag UI for redraw
         rts                                      // return to caller
 /*
