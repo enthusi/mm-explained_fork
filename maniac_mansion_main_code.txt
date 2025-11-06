@@ -25022,7 +25022,7 @@ init_memory_sound_and_video:
 ;===========================================
 byte_counter = $15
 source = $19
-destination = $1a
+destination = $1b
 
 copy_memory:
 .C:83a3  A0 00       LDY #$00
