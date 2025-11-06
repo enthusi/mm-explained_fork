@@ -40,8 +40,6 @@
 //------------------------------------------------------------------------------
 .const  DISK_ID_TRK          = $01    // Track for disk tag read
 .const  DISK_ID_SEC          = $00    // Sector for disk tag read
-.const  GAME_DISK_ID_SIDE1   = $31    // Valid game tag: side 1
-.const  GAME_DISK_ID_SIDE2   = $32    // Valid game tag: side 2
 .const  DISK_NOT_GAME        = $00    // Probe result: not a game disk
 .const  DISK_IS_GAME         = $01    // Probe result: valid game disk
 
@@ -54,7 +52,7 @@
 //------------------------------------------------------------------------------
 // Variables
 //------------------------------------------------------------------------------
-.label  disk_id              = $0015  // On-disk tag byte cached from T1/S0
+.label  disk_id              = $15  // On-disk tag byte cached from T1/S0
 /*
 ================================================================================
   save_state_to_disk
