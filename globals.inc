@@ -43,6 +43,9 @@ Values observed
 .label print_msg_ptr	   = $DA	// ZP: 16-bit pointer to message to be printed (print_message_wait_for_button)
 .label irq_entry_count = $d9
 .label debug_error_code = $DC
+.label random_1 = $dd
+.label random_2 = $de
+.label random_3 = $df
 .label irq_entry_lock = $e3
 .label mask_row_ptr                = $86    // ZP: pointer to current 8×8-tile row within foreground mask layer
 .label sprite_shape_data_ptr = $8c
@@ -607,3 +610,5 @@ They were definitely intended as debugging aids.
 .label script_type_for_script_slot = $7119
 .label resource_index_for_script_slot = $7129
 .label script_2_mem_attr = $7ad9
+
+.label  vic_color_ram      = $D800
