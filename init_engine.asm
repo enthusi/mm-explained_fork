@@ -1,0 +1,982 @@
+#importonce
+#import "globals.inc"
+#import "constants.inc"
+#import "registers.inc"
+#import "ui_messages.asm"
+#import "irq_handlers.asm"
+
+.label copy_counter_lo = $15    // ZP: copy byte count, low
+.label copy_counter_hi = $16    // ZP: copy byte count, high
+
+.label copy_source     = $19    // ZP: 16-bit source pointer (alias of copy_src_lo/hi)
+.label copy_src_lo     = $19    // ZP: source pointer, low
+.label copy_src_hi     = $1A    // ZP: source pointer, high
+
+.label copy_dest       = $1B    // ZP: 16-bit destination pointer (alias of copy_dest_lo/hi)
+.label copy_dest_lo    = $1B    // ZP: destination pointer, low
+.label copy_dest_hi    = $1C    // ZP: destination pointer, high
+
+.label fill_ptr_lo     = $19    // ZP: fill destination pointer, low (aliases copy_src_lo)
+.label fill_ptr_hi     = $1A    // ZP: fill destination pointer, high (aliases copy_src_hi)
+.label fill_count_lo   = $1B    // ZP: fill byte count, low (aliases copy_dest_lo)
+.label fill_count_hi   = $1C    // ZP: fill byte count, high (aliases copy_dest_hi)
+.label fill_pointer    = $19    // ZP: 16-bit fill destination pointer (alias of fill_ptr_lo/hi)
+
+.const ZP_CLEAR_START              = $15      // ZP start address for clear loop
+.const ZP_CLEAR_BASE               = $0000    // ZP base used by indexed STA
+.const ZP_CLEAR_VALUE              = $00      // Fill byte for ZP clear
+
+.const CLEAR_GAME_START            = $FC00    // Main RAM clear start
+.const CLEAR_GAME_SIZE             = $03F3    // Bytes to clear (4035)
+.const CLEAR_VALUE_ZERO            = $00      // Fill byte = zero
+
+.const ZFILL_CAD0_START            = $CAD0    // Start address
+.const ZFILL_CAD0_SIZE             = $00C0    // Size in bytes
+.const ZFILL_VALUE_ZERO            = $00      // Fill byte = zero
+
+.const FRAMEBUF1_START             = $C800    // Screen RAM buffer 1
+.const FRAMEBUF2_START             = $CC00    // Screen RAM buffer 2
+.const FRAMEBUF_SIZE               = $03E8    // 1000 bytes (40×25 chars)
+.const DOTDATA_START               = $D800    // Color RAM base
+.const DOTDATA_SIZE                = $0800    // 2048 nibbles (mirrored as bytes)
+.const COLOR_BAR_LEN               = $0028    // 40 bytes (one row)
+.const COLOR_BAR_FILL              = $0E      // Fill color value
+
+.const STD_MSG_DEFAULT_TICKS       = $001E    // Message bar countdown (16-bit)
+.const TEXT_DELAY_DEFAULT          = $06      // Per-character delay factor
+.const DISK_ID_SIDE_2              = $32      // Game disk ID for side 2
+.const CAMERA_INIT_POS             = $C8      // Initial camera position
+.const NO_ACTOR                    = $FF      // Sentinel: no actor mapped
+.const NO_COSTUME                  = $FF      // Sentinel: actor has no costume
+.const RNG_SEED_1                  = $4D      // RNG seed byte 1
+.const RNG_SEED_2                  = $97      // RNG seed byte 2
+
+.const ROOM_MASK_PTR               = $6AE1    // Room scene mask layer pointer
+.const NO_SPRITE                   = $FF      // Sentinel: no sprite assigned
+
+.const SPR_MC_ENABLE_0_TO_6        = $7F      // Enable multicolor for sprites 0–6
+.const SPRITE_MEM_SIZE             = $1000    // Bytes to clear ($E000–$EFFF)
+
+.const COLOR_LIGHT_RED             = $0A      // Palette color: light red / skin tone
+
+.const BLOCK_CHARS_SRC_START       = $7BFF    // Copy src: charset + arrows
+.const BLOCK_CHARS_DST_START       = $F800    // Copy dst: $F800–$FBFF
+.const BLOCK_CHARS_SIZE_BYTES      = $0400    // Copy size in bytes
+
+.const BLOCK_GFX_CODE_SRC_START    = $86A4    // Copy src: gfx + script code
+.const BLOCK_GFX_CODE_DST_START    = $D000    // Copy dst: $D000–$D7FF (RAM banked)
+.const BLOCK_GFX_CODE_SIZE_BYTES   = $0800    // Copy size in bytes
+
+.const BLOCK_CONSTS_SRC_START      = $8EA0    // Copy src: engine constants
+.const BLOCK_CONSTS_DST_START      = $F0C0    // Copy dst start
+.const BLOCK_CONSTS_SIZE_BYTES     = $073F    // Copy size in bytes
+
+.const BLOCK_DECOMP_SRC_START      = $95E0    // Copy src: decompressor
+.const BLOCK_DECOMP_DST_START      = $0100    // Copy dst: stack page
+.const BLOCK_DECOMP_SIZE_BYTES     = $009B    // Copy size in bytes
+
+.const BLOCK_INIT_SRC_START        = $85E4    // Copy src: init block
+.const BLOCK_INIT_DST_START        = $CAD0    // Copy dst start
+.const BLOCK_INIT_SIZE_BYTES       = $00C0    // Copy size in bytes
+
+.const CURSOR_INIT_X               = $0D      // Initial cursor X
+.const CURSOR_INIT_Y               = $1C      // Initial cursor Y
+.const INTERACTION_REGION_DEFAULT  = $00      // Initial region id
+.const HIDE_CURSOR_FLAG_ON         = $01      // Hide cursor flag value
+
+.const CPU_PORT_DDR_INIT           = $07      // 6510 DDR: banking bits as outputs
+.const SCREEN_OFF_MASK             = $EF      // $D011 mask to blank screen (clear bit4)
+.const NMI_STUB_ADDR               = $18EA    // NMI handler address (RTS stub)
+
+.const VIC_MEM_LAYOUT_INIT         = $26      // $D018: screen=$0400, charset=$2000
+.const FRAMEBUFFER_INIT            = $01      // Initial framebuffer index
+.const VIC_CTRL2_INIT              = $18      // $D016: MCM text, 40 cols, hscroll=0
+.const RASTER_IRQ_LINE_INIT        = $FA      // $D012: raster line 250
+.const VIC_IRQ_BITS_RASTER         = $81      // $D019/$D01A: raster bit mask
+
+.const CIA2_VIC_BANK_MASK          = $FC      // $DD00: clear bits 0–1 (bank select)
+.const CIA2_VIC_BANK_C000          = $00      // $DD00: bank $C000–$FFFF
+
+.const CIA1_TIMER_STOP_ON_UF       = $08      // $DC0E/$DC0F: stop on underflow
+
+.const SPRITES_ENABLE_ALL          = $FF      // $D015: enable sprites 0–7
+
+.const INIT_COPY_SRC_START         = $7B7F    // Copy src start
+.const INIT_COPY_DST_START         = $F040    // Copy dst start
+.const INIT_COPY_SIZE_BYTES        = $0080    // Copy size in bytes
+
+.label update_cursor_physics_from_region = $0
+.label setup_vectors_and_drive_code = $0
+.label init_sound_voices = $0
+
+/*
+================================================================================
+  init_memory_sound_and_video
+================================================================================
+Summary
+	Sets interrupt vectors and the 6510 DDR, blanks the screen, clears key memory
+	regions, initializes default VIC-II colors and sprite state, installs a benign
+	NMI stub, primes actor rendering and SID voices, configures IRQs and video
+	layout, performs a small ROM→RAM copy, then jumps to relocate the main runtime
+	blocks.
+
+Description
+	* Initialize vectors and custom drive code.
+	* Disable IRQs, set 6510 DDR, and blank the screen.
+	* Map out I/O and clear graphics, zero page, and game/engine variables.
+	* Initialize video mode defaults and sprite registers.
+	* Install an RTS NMI stub and initialize actor render state and SID voices.
+	* Map in I/O and program IRQ vector, $D018 layout, $D016/$D011, raster line,
+	  and IRQ flags/mask. Select VIC bank $C000 via CIA2 PRA and stop CIA1 timers
+	  on underflow. Enable all sprites.
+	* Map out I/O and copy a small initialization block, then jump to the main
+	  relocation routine to finish setup.
+================================================================================
+*/
+* = $82F1
+init_memory_sound_and_video:
+        // ------------------------------------------------------------
+        // Setup interrupt vectors and drive code
+        // ------------------------------------------------------------
+        jsr     setup_vectors_and_drive_code
+
+        // ------------------------------------------------------------
+        // Disable interrupts and configure CPU port
+        // ------------------------------------------------------------
+        sei
+        lda     #CPU_PORT_DDR_INIT
+        sta     cpu_port_ddr
+
+        // ------------------------------------------------------------
+        // Blank the screen during memory initialization
+        // ------------------------------------------------------------
+        lda     vic_screen_control_reg_1
+        and     #SCREEN_OFF_MASK
+        sta     vic_screen_control_reg_1
+
+        // ------------------------------------------------------------
+        // Clear memory regions and initialize video defaults
+        // ------------------------------------------------------------
+        ldy     #MAP_IO_OUT
+        sty     cpu_port                       
+        jsr     clear_gfx_memory
+        jsr     clear_zero_page_vars
+        jsr     clear_game_and_engine_vars
+        jsr     init_video_mode_and_click_flag
+        jsr     clear_gfx_memory
+        jsr     setup_border_and_sprite_colors
+        jsr     clear_sprite_regs_and_sprite_memory
+
+        // ------------------------------------------------------------
+        // Set NMI handler to $18EA (dummy RTS routine)
+        // ------------------------------------------------------------
+        lda     #$EA
+        sta     nmi_handler_lo
+        lda     #$18
+        sta     nmi_handler_hi
+
+        // ------------------------------------------------------------
+        // Initialize actor rendering and sprite mappings
+        // ------------------------------------------------------------
+        jsr     init_actor_render_state
+
+        // ------------------------------------------------------------
+        // Initialize sound voices
+        // ------------------------------------------------------------
+        ldy     #MAP_IO_IN
+        sty     cpu_port                       
+        jsr     init_sound_voices
+        ldy     #MAP_IO_OUT
+        sty     cpu_port                       
+
+        // ------------------------------------------------------------
+        // Configure IRQ and VIC-II video layout
+        // ------------------------------------------------------------
+        sei
+        ldy     #MAP_IO_IN
+        sty     cpu_port                       // map in I/O to access VIC/CIA
+
+        lda     <irq_handler1
+        sta     <irq_handler                   // set IRQ vector low byte ($FFFE)
+        lda     >irq_handler1
+        sta     >irq_handler                   // set IRQ vector high byte ($FFFF)
+
+        lda     #CTRL1_BLANK_PRESET
+        sta     vic_screen_control_reg_1       // blank screen, 25 rows, vscroll=3
+
+        lda     #VIC_MEM_LAYOUT_INIT
+        sta     $21                            // shadow/temp: selected $D018 value
+        sta     vic_memory_layout_shadow       // engine shadow of $D018
+        sta     vic_memory_layout_reg          // screen=$0400, charset=$2000 within VIC bank
+
+        lda     #$01
+        sta     frame_buffer                   // select framebuffer index 1
+
+        lda     #CTRL2_ROOM_REGION_PRESET
+        sta     vic_screen_control_reg_2       // multicolor text on, 40 cols, hscroll=0
+
+        lda     #RASTER_IRQ_LINE_INIT
+        sta     vic_raster_line_reg            // trigger raster IRQ at line 250
+
+        lda     #VIC_IRQ_RASTER_ACK
+        sta     vic_irq_flag_reg               // acknowledge pending raster IRQs
+        sta     vic_irq_mask_reg               // enable raster IRQ source
+
+        lda     cia1_irq_status_reg            // read to clear CIA1 IRQ flags (side effect)
+
+        lda     cia2_pra
+        and     #CIA2_VIC_BANK_MASK
+        ora     #CIA2_VIC_BANK_C000
+        sta     cia2_pra                       // set VIC bank to $C000–$FFFF
+
+        lda     #CIA1_TIMER_STOP_ON_UF
+        sta     cia1_timer_a_ctrl_reg          // stop timer A on underflow (no start)
+        lda     #CIA1_TIMER_STOP_ON_UF
+        sta     cia1_timer_b_ctrl_reg          // stop timer B on underflow (no start)
+
+        lda     #SPRITES_ENABLE_ALL
+        sta     vic_sprite_enable_reg          // enable sprites 0–7 (visibility mask)
+
+        // ------------------------------------------------------------
+        // Copy small init block ($7B7F → $F040, #$80 bytes)
+        // ------------------------------------------------------------
+        ldy     #MAP_IO_OUT
+        sty     cpu_port                       // map out I/O
+        lda     #<INIT_COPY_SRC_START
+        sta     copy_src_lo
+        lda     #>INIT_COPY_SRC_START
+        sta     copy_src_hi
+        lda     #<INIT_COPY_DST_START
+        sta     copy_dest_lo
+        lda     #>INIT_COPY_DST_START
+        sta     copy_dest_hi
+        lda     #<INIT_COPY_SIZE_BYTES
+        sta     copy_counter_lo
+        lda     #>INIT_COPY_SIZE_BYTES
+        sta     copy_counter_hi
+        jsr     copy_memory
+
+        // ------------------------------------------------------------
+        // Relocate main code and finish setup
+        // ------------------------------------------------------------
+        jmp     relocate_memory
+
+/*
+================================================================================
+  copy_memory
+================================================================================
+Summary
+	Copy a block of memory forward from source to destination for exactly
+	byte_counter bytes. Uses zero-page 16-bit pointers and a 16-bit counter.
+	Not safe for overlapping regions where destination starts inside source.
+
+Arguments
+	copy_src_lo/copy_src_hi ($19/$1A): 16-bit source pointer (start address)
+	copy_dest_lo/copy_dest_hi ($1B/$1C): 16-bit destination pointer
+	copy_counter_lo/copy_counter_hi ($15/$16): total byte count (> $0000)
+
+Global Inputs
+	copy_src_lo/copy_src_hi
+	copy_dest_lo/copy_dest_hi
+	copy_counter_lo/copy_counter_hi
+
+Description
+	* Load a byte from (copy_source), store to (copy_dest).
+	* Increment 16-bit copy_source and copy_dest pointers (carry into high bytes).
+	* Decrement 16-bit byte counter (borrow from high when low is $00).
+	* Loop until counter becomes $0000 (tested via OR of low|high).
+	* Precondition: count must be > $0000. For overlapping copies where dest lies
+	within copy_source and dest > copy_source, use a reverse-direction routine.
+================================================================================
+*/
+* = $83A3
+copy_memory:
+        ldy     #$00                          // reset index within page
+        lda     (copy_source),y               // load byte from source
+        sta     (copy_dest),y                 // store to destination
+
+        inc     copy_src_lo                   // advance source pointer (lo)
+        bne     cm_advance_dest_ptr
+        inc     copy_src_hi                   // carry into high byte if wrapped
+
+cm_advance_dest_ptr:
+        inc     copy_dest_lo                  // advance destination pointer (lo)
+        bne     cm_decrement_count16
+        inc     copy_dest_hi                  // carry into high byte if wrapped
+
+cm_decrement_count16:
+        lda     copy_counter_lo               // load low count
+        bne     cm_decrement_count_lo
+        dec     copy_counter_hi               // borrow from high byte if low=0
+cm_decrement_count_lo:
+        dec     copy_counter_lo               // decrement low count
+
+        lda     copy_counter_lo
+        ora     copy_counter_hi               // both zero? finished
+        bne     copy_memory		              // no → continue
+
+cm_copy_done:
+        rts                                   // done copying
+
+/*
+================================================================================
+ relocate_memory
+================================================================================
+Summary
+	Copies five code/data blocks from load-time addresses into RAM regions used at
+	runtime. Initializes cursor position and interaction region. Hides the cursor,
+	enables interrupts, and installs raster IRQ handlers.
+
+Description
+	* Issue five copy jobs via copy_memory using (copy_src, copy_dest, count):
+		1. Characters/UI arrows to $F800 for #$0400 bytes
+		2. Graphics and script handlers to $D000 for #$0800 bytes
+		3. Engine constants to $F0C0 for #$073F bytes
+		4. Decompression routines to $0100 for #$009B bytes
+		5. Init block to $CAD0 for #$00C0 bytes
+	* Set cursor_x_pos, cursor_y_pos, and interaction_region to initial values.
+	* Call update_cursor_physics_from_region to sync cursor motion parameters.
+	* Hide the cursor, enable IRQs with CLI, then call raster_setup.
+================================================================================
+*/
+
+* = $83C4		
+relocate_memory:
+        // ------------------------------------------------------------
+        // Copy character set and UI arrows ($7BFF → $F800, #$0400 bytes)
+        // ------------------------------------------------------------
+        lda     #<BLOCK_CHARS_SRC_START
+        sta     copy_src_lo
+        lda     #>BLOCK_CHARS_SRC_START
+        sta     copy_src_hi
+        lda     #<BLOCK_CHARS_DST_START
+        sta     copy_dest_lo
+        lda     #>BLOCK_CHARS_DST_START
+        sta     copy_dest_hi
+        lda     #<BLOCK_CHARS_SIZE_BYTES
+        sta     copy_counter_lo
+        lda     #>BLOCK_CHARS_SIZE_BYTES
+        sta     copy_counter_hi
+        jsr     copy_memory
+
+        // ------------------------------------------------------------
+        // Copy graphics and script handler code ($86A4 → $D000, #$0800 bytes)
+        // ------------------------------------------------------------
+        lda     #<BLOCK_GFX_CODE_SRC_START
+        sta     copy_src_lo
+        lda     #>BLOCK_GFX_CODE_SRC_START
+        sta     copy_src_hi
+        lda     #<BLOCK_GFX_CODE_DST_START
+        sta     copy_dest_lo
+        lda     #>BLOCK_GFX_CODE_DST_START
+        sta     copy_dest_hi
+        lda     #<BLOCK_GFX_CODE_SIZE_BYTES
+        sta     copy_counter_lo
+        lda     #>BLOCK_GFX_CODE_SIZE_BYTES
+        sta     copy_counter_hi
+        jsr     copy_memory
+
+        // ------------------------------------------------------------
+        // Copy game engine constants ($8EA0 → $F0C0, #$073F bytes)
+        // ------------------------------------------------------------
+        lda     #<BLOCK_CONSTS_SRC_START
+        sta     copy_src_lo
+        lda     #>BLOCK_CONSTS_SRC_START
+        sta     copy_src_hi
+        lda     #<BLOCK_CONSTS_DST_START
+        sta     copy_dest_lo
+        lda     #>BLOCK_CONSTS_DST_START
+        sta     copy_dest_hi
+        lda     #<BLOCK_CONSTS_SIZE_BYTES
+        sta     copy_counter_lo
+        lda     #>BLOCK_CONSTS_SIZE_BYTES
+        sta     copy_counter_hi
+        jsr     copy_memory
+
+        // ------------------------------------------------------------
+        // Copy decompression routines ($95E0 → $0100, #$009B bytes)
+        // ------------------------------------------------------------
+        lda     #<BLOCK_DECOMP_SRC_START
+        sta     copy_src_lo
+        lda     #>BLOCK_DECOMP_SRC_START
+        sta     copy_src_hi
+        lda     #<BLOCK_DECOMP_DST_START
+        sta     copy_dest_lo
+        lda     #>BLOCK_DECOMP_DST_START
+        sta     copy_dest_hi
+        lda     #<BLOCK_DECOMP_SIZE_BYTES
+        sta     copy_counter_lo
+        lda     #>BLOCK_DECOMP_SIZE_BYTES
+        sta     copy_counter_hi
+        jsr     copy_memory
+
+        // ------------------------------------------------------------
+        // Copy initialization block ($85E4 → $CAD0, #$00C0 bytes)
+        // ------------------------------------------------------------
+        lda     #<BLOCK_INIT_SRC_START
+        sta     copy_src_lo
+        lda     #>BLOCK_INIT_SRC_START
+        sta     copy_src_hi
+        lda     #<BLOCK_INIT_DST_START
+        sta     copy_dest_lo
+        lda     #>BLOCK_INIT_DST_START
+        sta     copy_dest_hi
+        lda     #<BLOCK_INIT_SIZE_BYTES
+        sta     copy_counter_lo
+        lda     #>BLOCK_INIT_SIZE_BYTES
+        sta     copy_counter_hi
+        jsr     copy_memory
+
+        // ------------------------------------------------------------
+        // Initialize cursor and interaction region
+        // ------------------------------------------------------------
+        lda     #CURSOR_INIT_X
+        sta     cursor_x_pos
+        lda     #CURSOR_INIT_Y
+        sta     cursor_y_pos
+        lda     #INTERACTION_REGION_DEFAULT
+        sta     interaction_region
+        jsr     update_cursor_physics_from_region
+
+        // ------------------------------------------------------------
+        // Hide cursor and enable interrupts
+        // ------------------------------------------------------------
+        lda     #TRUE
+        sta     hide_cursor_flag
+        cli
+
+        // ------------------------------------------------------------
+        // Initialize raster interrupt handlers
+        // ------------------------------------------------------------
+        jsr     raster_setup
+
+        rts
+/*
+================================================================================
+  clear_zero_page_vars
+================================================================================
+Summary
+	Clear zero-page addresses $0015..$00FF by writing $00 to each byte. Leaves
+	$0000..$0014 untouched.
+
+Global Outputs
+	* Zero page $0015..$00FF set to $00.
+
+Description
+	* Initialize Y to ZP_CLEAR_START and A to $00.
+	* Loop: STA $0000,Y; INY; branch while Y ≠ $00.
+	* Completion occurs when Y wraps from $FF to $00 after writing $00FF.
+
+Notes
+	* Clears 235 bytes total ($EB).
+	* Must be called with interrupts disabled if ISR uses any bytes in the cleared
+	  range.
+================================================================================
+*/
+* = $8467
+clear_zero_page_vars:
+        ldy     #ZP_CLEAR_START              // Y := starting offset
+        lda     #ZP_CLEAR_VALUE              // A := 0
+
+zp_clear_loop:
+        sta     ZP_CLEAR_BASE,y              // clear one byte
+        iny                                  // next address
+        bne     zp_clear_loop                // loop until Y wraps to 0
+        rts                                  
+/*
+================================================================================
+  clear_game_and_engine_vars
+================================================================================
+Summary
+	Zero-fill the main engine range at CLEAR_GAME_START for CLEAR_GAME_SIZE bytes,
+	then tail-jump to clear_cad0_cb90 to zero the secondary work area. Uses the
+	byte-fill helper mem_fill_x_3.
+================================================================================
+*/
+* = $8472
+clear_game_and_engine_vars:
+        lda     #<CLEAR_GAME_START             
+        sta     fill_ptr_lo
+        lda     #>CLEAR_GAME_START             
+        sta     fill_ptr_hi
+        lda     #<CLEAR_GAME_SIZE              
+        sta     fill_count_lo
+        lda     #>CLEAR_GAME_SIZE              
+        sta     fill_count_hi
+        ldx     #CLEAR_VALUE_ZERO              
+        jsr     mem_fill_x_3                   
+        jmp     clear_cad0_cb90                
+/*
+================================================================================
+  mem_fill_x_3
+================================================================================
+Summary
+	Fill a memory region with a constant byte value held in X. Copies exactly
+	byte_counter bytes to the destination by advancing a 16-bit pointer each loop.
+	Forward-only. Requires nonzero length.
+
+Arguments
+	X                fill value (0..255)
+	fill_pointer     destination pointer (lo/hi)
+	byte_counter     total byte count (> $0000)
+
+Description
+	- Keep Y at 0 and write A (from X) to (fill_pointer),Y each pass.
+	- Increment destination pointer lo, carry into hi on wrap.
+	- Decrement 16-bit byte_counter (low then borrow to high).
+	- Loop until (copy_counter_lo | copy_counter_hi) == 0.
+
+Notes
+	- If byte_counter == $0000 on entry, behavior is invalid (will not terminate).
+	- Safe for overlapping regions because only destination is written.
+================================================================================
+*/
+* = $848A
+mem_fill_x_3:
+        ldy     #$00                          // keep index in-page at 0
+        txa                                   // A := fill value from X
+        sta     (fill_pointer),y              // write one byte
+
+        inc     fill_ptr_lo                   // advance dest pointer (lo)
+        bne     update_counters_3             // no wrap → skip hi
+        inc     fill_ptr_hi                   // wrap → carry into hi
+
+update_counters_3:
+        lda     fill_count_lo                 // load low counter
+        bne     counter_lo_decrement_3        // if not zero, skip borrow
+        dec     fill_count_hi                 // borrow from high
+
+counter_lo_decrement_3:
+        dec     fill_count_lo                 // dec low counter
+
+        lda     fill_count_lo
+        ora     fill_count_hi                 // both zero?
+        bne     mem_fill_x_3                  // no → continue
+        rts                                   // yes → done
+/*
+================================================================================
+  clear_cad0_cb90
+================================================================================
+Summary
+	Zero-fill a contiguous memory region starting at ZFILL_CAD0_START for
+	ZFILL_CAD0_SIZE bytes using the byte value ZFILL_VALUE_ZERO. Delegates the
+	actual write loop to `mem_fill_x_3`.
+================================================================================
+*/
+* = $84A4
+clear_cad0_cb90:
+        lda     #<ZFILL_CAD0_START             
+        sta     fill_ptr_lo                    
+        lda     #>ZFILL_CAD0_START             
+        sta     fill_ptr_hi                    
+        lda     #<ZFILL_CAD0_SIZE              
+        sta     fill_count_lo               
+        lda     #>ZFILL_CAD0_SIZE
+        sta     fill_count_hi
+        ldx     #ZFILL_VALUE_ZERO              
+        jsr     mem_fill_x_3                   
+        rts
+		
+/*
+================================================================================
+  setup_border_and_sprite_colors 
+================================================================================
+Summary
+	Sets the VIC-II border color to black and programs the global sprite multicolor
+	values (MC1 = black, MC0 = light red). Leaves I/O banking restored.
+
+Description
+	* Map in I/O to access VIC-II registers.
+	* Set border color to black.
+	* Set sprite multicolor 1 to black and multicolor 0 to light red.
+	* Map out I/O to restore the normal memory configuration.
+
+Notes
+	* MC0 corresponds to pixel bit-pair 01 and MC1 to bit-pair 11 in multicolor
+	  sprite pixels.
+================================================================================
+*/
+* = $84BA		
+setup_border_and_sprite_colors:
+        // ------------------------------------------------------------
+        // Map in I/O to access VIC-II registers
+        // ------------------------------------------------------------
+        ldy     #MAP_IO_IN
+        sty     cpu_port
+
+        // ------------------------------------------------------------
+        // Set border color to black
+        // ------------------------------------------------------------
+        lda     #$00
+        sta     vic_border_color_reg
+
+        // ------------------------------------------------------------
+        // Set global sprite multicolor values
+        // ------------------------------------------------------------
+        lda     #COLOR_BLACK
+        sta     vic_sprite_mcolor1_reg          
+        lda     #COLOR_LIGHT_RED
+        sta     vic_sprite_mcolor0_reg          
+
+        // ------------------------------------------------------------
+        // Map out I/O and restore memory configuration
+        // ------------------------------------------------------------
+        ldy     #MAP_IO_OUT
+        sty     cpu_port
+
+        rts
+/*
+================================================================================
+ clear_sprite_regs_and_sprite_memory
+================================================================================
+Summary
+	Maps in I/O, clears sprite control and collision registers, enables multicolor
+	for sprites 0–6, sets the engine sprite-shape table pointer, maps I/O out, and
+	zeros the sprite memory region.
+
+Description
+	* Map in I/O by writing MAP_IO_IN to cpu_port.
+	* Clear X-expand, Y-expand, priority, and both collision latches with $00.
+	* Enable multicolor for sprites 0–6 by writing SPR_MC_ENABLE_0_TO_6.
+	* Point sprite_shape_data_ptr at SPRITE_SHAPE_SET1_ADDR for engine lookups.
+	* Map out I/O by writing MAP_IO_OUT to cpu_port.
+	* Prepare a zero fill over SPRITE_BASE_0 for SPRITE_MEM_SIZE bytes.
+	* Call mem_fill_x_3 to clear the sprite memory region.
+
+Notes
+	* Writing $00 to $D01E and $D01F clears collision latches.
+	* Bit7 of $D01C left clear keeps sprite 7 in hires while 0–6 are multicolor.
+================================================================================
+*/
+* = $84D2
+clear_sprite_regs_and_sprite_memory:
+        // ------------------------------------------------------------
+        // Map in I/O area to access VIC-II registers
+        // ------------------------------------------------------------
+        ldy     #MAP_IO_IN
+        sty     cpu_port
+
+        // ------------------------------------------------------------
+        // Clear sprite control and collision registers
+        // ------------------------------------------------------------
+        lda     #$00
+        sta     vic_sprite_x_expand_reg                      // sprite double width
+        sta     vic_sprite_y_expand_reg                      // sprite double height
+        sta     vic_sprite_priority_reg                      // sprite priority
+        sta     vic_coll_spr_spr_reg                         // sprite-sprite collisions
+        sta     vic_coll_spr_bg_reg                          // sprite-background collisions
+
+        // ------------------------------------------------------------
+        // Enable multicolor mode for sprites 0–6 (bit7=0 keeps sprite 7 hires)
+        // ------------------------------------------------------------
+        lda     #SPR_MC_ENABLE_0_TO_6
+        sta     vic_sprite_mc_enable_reg
+
+        // ------------------------------------------------------------
+        // Set engine sprite shape data pointer ($CBF8)
+        // ------------------------------------------------------------
+        lda     #<SPRITE_SHAPE_SET1_ADDR
+        sta     <sprite_shape_data_ptr
+        lda     #>SPRITE_SHAPE_SET1_ADDR
+        sta     >sprite_shape_data_ptr
+
+        // ------------------------------------------------------------
+        // Map out I/O and restore memory configuration
+        // ------------------------------------------------------------
+        ldy     #MAP_IO_OUT
+        sty     cpu_port
+
+        // ------------------------------------------------------------
+        // Fill sprite memory region ($E000–$EFFF) with zero
+        // ------------------------------------------------------------
+        lda     #<SPRITE_BASE_0
+        sta     fill_ptr_lo
+        lda     #>SPRITE_BASE_0
+        sta     fill_ptr_hi
+        lda     #<SPRITE_MEM_SIZE
+        sta     fill_count_lo
+        lda     #>SPRITE_MEM_SIZE
+        sta     fill_count_hi
+
+        ldx     #$00
+        jsr     mem_fill_x_3                   // clear 4 KB of sprite memory
+
+        rts		
+/*
+================================================================================
+  init_video_mode_and_click_flag
+================================================================================
+Summary
+	Sets the video setup mode to the default value and sets the room scene “clicked”
+	flag to TRUE so downstream UI logic starts in an active or ready state.
+================================================================================
+*/
+* = $850E		
+init_video_mode_and_click_flag:
+        lda     #VID_SETUP_NONE
+        sta     video_setup_mode                // default video setup mode
+
+        lda     #TRUE
+        sta     room_scene_clicked_flag         // mark scene click flag active
+
+        rts
+/*
+================================================================================
+clear_gfx_memory
+================================================================================
+Summary
+	Clear both scene frame buffers and dot-data, then paint the top color-RAM bar.
+	Uses mem_fill_x_3 for RAM clears and writes $COLOR_BAR_FILL to $D800–$D827.
+
+Description
+	1. For each frame buffer: set fill_ptr_* to start, fill_count_* to FRAMEBUF_SIZE,
+	   X=$00, call mem_fill_x_3.
+	2. Clear dot-data similarly with DOTDATA_*.
+	3. Map I/O in via cpu_port, write COLOR_BAR_FILL across COLOR_BAR_LEN bytes at
+	   vic_color_ram (indexed by Y), then map I/O out.
+
+Notes
+	* Assumes RAM under I/O/ROM is already visible when clearing frame/dot-data.
+	* COLOR_BAR_LEN is written from end to start (Y decrements from LEN-1 to 0).
+	* mem_fill_x_3 requires a nonzero count; constants must not be zero.
+================================================================================
+*/
+* = $8518
+clear_gfx_memory:
+        // ------------------------------------------------------------
+        // Clear frame buffer 1 ($C800–$CBE7)
+        // ------------------------------------------------------------
+        lda     #<FRAMEBUF1_START
+        sta     fill_ptr_lo
+        lda     #>FRAMEBUF1_START
+        sta     fill_ptr_hi
+        lda     #<FRAMEBUF_SIZE
+        sta     fill_count_lo
+        lda     #>FRAMEBUF_SIZE
+        sta     fill_count_hi
+        ldx     #$00
+        jsr     mem_fill_x_3
+
+        // ------------------------------------------------------------
+        // Clear frame buffer 2 ($CC00–$CFE7)
+        // ------------------------------------------------------------
+        lda     #<FRAMEBUF2_START
+        sta     fill_ptr_lo
+        lda     #>FRAMEBUF2_START
+        sta     fill_ptr_hi
+        lda     #<FRAMEBUF_SIZE
+        sta     fill_count_lo
+        lda     #>FRAMEBUF_SIZE
+        sta     fill_count_hi
+        ldx     #$00
+        jsr     mem_fill_x_3
+
+        // ------------------------------------------------------------
+        // Clear dot-data ($D800–$DFFF)
+        // ------------------------------------------------------------
+        lda     #<DOTDATA_START
+        sta     fill_ptr_lo
+        lda     #>DOTDATA_START
+        sta     fill_ptr_hi
+        lda     #<DOTDATA_SIZE
+        sta     fill_count_lo
+        lda     #>DOTDATA_SIZE
+        sta     fill_count_hi
+        ldx     #$00
+        jsr     mem_fill_x_3
+
+        // ------------------------------------------------------------
+        // Fill color RAM ($D800–$D827) with color $0E
+        // ------------------------------------------------------------
+        ldy     #MAP_IO_IN
+        sty     cpu_port                     // map in I/O to access color RAM
+        ldy     #COLOR_BAR_LEN - 1
+fill_color_loop:
+        lda     #COLOR_BAR_FILL
+        sta     vic_color_ram,y
+        dey
+        bpl     fill_color_loop
+        ldy     #MAP_IO_OUT
+        sty     cpu_port                     // restore normal mapping
+        rts
+/*
+================================================================================
+ init_actor_render_state
+================================================================================
+Summary
+	Sets the actor sprite base high byte, initializes the room mask base pointer,
+	and clears all actor→sprite assignments to a sentinel state.
+
+Global Outputs
+	* actor_sprite_base+1           updated with >SPRITE_BASE_0
+	* mask_base_ptr                 set to ROOM_MASK_PTR
+	* actor_sprite_index[0..N-1]    set to NO_SPRITE for N=ACTOR_COUNT_TOTAL
+
+Description
+	* Write the sprite memory base page into the high byte of actor_sprite_base.
+	* Program the default room mask pointer as a 16-bit address.
+	* Iterate over all actors and mark their sprite index as unassigned (NO_SPRITE)
+	  to prevent stale bindings before the allocator runs.
+================================================================================
+*/
+* = $856A		
+init_actor_render_state:
+        // ------------------------------------------------------------
+        // Set actor sprite memory base high byte
+        // ------------------------------------------------------------
+        lda     #>SPRITE_BASE_0
+        sta     actor_sprite_base + 1             // base page for actor sprite data
+
+        // ------------------------------------------------------------
+        // Set default room scene mask layer pointer
+        // ------------------------------------------------------------
+        lda     #<ROOM_MASK_PTR
+        sta     mask_base_ptr
+        lda     #>ROOM_MASK_PTR
+        sta     mask_base_ptr + 1
+
+        // ------------------------------------------------------------
+        // Clear actor→sprite mapping table (4 entries)
+        // ------------------------------------------------------------
+        ldy     #$00
+clear_actor_sprite_loop:
+        lda     #NO_SPRITE
+        sta     actor_sprite_index,y           // mark no sprite assigned
+        iny
+        cpy     #ACTOR_COUNT_TOTAL
+        bne     clear_actor_sprite_loop
+
+        rts
+/*
+================================================================================
+  init_game_engine — initialize baseline UI, actor, and runtime state
+================================================================================
+
+Summary
+	Initializes the sentence/UI system, default verb, timers, lighting mode, loader
+	disk ID, camera position, costume↔actor tables, and RNG seed. Leaves the engine
+	ready for input with the sentence bar marked for refresh.
+
+Global Outputs
+	 sentstk_top_idx            set to SENT_STACK_EMPTY_IDX (empty stack)
+	 sentstk_free_slots         set to SENT_STACK_MAX_TOKENS
+	 std_msg_countdown          set to STD_MSG_DEFAULT_TICKS (16-bit)
+	 text_delay_factor          set to TEXT_DELAY_DEFAULT
+	 current_verb_id            set to WALK_TO_VERB
+	 sentence_bar_needs_refresh set to TRUE
+	 global_lights_state        set to LIGHTS_FLASHLIGHT_ONLY
+	 active_side_id             set to GAME_DISK_ID_SIDE2
+	 cam_current_pos            set to CAMERA_INIT_POS
+	 costume_clip_set[0..COSTUME_MAX_INDEX] = CLIP_STAND_DOWN
+	 actor_for_costume[0..COSTUME_MAX_INDEX] = NO_ACTOR
+	 path_direction_for_actor[0..ACTOR_MAX_INDEX] = DIRECTION_DOWN
+	 costume_for_actor[0..ACTOR_MAX_INDEX] = NO_COSTUME
+	 random_1, random_2         set to RNG_SEED_1 / RNG_SEED_2
+
+Description
+	* Reset sentence stack: empty top index and restore full free-slot count.
+	* Load standard message-bar delay into the 16-bit countdown timer.
+	* Set per-character text speed factor.
+	* Force default verb to “Walk to” and request a sentence-bar refresh.
+	* Program global lighting mode for initial scene rules.
+	* Select the desired loader disk-side identifier.
+	* Initialize camera position to the engine’s default.
+	* Normalize costume tables: default standing clip and no actor mapping.
+	* Normalize actor tables: default direction and no costume assigned.
+	* Seed the RNG to a stable nonzero state for deterministic startup behavior.
+================================================================================
+*/
+* = $8586
+init_game_engine:
+        // ------------------------------------------------------------
+        // Initialize sentence stack system
+        // ------------------------------------------------------------
+        lda     #SENT_STACK_EMPTY_IDX 
+        sta     sentstk_top_idx                // mark stack as empty
+        lda     #SENT_STACK_MAX_TOKENS 
+        sta     sentstk_free_slots             // 6 free slots available
+
+        // ------------------------------------------------------------
+        // Set message bar standard delay
+        // ------------------------------------------------------------
+        lda     #<STD_MSG_DEFAULT_TICKS
+        sta     <std_msg_countdown             // low byte (30 ticks)
+        lda     #>STD_MSG_DEFAULT_TICKS
+        sta     >std_msg_countdown             // high byte
+
+        // ------------------------------------------------------------
+        // Set initial text speed factor
+        // ------------------------------------------------------------
+        lda     #TEXT_DELAY_DEFAULT
+        sta     text_delay_factor
+
+        // ------------------------------------------------------------
+        // Set current verb to "Walk to"
+        // ------------------------------------------------------------
+        lda     #WALK_TO_VERB
+        sta     current_verb_id
+
+        // ------------------------------------------------------------
+        // Enable refreshing the sentence bar
+        // ------------------------------------------------------------
+        lda     #TRUE
+        sta     sentence_bar_needs_refresh
+
+        // ------------------------------------------------------------
+        // Set environment lights on
+        // ------------------------------------------------------------
+        lda     #LIGHTS_FLASHLIGHT_ONLY
+        sta     global_lights_state
+
+        // ------------------------------------------------------------
+        // Set desired disk ID = game disk side 2
+        // ------------------------------------------------------------
+        lda     #GAME_DISK_ID_SIDE2
+        sta     active_side_id
+
+        // ------------------------------------------------------------
+        // Initialize camera position
+        // ------------------------------------------------------------
+        lda     #CAMERA_INIT_POS
+        sta     cam_current_pos
+
+        // ------------------------------------------------------------
+        // Initialize all costumes and their actor mappings
+        // ------------------------------------------------------------
+        ldx     #COSTUME_MAX_INDEX                            
+loop_init_costumes:
+        lda     #CLIP_STAND_DOWN
+        sta     costume_clip_set,x              // default clip: standing looking down
+        lda     #NO_ACTOR 
+        sta     actor_for_costume,x             // unassigned actor
+        dex
+        bpl     loop_init_costumes
+
+        // ------------------------------------------------------------
+        // Reset actor attributes and "in use" settings
+        // ------------------------------------------------------------
+        ldx     #ACTOR_MAX_INDEX                            
+reset_actors:
+        lda     #DIRECTION_DOWN
+        sta     path_direction_for_actor,x      // default direction: down
+        lda     #NO_COSTUME
+        sta     costume_for_actor,x             // mark actor unused
+        dex
+        bpl     reset_actors
+
+        // ------------------------------------------------------------
+        // Initialize engine temporary variables (unused)
+        // ------------------------------------------------------------
+        lda     #TRUE
+        sta     $FE82
+        sta     $FE81
+
+        // ------------------------------------------------------------
+        // Initialize random number generator seed
+        // ------------------------------------------------------------
+        lda     #RNG_SEED_1
+        sta     random_1
+        lda     #RNG_SEED_2
+        sta     random_2
+
+        rts
