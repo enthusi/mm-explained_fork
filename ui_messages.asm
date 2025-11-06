@@ -86,23 +86,22 @@ actor_text_color:
 .const TEXT_BAR_LENGTH         = $27    // legacy alias for last index; equals $27 (40 cells)
 
 .label topbar_text_base     = $CC00    // Base address of top-bar character buffer in screen RAM
-.label vic_color_ram        = $D800    // VIC color RAM (normal text mode); one byte per cell
 // Low nibble selects one of 16 colors (bits3–0).
 // In multicolor text mode, only bits2–0 are used (8 colors).
 
-.label src_msg_ptr          = $0015    // Pointer to current source message string (lo/hi)
+.label src_msg_ptr          = $15    // Pointer to current source message string (lo/hi)
 .label msg_copy_mode        = $28C1    // Copy/skip mode control flag
 
 //  $00 = shutdown in progress
 //  $01 = message ended
 //  $FF = copying or post-linebreak active
-.label topbar_mode          = $00C9    // Current top-bar display mode
+.label topbar_mode          = $C9    // Current top-bar display mode
 
 //  $00 = idle, $FF = print next tick, $01 = end-of-string
-.label source_msg_offset    = $00CA    // Current character index in message buffer
-.label cur_msg_countdown    = $00CB    // 16-bit countdown until next character print
-.label std_msg_countdown    = $00CD    // Standard countdown template (copied into cur_msg_countdown)
-.label text_delay_factor    = $00CF    // Per-character delay multiplier (speed control)
+.label source_msg_offset    = $CA    // Current character index in message buffer
+.label cur_msg_countdown    = $CB    // 16-bit countdown until next character print
+.label std_msg_countdown    = $CD    // Standard countdown template (copied into cur_msg_countdown)
+.label text_delay_factor    = $CF    // Per-character delay multiplier (speed control)
 
 
 /*
