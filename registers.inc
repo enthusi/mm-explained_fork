@@ -1,5 +1,7 @@
 #importonce
 
+
+.label cpu_port_ddr = $00    // 6510 CPU port data direction register (bitmask: 1=output, 0=input; controls memory banking lines)
 // ============================================================================
 // 6510 CPU I/O port ($0001)
 // ============================================================================
@@ -45,6 +47,7 @@
 // Current raster line (low 8 bits). Range 0–255; combined with $D011 bit7 for 9-bit beam position.
 // Used for raster interrupts and beam-synced effects.
 .label vic_raster_line_reg             = $D012
+.label vic_sprite_enable_reg = $D015    // Sprite enable register (bit set = sprite visible on screen, bits 0–7 correspond to sprites 0–7)
 
 // ============================================================================
 // VIC-II screen control register 2 ($D016) — horizontal scroll & mode control
@@ -71,6 +74,8 @@
 // ============================================================================
 .label vic_screen_control_reg_2         = $D016
 
+.label vic_sprite_y_expand_reg     = $D017    // Controls Y double-height for sprites (bit per sprite)
+
 // Video memory layout register ($D018).
 // Bits 1–3 select character generator base (in 2 KB blocks).
 // Bits 4–7 select screen matrix base (in 1 KB blocks).
@@ -87,10 +92,16 @@
 //   bit7 = master IRQ flag (set if any enabled source triggered)
 .label vic_irq_flag_reg                = $D019
 
+.label vic_irq_mask_reg = $D01A    // VIC-II interrupt enable register (bit0=raster, bit1=sprite collision, bit2=background collision, bit3=light pen)
+.label vic_sprite_priority_reg     = $D01B    // Sprite priority vs background (1 = behind)
+.label vic_sprite_mc_enable_reg    = $D01C    // Enables multicolor mode per sprite (bit set = multicolor)
+
 // Sprite horizontal expansion control. Bit n doubles the width of sprite n (2×).
 //   0 = normal width, 1 = expanded. Write-only on VIC-II.
 //   bit0→spr0, bit1→spr1, …, bit7→spr7.
 .label vic_sprite_x_expand_reg         = $D01D
+.label vic_coll_spr_spr_reg        = $D01E    // Sprite–sprite collision latch (write to clear)
+.label vic_coll_spr_bg_reg         = $D01F    // Sprite–background collision latch (write to clear)
 
 // Border color register ($D020). Lower 4 bits select color index (0–15).
 // Sets the color for screen border and background when display is blanked.
@@ -100,6 +111,9 @@
 // Primary background color used in text, bitmap, or multicolor modes.
 // In multicolor modes, acts as "color 0" for shared background pixels.
 .label vic_bg0_reg                     = $D021
+
+.label vic_sprite_mcolor0_reg = $D025    // Global sprite multicolor 0 (bit pair "01") used by all sprites
+.label vic_sprite_mcolor1_reg = $D026    // Global sprite multicolor 1 (bit pair "11") used by all sprites
 
 // Sprite color registers base ($D027–$D02E). Each byte sets color for sprite n.
 // Only lower 4 bits are used (0–15). Bit pair “10” in bitmap selects this color.
