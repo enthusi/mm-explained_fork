@@ -117,8 +117,6 @@ draw_actor
 ================================================================================
 */
 
-.const SPRITE_BASE_0      = $E000   		// VRAM base for sprite bank 0
-.const SPRITE_BASE_1      = $E800   		// VRAM base for sprite bank 1
 .const VISIBLE_ROW_MAX    = $91     		// last drawable row index (clipping threshold)
 .const TOTAL_LIMBS        = $08		
 
