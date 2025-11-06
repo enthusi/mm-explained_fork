@@ -196,3 +196,34 @@ game_paused_flag_msg:
 .const NORMAL_CONTROL_MODE = $03
 
 .const FIRST_NON_KID_INDEX           = $08    // Recipient index ≥ $08 → not a kid
+
+
+//Lights_status values
+.const LIGHTS_DARKNESS = $00
+.const LIGHTS_FLASHLIGHT_ONLY = $01
+.const LIGHTS_ENVIRONMENT_ON = $02
+
+.const  GAME_DISK_ID_SIDE1   = $31    // Valid game tag: side 1
+.const  GAME_DISK_ID_SIDE2   = $32    // Valid game tag: side 2
+
+
+.const SENT_STACK_EMPTY_IDX        = $FF    // Token stack sentinel “empty”
+.const SENT_STACK_MAX_TOKENS       = $06    // Max tokens in sentence stack
+
+.const SPRITE_BASE_0      = $E000   		// VRAM base for sprite bank 0
+.const SPRITE_BASE_1      = $E800   		// VRAM base for sprite bank 1
+
+// ------------------------------------------------------------
+// Video setup modes (video_setup_mode)
+// ------------------------------------------------------------
+.const VID_SETUP_NONE           = $00   // No change; keep current VIC layout
+.const VID_SETUP_C800           = $01   // Char @ $D800, screen @ $C800, sprites @ $CBF8 → copy color RAM
+.const VID_SETUP_CC00           = $02   // Char @ $D800, screen @ $CC00, sprites @ $CFF8 → copy color RAM
+.const VID_SETUP_COPY_COLORS    = $03   // Copy color RAM only, no layout change
+
+// ------------------------------------------------------------
+// Sprite shape base addresses for each layout
+// ------------------------------------------------------------
+.label SPRITE_SHAPE_SET1_ADDR   = $CBF8 // Sprite shape data base for layout C800
+.label SPRITE_SHAPE_SET2_ADDR   = $CFF8 // Sprite shape data base for layout CC00
+
