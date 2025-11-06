@@ -36,7 +36,7 @@
  *       - disk_store_abs / disk_load_abs / disk_dest_store_abs labels.
  *   • Streaming state: current_track/current_sector, disk_buf_off advance across sectors.
  *   • Geometry: max_sector_index_by_track holds 0-based max sector index per track.
- *   • Mapping $01: set to MAP_IO_ON only for the duration of low-level IEC calls.
+ *   • Mapping $01: set to MAP_IO_IN only for the duration of low-level IEC calls.
  *
  * Error Handling & Diagnostics:
  *   • Reads/writes with wrappers retry indefinitely on failure, showing DISK_ERROR_MSG
@@ -498,11 +498,11 @@ decrement_counter_lo:
  *   1) Initialize disk_src_ptr from X/Y; seed current_track/current_sector from start_*.
  *   2) Compute sectors_to_write = hi + (lo != 0); reuse the hi byte as the sector countdown.
  *   3) Loop:
- *        • Map I/O in ($01 ← MAP_IO_ON).
+ *        • Map I/O in ($01 ← MAP_IO_IN).
  *        • LDX current_track, LDY current_sector, JSR disk_write_sector.
  *        • On C=1 (error): set print_msg_ptr to DISK_ERROR_MSG, print, and retry same sector.
  *        • On C=0 (success):
- *            – Map I/O out ($01 ← MAP_IO_OFF).
+ *            – Map I/O out ($01 ← MAP_IO_OUT).
  *            – JSR disk_next_sector_phys (advance geometry).
  *            – INC disk_src_ptr+1 (advance buffer by +256).
  *            – DEC disk_copy_count_hi; if not zero, repeat.
@@ -533,7 +533,7 @@ disk_write_linear:
 
 try_write:
         // Map I/O visible (CIA/IEC at $D000–$DFFF) for the low-level write
-        ldy #MAP_IO_ON
+        ldy #MAP_IO_IN
         sty cpu_port
 
         /*
@@ -555,7 +555,7 @@ try_write:
 
 write_succeeded:
         // Restore memory map (hide I/O window) before bookkeeping
-        ldy #MAP_IO_OFF
+        ldy #MAP_IO_OUT
         sty cpu_port
 
         // Advance geometry cursor to the next valid sector (wraps across tracks)
@@ -754,9 +754,9 @@ exit_1:
  *   1) Save X/Y to disk_x_save/disk_y_save.
  *   2) Set disk_dest_ptr = SECTOR_BUFFER ($0300) so disk_read_sector’s SMC store targets $0300.
  *   3) Loop:
- *        • Map I/O in (write MAP_IO_ON to $01).
+ *        • Map I/O in (write MAP_IO_IN to $01).
  *        • Load X=current_track, Y=current_sector; JSR disk_read_sector.
- *        • Map I/O out (write MAP_IO_OFF to $01).
+ *        • Map I/O out (write MAP_IO_OUT to $01).
  *        • If C=0, success → break; else point print_msg_ptr at DISK_ERROR_MSG,
  *          print message, and retry.
  *   4) On success, copy current_track/current_sector into last_*_loaded.
@@ -777,7 +777,7 @@ disk_read_sector_into_buffer:
 
 attempt_read_sector:
         // Map I/O space in (make CIA/VIC etc. visible at $D000–$DFFF)
-        ldy #MAP_IO_ON
+        ldy #MAP_IO_IN
         sty cpu_port
 
         /*
@@ -789,7 +789,7 @@ attempt_read_sector:
         jsr disk_read_sector
 
         // Hide I/O space again (restore RAM under I/O)
-        ldy #MAP_IO_OFF
+        ldy #MAP_IO_OUT
         sty cpu_port
 
         // Success? (Carry clear means the sector was received into disk_dest_ptr)

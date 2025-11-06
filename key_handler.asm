@@ -149,7 +149,7 @@ pause_banner_copy_loop:
         // ------------------------------------------------------------
         // Map I/O on and mute audio while paused
         // ------------------------------------------------------------
-        ldy     #MAP_IO_ON                    
+        ldy     #MAP_IO_IN                    
         sty     cpu_port                      // enable I/O space mapping
         lda     #SID_VOL_MUTE                 
         sta     sid_master_volume             // mute SID master volume
@@ -173,7 +173,7 @@ pause_wait_for_space_loop:
         lda     sid_master_volume_saved       // restore cached volume
         sta     sid_master_volume
 		
-        ldy     #MAP_IO_OFF                   // normal mapping value
+        ldy     #MAP_IO_OUT                   // normal mapping value
         sty     cpu_port
 
         jsr     unpause_game                  // leave paused state

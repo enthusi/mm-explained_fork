@@ -472,7 +472,7 @@ blit_and_mask_cel:
 		// ----------------------------------------------------------------------
         lda     #$04
         sta     debug_error_code
-        ldy     #MAP_IO_ON
+        ldy     #MAP_IO_IN
         sty     cpu_port
 hang_loop_2:
         sta     vic_border_color_reg          

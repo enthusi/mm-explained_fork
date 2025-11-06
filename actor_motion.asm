@@ -2359,9 +2359,9 @@ Returns
 Description
 	- X := actor; actor_box_fg_masking[X] := FG_OCCLUDED.
 	- If dbg_gate.bit7=1 → skip debug section and return.
-	- Else: dbg_gate := $00; cpu_port := MAP_IO_ON.
+	- Else: dbg_gate := $00; cpu_port := MAP_IO_IN.
 	Loop: set vic_border_color_reg := BORDER_WAIT_FG_MASK_COLOR; poll dbg_gate until ≠0.
-	After release: cpu_port := MAP_IO_OFF; return.
+	After release: cpu_port := MAP_IO_OUT; return.
 
 Notes
 	Blocking loop by design; intended as an interactive breakpoint.
@@ -2393,7 +2393,7 @@ set_box_masked_by_fg:
         // ------------------------------------------------------------
 		// Map I/O into memory space ($01 := $25) so hardware registers are visible  
         // ------------------------------------------------------------
-		ldy     #MAP_IO_ON  
+		ldy     #MAP_IO_IN  
 		sty     cpu_port
 
 debug_wait_loop:
@@ -2410,7 +2410,7 @@ debug_wait_loop:
         // ------------------------------------------------------------
 		// Map I/O out of memory space ($01 := $24) after debug wait
         // ------------------------------------------------------------
-		ldy     #MAP_IO_OFF
+		ldy     #MAP_IO_OUT
 		sty     cpu_port
 
 debug_exit:

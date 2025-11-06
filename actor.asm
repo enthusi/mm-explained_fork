@@ -1312,7 +1312,7 @@ assign_or_refresh_visible_actor_sprite:
         // ------------------------------------------------------------
         lda     #$0B                              // debug code: 0B = out of sprites
         sta     debug_error_code                  // record error for inspection
-        ldy     #MAP_IO_ON                        // Y := $25 → enable I/O map
+        ldy     #MAP_IO_IN                        // Y := $25 → enable I/O map
         sty     cpu_port                          // map in hardware registers
 debug_halt_no_sprites_left:
         sta     vic_border_color_reg                  // flash border with code

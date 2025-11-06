@@ -1946,7 +1946,7 @@ Description
 	* Read current stack top (sentstk_top_idx). Select DO or IO based on .A.
 	* Copy the chosen object id into object_ptr (lo/hi).
 	* Increment sentstk_top_idx and range-check against SENT_STACK_MAX_TOKENS.
-		  • On overflow: write debug_error_code (#$2D), map I/O (cpu_port ← MAP_IO_ON),
+		  • On overflow: write debug_error_code (#$2D), map I/O (cpu_port ← MAP_IO_IN),
 		  set vic_border_color_reg and loop forever.
 		  • Otherwise: write PICK_UP_VERB, clear stacked_prep_ids, and store the
 		  object id into stacked_do_id_lo/hi at the new top.
@@ -2003,7 +2003,7 @@ next_sentence_index:
         // ------------------------------------------------------------
         lda     #$2D                            // A := error code $2D
         sta     debug_error_code                // record error for diagnostics
-        ldy     #MAP_IO_ON                      
+        ldy     #MAP_IO_IN                      
         sty     cpu_port                        // enable I/O mapping
 hangup_loop:
         sta     vic_border_color_reg            // change border color

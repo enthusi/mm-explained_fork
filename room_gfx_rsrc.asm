@@ -813,7 +813,7 @@ compare_next:
          * --------------------------------------- */
         lda     #$01                          // prepare error code and border color value (=1)
         sta     debug_error_code              // debug_error_code := 1 (latched failure indicator)
-        ldy     #MAP_IO_ON                      // Y := mapping value for $01 (I/O enabled)
+        ldy     #MAP_IO_IN                      // Y := mapping value for $01 (I/O enabled)
         sty     cpu_port       				  // ensure address of vic_border_color_reg targets VIC, not RAM/ROM
 
 mismatch_halt_loop:

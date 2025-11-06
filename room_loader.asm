@@ -1024,7 +1024,7 @@ read_room_graphics:
          *  - Write bg3..bg0 in a short X-descending loop
          *  - Mirror bg0 to a shadow copy for later reads
          *--------------------------------------*/
-        ldy     #MAP_IO_ON
+        ldy     #MAP_IO_IN
         sty     cpu_port                    // map IO in (enable VIC register access)
 
         ldx     #$03                        // X := 3 → write bg3, bg2, bg1, bg0
@@ -1037,7 +1037,7 @@ bkg_colors_set_loop:
         lda     room_bg0                    // keep a CPU-side shadow of bg0
         sta     room_bg0_shadow
 
-        ldy     #MAP_IO_OFF
+        ldy     #MAP_IO_OUT
         sty     cpu_port
 
         /*---------------------------------------

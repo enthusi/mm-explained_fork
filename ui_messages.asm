@@ -287,8 +287,8 @@ load_owner_text_color:
         // - Covers all visible text cells.
         // ------------------------------------------------------------
 apply_topbar_color:
-        ldy     #MAP_IO_ON                  // Y := value to map I/O into memory space
-        sty     cpu_port                    // $01 := MAP_IO_ON (enable VIC color RAM access)
+        ldy     #MAP_IO_IN                  // Y := value to map I/O into memory space
+        sty     cpu_port                    // $01 := MAP_IO_IN (enable VIC color RAM access)
 
         ldx     #TOP_BAR_LAST_IDX         // X := last color cell index (0..$27)
 fill_topbar_color_loop:
@@ -296,8 +296,8 @@ fill_topbar_color_loop:
         dex                                 // X := X - 1
         bpl     fill_topbar_color_loop    // keep filling while X ≥ 0
 
-        ldy     #MAP_IO_OFF                 // Y := value to unmap I/O
-        sty     cpu_port                    // $01 := MAP_IO_OFF (disable VIC color RAM access)
+        ldy     #MAP_IO_OUT                 // Y := value to unmap I/O
+        sty     cpu_port                    // $01 := MAP_IO_OUT (disable VIC color RAM access)
 
         // ------------------------------------------------------------
         // Initialize top-bar message state

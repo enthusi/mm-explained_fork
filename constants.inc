@@ -59,8 +59,8 @@
 .const SCROLL_INIT_FLAG     = $01   // screen_scroll_flag: initial full draw
 
 // --- I/O mapping presets for $01 (cpu_port) ---
-.const MAP_IO_OFF                 	= $24     // Map RAM under I/O/KERNAL as needed by this program
-.const MAP_IO_ON                   = $25     // Map I/O visible at $D000–$DFFF during IEC transfers
+.const MAP_IO_OUT                 	= $24     // Map RAM under I/O/KERNAL as needed by this program
+.const MAP_IO_IN                   = $25     // Map I/O visible at $D000–$DFFF during IEC transfers
 
 .const COSTUME_DFLT_X_DEST = $14
 .const COSTUME_DFLT_Y_DEST = $3C

@@ -383,7 +383,7 @@ irq_handler1:
         pha
         lda     cpu_port
         pha
-        ldy     #MAP_IO_ON
+        ldy     #MAP_IO_IN
         sty     cpu_port
 
         // ------------------------------------------------------------
@@ -691,7 +691,7 @@ h1_keyboard:
         // ------------------------------------------------------------
         // Ensure I/O mapped; reset click; cursor update or cutscene hide
         // ------------------------------------------------------------
-        ldy     #MAP_IO_ON
+        ldy     #MAP_IO_IN
         sty     cpu_port
         lda     #FALSE                         // clear click latch for this frame (no click yet)
         sta     room_scene_clicked_flag        // room_scene_clicked_flag := False
@@ -741,7 +741,7 @@ h1_click_latch:
 
 h1_sound:
         // map I/O; optionally reload music pointers; call sound IRQ
-        ldy     #MAP_IO_ON
+        ldy     #MAP_IO_IN
         sty     cpu_port
         lda     reload_sound_ptrs_flag        // reload needed? (≠0 → pointers already valid)
         bne     h1_clear_semaphore            // if set, skip reloading and proceed to exit
@@ -803,7 +803,7 @@ Global Outputs
 	irq_handler						next IRQ handler vector (set to irq_handler3)
 
 Description
-	* Save A/X/Y and snapshot cpu_port, then map I/O by writing MAP_IO_ON to cpu_port.
+	* Save A/X/Y and snapshot cpu_port, then map I/O by writing MAP_IO_IN to cpu_port.
 	* For each vic_sprite_idx_0..6:
 	  • compute VIC X register offset (index*2) and write sprite_n_x_lo.
 	* Write cursor X low byte and horizontal expansion control.
@@ -832,7 +832,7 @@ irq_handler2:
         sty     temp_y
         ldy     cpu_port
         sty     cpu_port_shadow
-        ldy     #MAP_IO_ON
+        ldy     #MAP_IO_IN
         sty     cpu_port
 
         // ------------------------------------------------------------
@@ -1071,7 +1071,7 @@ irq_handler3:
         sta     temp_a
         ldy     cpu_port
         sty     cpu_port_shadow
-        ldy     #MAP_IO_ON
+        ldy     #MAP_IO_IN
         sty     cpu_port
 
         // ------------------------------------------------------------
@@ -1226,7 +1226,7 @@ irq_handler4:
         // ------------------------------------------------------------
         ldy     cpu_port
         sty     cpu_port_shadow
-        ldy     #MAP_IO_ON
+        ldy     #MAP_IO_IN
         sty     cpu_port
 
         // ------------------------------------------------------------
@@ -1275,12 +1275,12 @@ Summary
 * = $1289
 irq_handler5:
         // ------------------------------------------------------------
-        // Save Y, cpu_port and map I/O ($01 := MAP_IO_ON)
+        // Save Y, cpu_port and map I/O ($01 := MAP_IO_IN)
         // ------------------------------------------------------------
         sty     temp_y
         ldy     cpu_port
         sty     cpu_port_shadow
-        ldy     #MAP_IO_ON
+        ldy     #MAP_IO_IN
         sty     cpu_port
 
         // ------------------------------------------------------------
@@ -1371,7 +1371,7 @@ irq_handler6:
         // ------------------------------------------------------------
         ldy     cpu_port
         sty     cpu_port_shadow
-        ldy     #MAP_IO_ON
+        ldy     #MAP_IO_IN
         sty     cpu_port
 
         // ------------------------------------------------------------
@@ -1417,12 +1417,12 @@ Summary
 * = $131E
 irq_handler7:
         // ------------------------------------------------------------
-        // Save Y and map I/O ($01 := MAP_IO_ON)
+        // Save Y and map I/O ($01 := MAP_IO_IN)
         // ------------------------------------------------------------
         sty     temp_y
         ldy     cpu_port
         sty     cpu_port_shadow
-        ldy     #MAP_IO_ON
+        ldy     #MAP_IO_IN
         sty     cpu_port
 
         // ------------------------------------------------------------
@@ -1513,7 +1513,7 @@ irq_handler8:
         // ------------------------------------------------------------
         ldy     cpu_port
         sty     cpu_port_shadow
-        ldy     #MAP_IO_ON
+        ldy     #MAP_IO_IN
         sty     cpu_port
 
         // ------------------------------------------------------------
@@ -1559,12 +1559,12 @@ Summary
 * = $13B3
 irq_handler9:
         // ------------------------------------------------------------
-        // Save Y and map I/O ($01 := MAP_IO_ON)
+        // Save Y and map I/O ($01 := MAP_IO_IN)
         // ------------------------------------------------------------
         sty     temp_y
         ldy     cpu_port
         sty     cpu_port_shadow
-        ldy     #MAP_IO_ON
+        ldy     #MAP_IO_IN
         sty     cpu_port
 
         // ------------------------------------------------------------
@@ -1656,7 +1656,7 @@ irq_handler10:
         // ------------------------------------------------------------
         ldy     cpu_port
         sty     cpu_port_shadow
-        ldy     #MAP_IO_ON
+        ldy     #MAP_IO_IN
         sty     cpu_port
 
         // ------------------------------------------------------------
@@ -1702,12 +1702,12 @@ Summary
 * = $1448
 irq_handler11:
         // ------------------------------------------------------------
-        // Save Y and map I/O ($01 := MAP_IO_ON)
+        // Save Y and map I/O ($01 := MAP_IO_IN)
         // ------------------------------------------------------------
         sty     temp_y
         ldy     cpu_port
         sty     cpu_port_shadow
-        ldy     #MAP_IO_ON
+        ldy     #MAP_IO_IN
         sty     cpu_port
 
         // ------------------------------------------------------------
@@ -1798,7 +1798,7 @@ irq_handler12:
         // ------------------------------------------------------------
         ldy     cpu_port
         sty     cpu_port_shadow
-        ldy     #MAP_IO_ON
+        ldy     #MAP_IO_IN
         sty     cpu_port
 
         // ------------------------------------------------------------
@@ -1843,12 +1843,12 @@ Summary
 * = $14DD
 irq_handler13:
         // ------------------------------------------------------------
-        // Save Y and map I/O ($01 := MAP_IO_ON)
+        // Save Y and map I/O ($01 := MAP_IO_IN)
         // ------------------------------------------------------------
         sty     temp_y
         ldy     cpu_port
         sty     cpu_port_shadow
-        ldy     #MAP_IO_ON
+        ldy     #MAP_IO_IN
         sty     cpu_port
 
         // ------------------------------------------------------------
@@ -1939,7 +1939,7 @@ irq_handler14:
         // ------------------------------------------------------------
         ldy     cpu_port
         sty     cpu_port_shadow
-        ldy     #MAP_IO_ON
+        ldy     #MAP_IO_IN
         sty     cpu_port
 
         // ------------------------------------------------------------
@@ -1984,12 +1984,12 @@ Summary
 * = $1572
 irq_handler15:
         // ------------------------------------------------------------
-        // Save Y and map I/O ($01 := MAP_IO_ON)
+        // Save Y and map I/O ($01 := MAP_IO_IN)
         // ------------------------------------------------------------
         sty     temp_y
         ldy     cpu_port
         sty     cpu_port_shadow
-        ldy     #MAP_IO_ON
+        ldy     #MAP_IO_IN
         sty     cpu_port
 
         // ------------------------------------------------------------
@@ -2080,7 +2080,7 @@ irq_handler16:
         // ------------------------------------------------------------
         ldy     cpu_port
         sty     cpu_port_shadow
-        ldy     #MAP_IO_ON
+        ldy     #MAP_IO_IN
         sty     cpu_port
 
         // ------------------------------------------------------------
@@ -2130,7 +2130,7 @@ Global Outputs
   vic_raster_line_reg             NEXT_RASTER_LINE_H1
 
 Description
-  - Save A/Y, snapshot cpu_port and map I/O ($01 := MAP_IO_ON).
+  - Save A/Y, snapshot cpu_port and map I/O ($01 := MAP_IO_IN).
   - Program:
       • vic_screen_control_reg_1 = 25 rows, VSCROLL=5 (visible)
       • vic_memory_layout_reg = video matrix $CC00, charset $F800
@@ -2150,7 +2150,7 @@ irq_handler17:
         sta     temp_a
         ldy     cpu_port
         sty     cpu_port_shadow
-        ldy     #MAP_IO_ON
+        ldy     #MAP_IO_IN
         sty     cpu_port
 
         // ------------------------------------------------------------

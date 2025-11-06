@@ -1465,7 +1465,7 @@ advance_costume_evict_scan:
         lda #$05
         sta debug_error_code             // app-specific error/diagnostic code
 
-        ldy #MAP_IO_ON                   // enable I/O region 
+        ldy #MAP_IO_IN                   // enable I/O region 
         sty cpu_port      
 
 costume_evict_hangup:
