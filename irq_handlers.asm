@@ -180,7 +180,7 @@ cursor_colors:
 .label temp_a                      = $0FED   // Saved A during IRQ
 .label temp_x                      = $0FEE   // Saved X during IRQ
 
-.label cpu_port_shadow     = $0026   // ZP copy of $01
+.label cpu_port_shadow     = $26   // ZP copy of $01
 
 // ------------------------------------------------------------
 // VIC-II interrupt constants
@@ -233,38 +233,19 @@ cursor_colors:
 .const CURSOR_SHAPE_SLOT_BANK1   = $CFFF  // Cursor shape index slot (screen bank 1)
 
 // ------------------------------------------------------------
-// Lighting and visual-state flags
-// ------------------------------------------------------------
-.const LIGHTS_OFF                = $00    // global_lights_state sentinel for “lights off” mode
-
-// ------------------------------------------------------------
 // VIC-II control register presets
 // ------------------------------------------------------------
 .const CTRL1_ROOM_REGION_PRESET  = $1C    // $D011: DEN=1, 25 rows, VSCROLL=4, bitmap/ECM=0
 .const CTRL2_ROOM_REGION_PRESET  = $18    // $D016: multicolor ON, 40 cols, HSCROLL=0
 .const CTRL1_INT_REGION_PRESET   = $1D    // $D011: DEN=1, 25 rows, VSCROLL=5 (UI band)
 .const CTRL2_INT_REGION_PRESET   = $09    // $D016: multicolor OFF, 40 cols, HSCROLL=1
-
-// ------------------------------------------------------------
-// Video setup modes (video_setup_mode)
-// ------------------------------------------------------------
-.const VID_SETUP_NONE           = $00   // No change; keep current VIC layout
-.const VID_SETUP_C800           = $01   // Char @ $D800, screen @ $C800, sprites @ $CBF8 → copy color RAM
-.const VID_SETUP_CC00           = $02   // Char @ $D800, screen @ $CC00, sprites @ $CFF8 → copy color RAM
-.const VID_SETUP_COPY_COLORS    = $03   // Copy color RAM only, no layout change
-
+.const CTRL1_BLANK_PRESET 		 = $0B	  // $D011: blank, 25 rows, vscroll 3
 // ------------------------------------------------------------
 // VIC memory layout ($D018) presets
 // ------------------------------------------------------------
 .const VIC_LAYOUT_C800          = $26   // Screen base $C800, char base $D800
 .const VIC_LAYOUT_CC00          = $36   // Screen base $CC00, char base $D800
 .const TEXT_CHARSET_LAYOUT       = $3E    // Screen=$CC00, charset=$F800
-
-// ------------------------------------------------------------
-// Sprite shape base addresses for each layout
-// ------------------------------------------------------------
-.label SPRITE_SHAPE_SET1_ADDR   = $CBF8 // Sprite shape data base for layout C800
-.label SPRITE_SHAPE_SET2_ADDR   = $CFF8 // Sprite shape data base for layout CC00
 
 // ------------------------------------------------------------
 // Sprite shape index presets (8 entries, +$04 stride)
