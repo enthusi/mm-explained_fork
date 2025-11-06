@@ -366,8 +366,8 @@ Caveats
  This defines the limiting region used to test for a clear trajectory.
 */
 
-.label current_box_ptr          = $0017  // zp ptr → current walkbox edge table {left,right,top,bottom}
-.label target_box_ptr           = $0019  // zp ptr → target  walkbox edge table {left,right,top,bottom}
+.label current_box_ptr          = $17  // zp ptr → current walkbox edge table {left,right,top,bottom}
+.label target_box_ptr           = $19  // zp ptr → target  walkbox edge table {left,right,top,bottom}
 .label nearest_x_candidate      = $1A62  // snapped X (pixels) nearest to destination within chosen walkbox
 .label nearest_y_candidate      = $1A63  // snapped Y (pixels) nearest to destination within chosen walkbox
 .label hall_lower_bound         = $1E04  // tight corridor lower bound on orthogonal axis (max of first edges)

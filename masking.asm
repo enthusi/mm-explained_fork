@@ -12,9 +12,9 @@
 .label mask_col_idx                = $FD24  // Current tile column index for foreground mask lookup
 .label sprite_byte_idx             = $CB67  // Sprite byte selector within row (0–2 for 24-pixel span)
 
-.label mask_ptr1                   = $0043  // ZP: 16-bit pointer #1 → mask pattern row for column 1
-.label mask_ptr2                   = $0045  // ZP: 16-bit pointer #2 → mask pattern row for column 2
-.label mask_ptr3                   = $0047  // ZP: 16-bit pointer #3 → mask pattern row for column 3
+.label mask_ptr1                   = $43  // ZP: 16-bit pointer #1 → mask pattern row for column 1
+.label mask_ptr2                   = $45  // ZP: 16-bit pointer #2 → mask pattern row for column 2
+.label mask_ptr3                   = $47  // ZP: 16-bit pointer #3 → mask pattern row for column 3
 
 .label pixel_mask                  = $CB6A  // Scratch byte: assembled 8-bit mask for current sprite byte
 

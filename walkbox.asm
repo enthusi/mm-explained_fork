@@ -159,7 +159,7 @@ Notes
 // -----------------------------------------------------------------------------
 // Walkbox data pointers and indices
 // -----------------------------------------------------------------------------
-.label box_ptr                   = $0017  // ZP: walkbox table base (lo at $17, hi at $18)
+.label box_ptr                   = $17  // ZP: walkbox table base (lo at $17, hi at $18)
 .label walkbox_room              = $FE74  // Active room id for walkbox tables
 .label wbox_idx                  = $FC3F  // Scratch: original walkbox index under test
 
@@ -193,7 +193,7 @@ Notes
 // -----------------------------------------------------------------------------
 // Packed list iteration (generic element list)
 // -----------------------------------------------------------------------------
-.label elem_list_ptr             = $007C  // ZP: packed list base pointer
+.label elem_list_ptr             = $7C  // ZP: packed list base pointer
 .label element_count             = $FC3D  // Running count of elements visited
 .label target_index              = $CAD3  // Requested element index (0-based)
 .label target_ofs                = $CAD7  // Output: byte offset to element start
@@ -201,7 +201,7 @@ Notes
 // -----------------------------------------------------------------------------
 // Adjacency list traversal
 // -----------------------------------------------------------------------------
-.label adj_list_ptr              = $007C  // ZP: adjacency list base pointer
+.label adj_list_ptr              = $7C  // ZP: adjacency list base pointer
 .label dest_box_index            = $CAD1  // Target box index to find
 .label list_start_ofs            = $CAD7  // Start offset into adjacency sublist
 
