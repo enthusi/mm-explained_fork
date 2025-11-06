@@ -1981,7 +1981,7 @@ main_loop:
 ; Key press handling
 ;--------------------------------------------------
 ;Check for keypresses and handle them
-.C:0504  20 C2 28    JSR handle_keys
+.C:0504  20 C2 28    JSR keyboard_handle_one_key
 ;--------------------------------------------------
 ; Debugging variables
 ;--------------------------------------------------
@@ -10059,7 +10059,7 @@ exit:
 ;===========================================
 key_to_process = $29f7
 
-handle_keys:
+keyboard_handle_one_key:
 ;Scan for keys pressed, return key in .A
 .C:28c2  20 44 22    JSR kbd_key_read
 ;Save the key pressed
