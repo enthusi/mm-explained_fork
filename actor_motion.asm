@@ -251,8 +251,8 @@ Operational notes
 */
 
 
-.label box_attr_ptr              = $0017  // ZP: box-attribute table base pointer (lo=$17, hi=$18)
-.label dbg_gate                  = $002F  // Debug gate: bit7=1 bypass waits; write #$00 to enable waits
+.label box_attr_ptr              = $17  // ZP: box-attribute table base pointer (lo=$17, hi=$18)
+.label dbg_gate                  = $2F  // Debug gate: bit7=1 bypass waits; write #$00 to enable waits
 
 .label box_attr_handler_jsr_op   = $2E0D  // Code-site: JSR operand for selected box-attr handler
 

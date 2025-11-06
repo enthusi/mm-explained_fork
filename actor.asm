@@ -128,15 +128,15 @@ Simplified
 #import "pathing.asm"
 #import "rsrc_mgmt.asm"
 
-.label sprite_iter_idx           = $0019  // Sprite loop index (0..3) when scanning/assigning sprites
-.label next_rel_sprite_idx       = $0017  // Next free relative sprite order index to assign
+.label sprite_iter_idx           = $19  // Sprite loop index (0..3) when scanning/assigning sprites
+.label next_rel_sprite_idx       = $17  // Next free relative sprite order index to assign
 .label sprite_in_use_flag        = $CB72  // Per-sprite usage flag table; $00=free, $01=used
 .label sprite_owner_actor_idx    = $CB76  // Map: sprite index → owning actor index ($FF if none)
 .label tmp_sprite_idx            = $404C  // Scratch storage for current sprite index during buffer ops
 .label sprites_in_use_count      = $CB7A  // Count of sprites currently assigned (0..4)
-.label candidate_sprite          = $001D  // Working: best sprite candidate for draw-order pass
-.label candidate_actor           = $001E  // Working: actor index of current best candidate
-.label candidate_position_y      = $001B  // Working: candidate’s Y position (room rows; lower=closer to top)
+.label candidate_sprite          = $1D  // Working: best sprite candidate for draw-order pass
+.label candidate_actor           = $1E  // Working: actor index of current best candidate
+.label candidate_position_y      = $1B  // Working: candidate’s Y position (room rows; lower=closer to top)
 
 .label actor_index               = $3043  // Loop index over actors (0..3) in animation pass
 .label costume_scan_idx          = $335E  // Loop index over costumes (0..$18) in update pass
