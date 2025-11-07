@@ -2381,3 +2381,126 @@ finalize_sprite_mask:
         sty     >irq_handler
 
         rts
+
+/*
+================================================================================
+  init_raster_irq_env
+================================================================================
+Summary
+	Initialize the raster IRQ environment once, then disable further setup runs.
+
+Global Inputs
+	raster_irq_init_pending		nonzero means initialization must run
+	sid_master_volume_saved 	last known SID master volume/filter nibble
+	$3465						nonzero flag to restore SID master volume
+
+Global Outputs
+	$FFFE/$FFFF (irq_handler): 		set to <irq_handler1, >irq_handler1.
+	VIC-II: 	sprite enable, screen control #1, raster line, IRQ flag/mask,
+				border color are configured for first IRQ stage.
+	CIA1/CIA2: 	pending IRQ/status latched-and-cleared by dummy reads.
+	SID: 		master volume optionally restored from sid_master_volume_saved.
+	cpu_port: 	mapped to I/O for setup, then restored to mapped-out state.
+	raster_irq_init_pending: cleared to 0 after successful initialization.
+
+Description
+	* Exit early if initialization is not pending.
+	* Map in I/O, enable all sprites, select 25-row mode with Y-scroll=3.
+	* Program raster line ($FA) and point IRQ vector to irq_handler1.
+	* Acknowledge any stale raster IRQ, then enable raster IRQ as the only
+	  VIC-II source.
+	* Quench CIA1 IRQ latch and stabilize CIA2 by reading their registers.
+	* Force border to black baseline.
+	* Optionally restore SID master volume based on $3465 flag.
+	* Map out I/O, enable maskable IRQs, and clear the pending-init flag.
+
+Notes
+	* Assumes IRQ vector fetch reads RAM at $FFFE/$FFFF, not KERNAL ROM.
+	* Enabling all sprites is safe if Y positions keep unseen sprites offscreen.
+================================================================================
+*/
+* = $341C
+init_raster_irq_env:
+        // ------------------------------------------------------------
+        // Initialize raster interrupt environment if required
+        //
+        // If raster_irq_init_pending = 0, this routine exits immediately.
+        // Otherwise it configures VIC-II raster IRQs, sprite enables,
+        // screen mode, and SID volume, then marks setup as complete.
+        // ------------------------------------------------------------
+        lda     raster_irq_init_pending
+        beq     early_exit_no_setup
+
+        // ------------------------------------------------------------
+        // Map in I/O to access VIC/CIA/SID registers
+        // ------------------------------------------------------------
+        ldy     #MAP_IO_IN
+        sty     cpu_port
+
+        // ------------------------------------------------------------
+        // Enable all sprites (0–7)
+        // ------------------------------------------------------------
+        lda     #SPRITES_ENABLE_ALL 
+        sta     vic_sprite_enable_reg
+
+        // ------------------------------------------------------------
+        // Set IRQ handler vector to irq_handler1
+        // Writes <irq_handler1 to $FFFE and >irq_handler1 to $FFFF.
+        // ------------------------------------------------------------
+        lda     #<irq_handler1
+        sta     irq_handler
+        lda     #>irq_handler1
+        sta     irq_handler+1
+
+        // ------------------------------------------------------------
+        // Configure screen: 25 rows, vertical scroll = 3
+        // ------------------------------------------------------------
+        lda     #VIC_CTRL_DEFAULT_1 
+        sta     vic_screen_control_reg_1
+
+        // ------------------------------------------------------------
+        // Set next raster line to trigger interrupt (#$FA = line 250)
+        // ------------------------------------------------------------
+        lda     #RASTER_IRQ_LINE_INIT
+        sta     vic_raster_line_reg
+
+        // ------------------------------------------------------------
+        // Acknowledge any pending raster interrupt and enable raster IRQ
+        // ------------------------------------------------------------
+        lda     #VIC_IRQ_RASTER_ACK
+        sta     vic_irq_flag_reg
+        sta     vic_irq_mask_reg
+
+        // ------------------------------------------------------------
+        // Clear pending CIA1 IRQ and stabilize CIA2 state
+        // ------------------------------------------------------------
+        lda     cia1_irq_status_reg
+        lda     cia2_pra
+
+        // ------------------------------------------------------------
+        // Set border color to black
+        // ------------------------------------------------------------
+        lda     #COLOR_BLACK
+        sta     vic_border_color_reg
+
+        // ------------------------------------------------------------
+        // Optionally restore SID master volume if flag set
+        // ------------------------------------------------------------
+        lda     $3465
+        beq     finish_setup_unmap_io
+        lda     sid_master_volume_saved
+        sta     sid_master_volume
+
+finish_setup_unmap_io:
+        // ------------------------------------------------------------
+        // Map out I/O, re-enable interrupts, and clear setup-needed flag
+        // ------------------------------------------------------------
+        ldy     #MAP_IO_OUT
+        sty     cpu_port
+        cli
+        lda     #FALSE
+        sta     raster_irq_init_pending
+
+early_exit_no_setup:
+        rts
+
