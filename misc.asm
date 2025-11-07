@@ -163,6 +163,127 @@ clear_contact_flag_far_x:
 return_from_entity_contact:
         rts
 
+/*
+================================================================================
+  copy_vic_color_ram
+================================================================================
+
+Summary
+	Copy 680 bytes from the scene color buffer ($6D89–$7030) to Color RAM
+	($D828–$DACF) as 17 rows × 40 columns using one outer Y loop and 17
+	unrolled LDA/STA pairs per column.
+
+Global Inputs
+	Source row bases                 $6D89,$6DB1,$6DD9,$6E01,$6E29,$6E51,$6E79,
+									 $6EA1,$6EC9,$6EF1,$6F19,$6F41,$6F69,$6F91,
+									 $6FB9,$6FE1,$7009  (each +$28 from prior)
+									 
+	Destination row bases            $D828,$D850,$D878,$D8A0,$D8C8,$D8F0,$D918,
+									 $D940,$D968,$D990,$D9B8,$D9E0,$DA08,$DA30,
+									 $DA58,$DA80,$DAA8  (each +$28 from prior)
+Global Outputs
+	Color RAM range                	 $D828–$DACF written (680 bytes)
+	vic_color_ram_copy_done        	 set to TRUE on completion
+	
+Description
+	- Initializes Y to 39 and decrements to 0, copying one column per pass.
+	- Uses abs,Y addressing so each of the 17 row bases contributes a byte for
+	the current column, minimizing loop overhead.
+	- Layout matches VIC Color RAM’s 40-column stride ($28), avoiding 16-bit
+	pointer math and page-cross penalties typical of linear copies.
+
+Notes
+	- Color RAM uses only the low nibble; high nibble in source bytes is ignored.
+	- Intended for vblank/top-of-frame band where the bulk copy will not cause
+	visible artifacts.
+================================================================================
+  
+Color RAM sits at $D800–$DBE7 and is accessed as I/O space. Writes are slower
+than normal RAM and per-byte overhead dominates. This routine copies the scene’s
+17 visible rows by fixing each row’s absolute base and using a single outer Y
+loop as the column index.
+
+Advantages of copying in this way:
+
+	• Absolute,Y beats pointer math
+		Using abs,Y (LDA/STA $addr,Y) avoids 16-bit pointer adds inside the loop. The
+		17 source and 17 destination bases are constants spaced by $28 (40 columns).
+		Only Y changes. This removes ADC/INC and page-cross bookkeeping.
+
+	• One branch per column
+		The loop body is fully unrolled across rows, so each column costs 17 loads and
+		17 stores plus one DEY/BPL. Fewer branches means more predictable timing.
+
+	• Page-crossing is contained
+		With abs,Y the CPU handles page crosses automatically. No manual carry fixups
+		and no extra instructions per row. Timing variance stays bounded and small.
+
+	• Best fit for I/O write latency
+		Color RAM stores only the low nibble, and writes incur I/O wait states. The
+		unrolled pattern keeps a steady stream of STA $D8xx,Y without extra ALU work,
+		maximizing useful bus cycles during vblank/top-band time.
+
+	• Cache-free determinism
+		There is no self-modifying code or ZP pointer churn. Cycle cost per column is
+		consistent, which is important when scheduled near raster boundaries.
+
+Trade-offs vs a 16-bit indexed copy:
+	* More code bytes, fewer cycles. On a 6502 the cycle savings are worth the
+	  bytes for hot paths like frame setup.
+	* Hard-coded bases. This is acceptable because the scene area layout is fixed:
+	  each successive row is previous +$28 on both source and destination.
+	  
+================================================================================
+*/
+* = $1860
+copy_vic_color_ram:
+        ldy     #VIEW_FULL_SPAN_MINUS1          // Y := 39 (start at last column)
+
+copy_color_column:
+        lda     $6D89,y                         // Row 0 source → $D828
+        sta     $D828,y
+        lda     $6DB1,y                         // Row 1
+        sta     $D850,y
+        lda     $6DD9,y                         // Row 2
+        sta     $D878,y
+        lda     $6E01,y                         // Row 3
+        sta     $D8A0,y
+        lda     $6E29,y                         // Row 4
+        sta     $D8C8,y
+        lda     $6E51,y                         // Row 5
+        sta     $D8F0,y
+        lda     $6E79,y                         // Row 6
+        sta     $D918,y
+        lda     $6EA1,y                         // Row 7
+        sta     $D940,y
+        lda     $6EC9,y                         // Row 8
+        sta     $D968,y
+        lda     $6EF1,y                         // Row 9
+        sta     $D990,y
+        lda     $6F19,y                         // Row 10
+        sta     $D9B8,y
+        lda     $6F41,y                         // Row 11
+        sta     $D9E0,y
+        lda     $6F69,y                         // Row 12
+        sta     $DA08,y
+        lda     $6F91,y                         // Row 13
+        sta     $DA30,y
+        lda     $6FB9,y                         // Row 14
+        sta     $DA58,y
+        lda     $6FE1,y                         // Row 15
+        sta     $DA80,y
+        lda     $7009,y                         // Row 16
+        sta     $DAA8,y
+
+        dey                                     // next column (Y := Y-1)
+        bpl     copy_color_column               // repeat until Y < 0
+
+        // ------------------------------------------------------------
+        // Mark color RAM copy completed
+        // ------------------------------------------------------------
+        lda     #TRUE
+        sta     vic_color_ram_copy_done
+        rts
 
 /*
 ================================================================================
@@ -227,5 +348,6 @@ dec_count_lo:
         ora     >fill_byte_cnt     // combine with high; Z=1 iff both zero
         bne     fill_loop          // not done → continue
         rts                        // done (Z=1, Y=0, X preserved)
+
 
 
