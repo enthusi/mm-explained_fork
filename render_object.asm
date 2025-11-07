@@ -108,32 +108,6 @@ Example B (living room): Old rusty key (hanging) from the glass chandelier
 #import "constants.inc"
 #import "decompressor.asm"
 
-// ----------------------------------------
-// Screen row byte offsets (40-column tile mode)
-// ----------------------------------------
-// Precomputed 16-bit offsets for the start of each tile row
-// within the screen buffer. Row stride = 40 bytes = $28.
-//
-// Rows: 25 total → indices 0..24.
-// offset(row) = row * $28
-//   e.g., row 0 → $0000, row 7 → $0118, row 24 → $03C0.
-//
-// Use: screen_base + screen_row_offsets_{hi,lo}[row]
-// to address the first cell of a given row.
-* = $3EA1
-screen_row_offsets_hi:
-.byte $00, $00, $00, $00, $00, $00, $00
-.byte $01, $01, $01, $01, $01, $01, $02
-.byte $02, $02, $02, $02, $02, $02, $03
-.byte $03, $03, $03, $03
-
-* = $3EBA
-screen_row_offsets_lo:
-.byte $00, $28, $50, $78, $A0, $C8, $F0
-.byte $18, $40, $68, $90, $B8, $E0, $08
-.byte $30, $58, $80, $A8, $D0, $F8, $20
-.byte $48, $70, $98, $C0
-
 // decode_object_gfx
 .label obj_left_col            = $3E9C   // object X start column (world/view coords)
 .label obj_top_row             = $3E9D   // object Y start row index
