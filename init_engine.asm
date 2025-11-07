@@ -4,6 +4,7 @@
 #import "registers.inc"
 #import "ui_messages.asm"
 #import "irq_handlers.asm"
+#import "cursor.asm"
 
 .label copy_counter_lo = $15    // ZP: copy byte count, low
 .label copy_counter_hi = $16    // ZP: copy byte count, high
@@ -52,7 +53,6 @@
 .const RNG_SEED_2                  = $97      // RNG seed byte 2
 
 .const ROOM_MASK_PTR               = $6AE1    // Room scene mask layer pointer
-.const NO_SPRITE                   = $FF      // Sentinel: no sprite assigned
 
 .const SPR_MC_ENABLE_0_TO_6        = $7F      // Enable multicolor for sprites 0–6
 .const SPRITE_MEM_SIZE             = $1000    // Bytes to clear ($E000–$EFFF)
@@ -103,7 +103,6 @@
 .const INIT_COPY_DST_START         = $F040    // Copy dst start
 .const INIT_COPY_SIZE_BYTES        = $0080    // Copy size in bytes
 
-.label update_cursor_physics_from_hotspot = $0
 .label setup_vectors_and_drive_code = $0
 .label init_sound_voices = $0
 
