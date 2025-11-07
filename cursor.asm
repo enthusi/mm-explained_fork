@@ -1,6 +1,8 @@
 #importonce
 #import "globals.inc"
 #import "constants.inc"
+#import "ui_interaction.asm"
+
 /*
 ============================================================
 Joystick direction index lookup table
@@ -71,7 +73,7 @@ cursor_physics_for_region
 ============================================================
 
 Maps each interaction-region handler index to a physics
-profile selector used by update_cursor_physics_from_region.
+profile selector used by update_cursor_physics_from_hotspot.
 
 Profile meanings:
   0 = standard / bottom-half cursor physics
@@ -172,7 +174,6 @@ drag_shift_counts:
 .label drag_sub_hi             = $CB8E   // temp: sign-extend byte for hi subtract ($00/$FF)
 .label x_frac_accum_prev       = $CB7E   // prior X fractional accumulator (smoothing)
 .label y_frac_accum_prev       = $CB80   // prior Y fractional accumulator
-.label interaction_region_handlers = $0
 
 
 /*
@@ -619,7 +620,7 @@ detect_fire_press_edge:
         rts
 /*
 ================================================================================
-update_cursor_physics_from_region
+update_cursor_physics_from_hotspot
 ================================================================================
 
 Summary
@@ -628,8 +629,8 @@ Summary
     “bottom/standard” profile; certain regions map to an “upper-half” profile.
 
 Global Inputs
-    interaction_region                   current region id
-    interaction_region_handlers[]        region id → handler index
+    hotspot_entry_ofs                   current region id
+    hotspot_type[]        region id → handler index
     cursor_physics_for_region[]          handler index → profile (0=standard,1=upper)
     h_acceleration_masks[]               per-profile horizontal accel mask
     v_acceleration_masks[]               per-profile vertical   accel mask
@@ -641,10 +642,10 @@ Global Outputs
     drag_shift_count                     selected drag strength (shift count)
 
 Description
-    • If interaction_region == OUT_OF_BOUNDS_REGION:
+    • If hotspot_entry_ofs == OUT_OF_BOUNDS_REGION:
         X := 0 (default profile) → load constants and RTS.
     • Else:
-        Y := interaction_region_handlers[X]
+        Y := hotspot_type[X]
         X := cursor_physics_for_region[Y]    ; 0 = standard, 1 = upper-half
         Load:
             accel_h_mask := h_acceleration_masks[X]
@@ -657,18 +658,18 @@ Notes
 ================================================================================
 */
 * = $F7DA
-update_cursor_physics_from_region:
+update_cursor_physics_from_hotspot:
         // ------------------------------------------------------------
-        // Resolve physics profile index (X) from interaction_region
+        // Resolve physics profile index (X) from hotspot_entry_ofs
         // ------------------------------------------------------------
-        ldx     interaction_region              // X := current interaction region id
+        ldx     hotspot_entry_ofs              // X := current interaction region id
         cpx     #OUT_OF_BOUNDS_REGION           // Compare: is region OOB (outside any zone)?
         bne     fetch_handler_index             // No → look up handler → profile via tables
         ldx     #$00                            // Yes → force default profile index 0
         bne     load_constants                  // Always branch (X≠0); skip table lookup
 
 fetch_handler_index:
-        ldy     interaction_region_handlers,x  // Y := handler index for this region
+        ldy     hotspot_type,x  // Y := handler index for this region
         ldx     cursor_physics_for_region,y    // X := physics profile (1=upper-half, 0=else)
 
 load_constants:
