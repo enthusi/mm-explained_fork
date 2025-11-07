@@ -6,6 +6,7 @@
 #import "decompressor.asm"
 #import "room_gfx_rsrc.asm"
 #import "sentence_action.asm"
+#import "irq_handlers.asm"
 
 
 
