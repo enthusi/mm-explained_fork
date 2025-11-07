@@ -265,3 +265,6 @@ screen_row_offsets_lo:
 .const WORD_HARD_STOP           = $40    // In-word hard stop token; forces early termination
 .const WORD_TERMINATOR          = $00    // End-of-string marker for word/text data
 
+.const  OWNER_NIBBLE_MASK         = MSK_LOW_NIBBLE  // Mask to extract owner nibble from attributes
+.const  OBJ_NAME_OFS              = $0D    // Byte offset to name pointer within object record
+.const NO_SPRITE                 = $FF    // Sentinel: no sprite assigned
