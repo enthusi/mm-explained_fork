@@ -33,6 +33,10 @@ irq_handler2..16: per-band updates
 	Their purpose is to reuse the same four hardware sprites for multiple
 	visible actors by repositioning them vertically (sprite multiplexing).
 
+Helper routine:
+  • compose_sprite_x_msb_and_chain_irq
+    Build and write the combined sprite X-MSB mask and program the
+    next raster IRQ vector and line.
 
 Two alternating handler types:
     - Position/Shape handlers:
@@ -86,7 +90,8 @@ Relationship with actor system
 	at safe times (top of frame) to avoid tearing.
 
 Mental model
-	1. irq_handler1 - director: prepare the frame, link the raster chain.
+	1. irq_handler1 - director: prepare the frame, and, via 
+	compose_sprite_x_msb_and_chain_irq, emit $D010 and arm H2
 	2. irq_handler2..16 - performers: alternate shape changes and Y steps.
 	3. Final handler - curtain call: hide sprites, restart from top.
 
@@ -122,7 +127,8 @@ Compact timeline for raster IRQ chain
 Handler     	Raster  Main actions                                 	Y set
 ----------- 	------	-------------------------------------------- 	------
 irq_handler1  	top     Baseline VIC-II; optional video/layout work;
-						seed sprite X-lo/hi & ranks; UI/sound block   	-
+						seed sprite X-lo/hi & ranks; UI/sound block;   	$29
+						call compose_sprite_x_msb_and_chain_irq
 
 irq_handler2  	$29     X-lo for sprites 0–6 via relative map;
 						shapes #1 for slots 0–3;
@@ -170,7 +176,6 @@ Notes
 cursor_colors:
         .byte $01, $0F, $0C, $0B, $0C, $0F    
 
-.label update_sprites_x_hi_and_chain_handlers = $0
 .label copy_color_ram = $0
 .label handle_paused_scripts = $0
 .label handle_cursor_and_interaction_area = $0
@@ -190,6 +195,7 @@ cursor_colors:
 // ------------------------------------------------------------
 // Raster line compare values for chained IRQ handlers
 // ------------------------------------------------------------
+.const NEXT_RASTER_LINE_H2       = $29    // Raster compare value for irq_handler2
 .const NEXT_RASTER_LINE_H3       = $3A    // Raster compare value for irq_handler3
 .const NEXT_RASTER_LINE_H4       = $45    // Raster compare value for irq_handler4
 .const NEXT_RASTER_LINE_H5       = $4F    // Raster compare value for irq_handler5
@@ -265,6 +271,7 @@ cursor_colors:
 // ------------------------------------------------------------
 .const CURSOR_OFFSCREEN_COORDS  = $00   // Hide cursor: park hi/lo/Y at coordinate 0
 
+
 /*
 ================================================================================
   irq_handler1 - Top-of-frame raster “director”
@@ -330,7 +337,7 @@ Description
 	shape indices from SHAPE_SET{1,2}_START (stride +4).
 	• Seed sprite state: Copy X-lo/X-hi for sprites 0–3 and the relative
 	sprite ranks (0..3), then clear the shapeset target flag.
-	• Chain bands: Call update_sprites_x_hi_and_chain_handlers and enable IRQs.
+	• Chain bands: Call compose_sprite_x_msb_and_chain_irq and enable IRQs.
 	• Layout modes: Apply video_setup_mode:
 		- C800 → $D018 shadow := VIC_LAYOUT_C800; shapes @ SPRITE_SHAPE_SET1_ADDR
 		- CC00 → $D018 shadow := VIC_LAYOUT_CC00; shapes @ SPRITE_SHAPE_SET2_ADDR
@@ -408,7 +415,7 @@ h1_enabled:
         // Refresh sprite X-hi and chain band handlers, enable interrupts,
 		// then jump to clear the “video processed” signal for the main thread.
         // ------------------------------------------------------------
-        jsr     update_sprites_x_hi_and_chain_handlers
+        jsr     compose_sprite_x_msb_and_chain_irq
         cli
         jmp     h1_clear_video_processed
 
@@ -517,7 +524,7 @@ h1_seed_x_and_ranks:
         // Refresh X-hi + chain band IRQs; enable IRQs
         // ------------------------------------------------------------
 h1_prepare_next:
-        jsr     update_sprites_x_hi_and_chain_handlers
+        jsr     compose_sprite_x_msb_and_chain_irq
         cli
         // ============================================================
 
@@ -2192,3 +2199,185 @@ irq_handler17:
         ldy     temp_y
         lda     temp_a
         rti
+
+/*
+================================================================================
+  compose_sprite_x_msb_and_chain_irq
+================================================================================
+
+Summary
+	Build the combined VIC-II sprite X MSB byte from per-sprite bit-8 flags and
+	their current bit positions, include sprite 7 (cursor), write the result to
+	hardware, then acknowledge the raster IRQ, program the next raster line, and
+	chain to the next IRQ handler.
+
+Global Inputs
+	sprite_0..6_x_hi			   per-sprite X MSB flags (0/1)
+	cursor_sprite_x_hi             cursor sprite X MSB flag (0/1)
+	cursor_sprite_x_lo             cursor sprite low X byte
+	vic_sprite_idx_0..6			   per-sprite MSB bit positions (0..7)
+
+Global Outputs
+	sprites_x_hi_combined          aggregated MSB mask (scratch/telemetry)
+	vic_sprite_x_msb_reg           written with combined MSB mask
+	vic_sprite7_x_lo_reg           updated with cursor low X
+	vic_raster_line_reg            next raster line set
+	irq_handler (lo/hi)            IRQ vector updated to irq_handler2
+
+Description
+	- Clear the combined MSB accumulator.
+	- For sprites 0..6:
+		• Load that sprite’s X-MSB flag (0/1).
+		• Shift it left by its current bit index (vic_sprite_idx_n) with a guard
+		for index 0, then OR it into the accumulator.
+	- For sprite 7 (cursor):
+		• Align its MSB to bit7 and OR with the accumulator.
+		• Write the final mask to vic_sprite_x_msb_reg and update the cursor low X.
+	- IRQ tail:
+		• Acknowledge VIC raster IRQ, set the next raster line, dummy-read CIA1
+		IRQ status to clear it, then install irq_handler2 in the IRQ vector.
+================================================================================
+*/
+* = $0FEF
+compose_sprite_x_msb_and_chain_irq:
+        // ----------------------------------------------------
+        // Reset combined MSB accumulator
+        // ----------------------------------------------------
+        lda     #$00                    // A := 0 (clear working accumulator)
+        sta     sprites_x_hi_combined   // combined := 0 (no bits set yet)
+
+        // ----------------------------------------------------
+        // Merge bit8 (MSB) of sprite 0 into combined byte
+        // ----------------------------------------------------
+        lda     sprite_0_x_hi           // A := sprite0.x_msb (0 or 1)
+        ldx     vic_sprite_idx_0        // X := current bit position for sprite0 (0..7)
+        beq     skip_shift_0            // if X==0 → bit goes in position 0, skip shifts
+shift_loop_0:
+        asl                              // shift bit left by 1 toward its target position
+        dex                              // X := X-1 (count remaining shifts)
+        bne     shift_loop_0             // loop until X becomes 0
+skip_shift_0:
+        ora     sprites_x_hi_combined    // OR into combined mask at the computed position
+        sta     sprites_x_hi_combined    // write back updated combined mask
+
+        // ----------------------------------------------------
+        // Merge bit8 (MSB) of sprite 1
+        // ----------------------------------------------------
+        lda     sprite_1_x_hi
+        ldx     vic_sprite_idx_1
+        beq     skip_shift_1
+shift_loop_1:
+        asl
+        dex
+        bne     shift_loop_1
+skip_shift_1:
+        ora     sprites_x_hi_combined
+        sta     sprites_x_hi_combined
+
+        // ----------------------------------------------------
+        // Merge bit8 (MSB) of sprite 2
+        // ----------------------------------------------------
+        lda     sprite_2_x_hi
+        ldx     vic_sprite_idx_2
+        beq     skip_shift_2
+shift_loop_2:
+        asl
+        dex
+        bne     shift_loop_2
+skip_shift_2:
+        ora     sprites_x_hi_combined
+        sta     sprites_x_hi_combined
+
+        // ----------------------------------------------------
+        // Merge bit8 (MSB) of sprite 3
+        // ----------------------------------------------------
+        lda     sprite_3_x_hi
+        ldx     vic_sprite_idx_3
+        beq     skip_shift_3
+shift_loop_3:
+        asl
+        dex
+        bne     shift_loop_3
+skip_shift_3:
+        ora     sprites_x_hi_combined
+        sta     sprites_x_hi_combined
+
+        // ----------------------------------------------------
+        // Merge bit8 (MSB) of sprite 4
+        // ----------------------------------------------------
+        lda     sprite_4_x_hi
+        ldx     vic_sprite_idx_4
+        beq     skip_shift_4
+shift_loop_4:
+        asl
+        dex
+        bne     shift_loop_4
+skip_shift_4:
+        ora     sprites_x_hi_combined
+        sta     sprites_x_hi_combined
+
+        // ----------------------------------------------------
+        // Merge bit8 (MSB) of sprite 5
+        // ----------------------------------------------------
+        lda     sprite_5_x_hi
+        ldx     vic_sprite_idx_5
+        beq     skip_shift_5
+shift_loop_5:
+        asl
+        dex
+        bne     shift_loop_5
+skip_shift_5:
+        ora     sprites_x_hi_combined
+        sta     sprites_x_hi_combined
+
+        // ----------------------------------------------------
+        // Merge bit8 (MSB) of sprite 6
+        // ----------------------------------------------------
+        lda     sprite_6_x_hi
+        ldx     vic_sprite_idx_6
+        beq     skip_shift_6
+shift_loop_6:
+        asl
+        dex
+        bne     shift_loop_6
+skip_shift_6:
+        ora     sprites_x_hi_combined
+        sta     sprites_x_hi_combined
+
+        // ----------------------------------------------------
+        // Update cursor sprite (sprite 7)
+        // ----------------------------------------------------
+        ldx     #$07
+        lda     cursor_sprite_x_hi
+        beq     finalize_sprite_mask
+shift_loop_cursor:
+        asl
+        dex
+        bne     shift_loop_cursor
+
+finalize_sprite_mask:
+        ora     sprites_x_hi_combined
+        sta     vic_sprite_x_msb_reg
+
+        // Update sprite 7 low X register
+        ldy     cursor_sprite_x_lo
+        sty     vic_sprite7_x_lo_reg
+
+        // ----------------------------------------------------
+        // IRQ management: acknowledge VIC-II and CIA interrupts
+        // ----------------------------------------------------
+        ldy     #VIC_IRQ_RASTER_ACK
+        sty     vic_irq_flag_reg
+        ldy     #NEXT_RASTER_LINE_H2
+        sty     vic_raster_line_reg
+        ldy     cia1_irq_status_reg    // dummy read acknowledges CIA IRQ
+
+        // ----------------------------------------------------
+        // Chain to next raster IRQ handler
+        // ----------------------------------------------------
+        ldy     <irq_handler2
+        sty     <irq_handler
+        ldy     >irq_handler2
+        sty     >irq_handler
+
+        rts
