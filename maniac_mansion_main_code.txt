@@ -562,7 +562,7 @@ video_update_signal = $8e			;A synchronization flag - NOT to be confused with vs
 room_bg0_shadow = $8f
 room_bg1_shadow = $90
 needs_sentence_rebuild = $95
-raster_setup_needed = $96
+raster_irq_init_pending = $96
 voice_read_ptr = $ba
 sound_read_ptr = $bc
 vic_memory_layout_shadow = $be
@@ -1800,7 +1800,7 @@ game_code_entry:
 reset_game_engine:
 ;Set raster setup as needed
 .C:0413  A9 01       LDA #$01
-.C:0415  85 96       STA raster_setup_needed
+.C:0415  85 96       STA raster_irq_init_pending
 .C:0417  20 E0 33    JSR init_sprites_sound
 .C:041a  20 F7 48    JSR init_more_sound
 ;Fill "heap" ($7B7B-C800) with #00
@@ -1955,7 +1955,7 @@ clear_game_variables:
 .C:04f0  A9 54       LDA #$54
 .C:04f2  8D CA 78    STA sound_ptr_hi_tbl + 5
 ;Setup raster interrupts
-.C:04f5  20 1C 34    JSR raster_setup
+.C:04f5  20 1C 34    JSR init_raster_irq_env
 ;Start global script #01 (the kid selection screen)
 .C:04f8  A9 01       LDA #$01
 .C:04fa  20 8A 5E    JSR start_global_script
@@ -12469,13 +12469,13 @@ next_actor:
 ;===========================================
 init_sprites_sound:
 .C:33e0  AD 16 48    LDA music_playback_in_progress
-.C:33e3  F0 01       BEQ check_raster_setup_needed
+.C:33e3  F0 01       BEQ check_raster_irq_init_pending
 .C:33e5  60          RTS
-check_raster_setup_needed:
+check_raster_irq_init_pending:
 ;Is raster setup needed?
 ;If so, exit, as the next section will lock and wait for a synchronization flag
 ; that only the irq_handler will set. And that will happen only AFTER doing the raster setup.
-.C:33e6  A5 96       LDA raster_setup_needed
+.C:33e6  A5 96       LDA raster_irq_init_pending
 .C:33e8  D0 31       BNE exit
 ;map_in_io
 .C:33ea  A0 25       LDY #$25
@@ -12512,15 +12512,15 @@ io_finished:
 .C:3415  84 01       STY cpu_port
 ;Signal that raster setup is needed
 .C:3417  A9 01       LDA #$01
-.C:3419  85 96       STA raster_setup_needed
+.C:3419  85 96       STA raster_irq_init_pending
 exit:
 .C:341b  60          RTS
 ;===========================================
 ; General setup for raster interrupts
 ;===========================================
-raster_setup:
+init_raster_irq_env:
 ;Is raster setup not needed? If so, exit
-.C:341c  A5 96       LDA raster_setup_needed
+.C:341c  A5 96       LDA raster_irq_init_pending
 .C:341e  F0 44       BEQ exit
 ;map_in_io
 .C:3420  A0 25       LDY #$25
@@ -12562,7 +12562,7 @@ finalize_setup:
 .C:345f  58          CLI
 ;Raster setup is complete, mark as not needed
 .C:3460  A9 00       LDA #$00
-.C:3462  85 96       STA raster_setup_needed
+.C:3462  85 96       STA raster_irq_init_pending
 exit:
 .C:3464  60          RTS
 ;===========================================
@@ -12618,7 +12618,7 @@ next_costume:
 .C:349b  A9 01       LDA #$01
 .C:349d  8D 6E 06    STA open_shutter_flag
 ;Reset the raster IRQ handlers
-.C:34a0  20 1C 34    JSR raster_setup
+.C:34a0  20 1C 34    JSR init_raster_irq_env
 .C:34a3  60          RTS
 ;===========================================
 ; Set up resources for loading a room's graphics and objects
@@ -13883,7 +13883,7 @@ print_message_wait_for_button:
 .C:3b15  A0 25       LDY #$25
 .C:3b17  84 01       STY cpu_port
 ;If raster setup is needed, don't change screen and video settings
-.C:3b19  A5 96       LDA raster_setup_needed
+.C:3b19  A5 96       LDA raster_irq_init_pending
 .C:3b1b  F0 12       BEQ clear_topbar_text_2
 ;Disable blank screen (set bit 4)
 .C:3b1d  AD 11 D0    LDA vic_screen_control_register_1
@@ -13914,7 +13914,7 @@ wait_for_button_press:
 ;Clear the top bar msg
 .C:3b45  20 57 28    JSR clear_topbar_text
 ;If raster setup is needed, don't turn the screen off
-.C:3b48  A5 96       LDA raster_setup_needed
+.C:3b48  A5 96       LDA raster_irq_init_pending
 .C:3b4a  F0 08       BEQ exit
 ;Enable blank screen (clear bit 4)
 .C:3b4c  AD 11 D0    LDA vic_screen_control_register_1
@@ -24313,7 +24313,7 @@ set_variable:
 .C:6a21  A6 D0       LDX destination_variable
 .C:6a23  9D 67 FF    STA game_vars,X
 .C:6a26  20 B4 5D    JSR handle_script_relocation
-.C:6a29  20 1C 34    JSR raster_setup
+.C:6a29  20 1C 34    JSR init_raster_irq_env
 .C:6a2c  60          RTS
 ;===========================================
 ;Opcode #30, #B0 - load costume
@@ -24455,7 +24455,7 @@ restart_game:
 ;===========================================
 ;Opcode #EE - setup raster interrupts
 ;===========================================
-.C:6ad5  20 1C 34    JSR raster_setup
+.C:6ad5  20 1C 34    JSR init_raster_irq_env
 .C:6ad8  60          RTS
 ;===========================================
 ;Opcode #05, #09, #0A, #19, #23, #2C, #34, #39, #3B
@@ -25010,7 +25010,7 @@ init_memory_sound_and_video:
 .C:839b  85 16       STA $16
 .C:839d  20 A3 83    JSR copy_memory
 ;Relocate memory (over the KERNAL, BASIC and I/O address space)
-;On exit, relocate_memory will invoke raster_setup
+;On exit, relocate_memory will invoke init_raster_irq_env
 .C:83a0  4C C4 83    JMP relocate_memory
 ;===========================================
 ; Copy memory 
@@ -25159,7 +25159,7 @@ relocate_memory:
 ;Enable interrupts
 .C:8462  58          CLI
 ;Setup the raster IRQ handlers
-.C:8463  20 1C 34    JSR raster_setup
+.C:8463  20 1C 34    JSR init_raster_irq_env
 .C:8466  60          RTS
 ;===========================================
 ; Clears zero page vars in the range $15-$FF
@@ -25974,7 +25974,7 @@ loop1:
 .C:d743  C0 09       CPY #$09
 .C:d745  D0 F4       BNE loop1
 big_loop:
-.C:d747  20 BA D7    JSR raster_setup_check; $D7BA
+.C:d747  20 BA D7    JSR init_raster_irq_env_check; $D7BA
 .C:d74a  A6 AE       LDX $AE ;at x=0 for shutter close
 .C:d74c  A4 AF       LDY $AF ;at y=0 for shutter close
 .C:d74e  20 8E D7    JSR plot_one_tile_of_shutter_effect;$D78E
@@ -26051,12 +26051,12 @@ exit_shutter:
 .C:d7b9  60          RTS
 ;===========================================
 ;Do raster setup until it's no longer needed
-raster_setup_check:
+init_raster_irq_env_check:
 .C:d7ba  A2 00       LDX #$00
-.C:d7bc  A5 96       LDA raster_setup_needed
+.C:d7bc  A5 96       LDA raster_irq_init_pending
 .C:d7be  F0 06       BEQ set_irq_handler1_signal
-.C:d7c0  20 1C 34    JSR raster_setup
-.C:d7c3  4C BC D7    JMP raster_setup_check
+.C:d7c0  20 1C 34    JSR init_raster_irq_env
+.C:d7c3  4C BC D7    JMP init_raster_irq_env_check
 set_irq_handler1_signal:
 .C:d7c6  A9 01       LDA #$01
 .C:d7c8  8D 6B 16    STA video_processed_signal
