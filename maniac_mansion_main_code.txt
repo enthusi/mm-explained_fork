@@ -2063,7 +2063,7 @@ check_room:
 ;--------------------------------------------------
 active_room:
 ;If there's a destination entity, walk to it and trigger action on contact
-.C:0566  20 D0 0C    JSR trigger_action_on_entity_contact
+.C:0566  20 D0 0C    JSR handle_entity_approach_and_trigger
 .C:0569  20 7C 07    JSR process_sentence
 .C:056c  20 9C 0B    JSR process_sentence_queue_entry
 ;--------------------------------------------------
@@ -3727,7 +3727,7 @@ destination_obj_lo = $fe4f
 destination_obj_hi = $fe50
 destination_entity = $fe51
 
-trigger_action_on_entity_contact:
+handle_entity_approach_and_trigger:
 ;Is there a destination entity? If not, exit
 .C:0cd0  AD 51 FE    LDA destination_entity
 .C:0cd3  D0 03       BNE entry
@@ -4434,7 +4434,7 @@ snap_destination_to_walkbox:
 ; Variables vic_sprite_idx_0 to vic_sprite_idx_6 track those changes
 ; and update their values accordingly.
 ;===========================================
-update_sprites_x_hi_and_chain_handlers:
+compose_sprite_x_msb_and_chain_irq:
 .C:0fef  A9 00       LDA #$00
 .C:0ff1  8D E9 0F    STA sprites_x_hi_combined
 ;-----
@@ -5608,7 +5608,7 @@ entry_enabled:
 ;Signal is clear - don't do the full video update
 ;Update sprites X hi and set up chain of IRQ handlers
 signal_clear:
-.C:16a6  20 EF 0F    JSR update_sprites_x_hi_and_chain_handlers		
+.C:16a6  20 EF 0F    JSR compose_sprite_x_msb_and_chain_irq		
 ;Enable interrupts
 .C:16a9  58          CLI
 ;Continue - from the section that clears the video_processed signal
@@ -5699,7 +5699,7 @@ update_sprites_0_to_3_positions:
 .C:1756  8D 6A 16    STA target_sprite_shapeset
 prepare_next_frame_handler:
 ;Update all sprites' X hi byte and set up the next IRQ handler as irq_handler2
-.C:1759  20 EF 0F    JSR update_sprites_x_hi_and_chain_handlers
+.C:1759  20 EF 0F    JSR compose_sprite_x_msb_and_chain_irq
 .C:175c  58          CLI
 ;--------------------------------------------------
 ;Switch (video_setup_mode)
@@ -12193,14 +12193,14 @@ clear_flashlight_area:
 .C:3273  AE 79 FE    LDX flashlight_beam_x
 .C:3276  AC 7A FE    LDY flashlight_beam_y
 .C:3279  A9 00       LDA #$00
-.C:327b  20 8B 32    JSR update_flashlight_area
+.C:327b  20 8B 32    JSR update_flashlight_window
 .C:327e  60          RTS
 ;===========================================
 draw_flashlight_area:
 .C:327f  AE 79 FE    LDX flashlight_beam_x
 .C:3282  AC 7A FE    LDY flashlight_beam_y
 .C:3285  A9 01       LDA #$01
-.C:3287  20 8B 32    JSR update_flashlight_area
+.C:3287  20 8B 32    JSR update_flashlight_window
 .C:328a  60          RTS
 ;===========================================
 ; Arguments:
@@ -12214,7 +12214,7 @@ mode = $1b
 destination = $17
 source = $19
 
-update_flashlight_area:
+update_flashlight_window:
 ;Beam Y coordinate is the actual vertical line divided by 2 (cursor_y_pos_half)
 .C:328b  85 1B       STA mode
 ;Y = (Y * 4) - 3
@@ -23299,7 +23299,7 @@ destination_variable = $5f76
 .C:6535  20 98 5F    JSR script_load_operand_bit7
 .C:6538  AA          TAX
 ;Get a new random number using the seed
-.C:6539  20 D4 D7    JSR get_random_number
+.C:6539  20 D4 D7    JSR generate_random_byte
 ;Set the result into the variable
 .C:653c  AE 76 5F    LDX destination_variable
 .C:653f  9D 67 FF    STA game_vars,X
@@ -26075,7 +26075,7 @@ wait_for_irq_handler1_signal_to_clear:
 random_4 = $e1
 random_5 = $e2
 
-get_random_number:
+generate_random_byte:
 .C:d7d4  A0 07       LDY #$07
 rotate_and_xor:
 .C:d7d6  A5 DD       LDA random_1
