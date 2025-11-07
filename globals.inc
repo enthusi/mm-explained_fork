@@ -182,6 +182,7 @@ Values observed
 
 
 // ===========================================================
+.label vic_color_ram_copy_done = $1677
 
 .label kbd_key_ready       = $2061    // flag: 1 when kbd_keycode is valid
 
