@@ -143,7 +143,6 @@ Simplified
 
 .const ANIM_FLAGS_TICK_OR        = $21    // Bits OR’ed into anim_state each tick when counter > 0
 .const MOTION_MASK_7F            = $7F    // Mask to clear bit7 when testing for MOTION_STOPPED_CODE
-.const NO_SPRITE                 = $FF    // Sentinel: no sprite assigned
 .const UNASSIGNED 				 = $FF
 .const ANIM_REFRESH_CLEAR_MASK   = $FE    // Mask to clear “needs refresh” bit in anim_state
 .const ANIM_COUNTER_INIT         = $01    // Initial per-actor animation counter value
