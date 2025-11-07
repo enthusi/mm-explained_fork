@@ -53,6 +53,7 @@ Values observed
 .label room_bg0_shadow = $8f
 .label room_bg1_shadow = $90
 .label needs_sentence_rebuild = $95
+.label raster_irq_init_pending = $96
 
 .label video_processed_signal = $166b
 
@@ -543,7 +544,6 @@ They were definitely intended as debugging aids.
 .label execute_room_entry_script = $0
 .label open_shutter_flag = $0
 .label init_sprites_sound = $0
-.label raster_setup = $0
 .label prepare_video_for_new_room = $0
 .label restart_game = $0
 .label start_global_script = $0
