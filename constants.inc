@@ -131,7 +131,7 @@
 //----------------------------------------------------------------
 // #00	game code entry
 // #0B	after IRQ handler has exited
-// #1B	irq_handler1, raster_setup
+// #1B	irq_handler1, init_raster_irq_env
 // #1C	irq_handler3
 // #1D	irq_handler17
 // Blank screen bit cleared/set in print_message_wait_for_button
@@ -258,3 +258,6 @@ screen_row_offsets_lo:
 
 .const  FRAMEBUF1_BASE     = $C800    
 .const  FRAMEBUF2_BASE      = $CC00   
+
+.const SPRITES_ENABLE_ALL          = $FF      // $D015: enable sprites 0–7
+.const RASTER_IRQ_LINE_INIT        = $FA      // $D012: raster line 250
