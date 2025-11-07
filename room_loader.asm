@@ -219,7 +219,7 @@ next_costume:
 		sta     open_shutter_flag
 
 		// Reset raster IRQ handlers for the new scene
-		jsr     raster_setup
+		jsr     init_raster_irq_env
 		rts
  /*===========================================
  * room_switch_load_assets: switch active room, load assets, and age LRU
