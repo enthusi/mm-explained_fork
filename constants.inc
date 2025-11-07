@@ -261,3 +261,7 @@ screen_row_offsets_lo:
 
 .const SPRITES_ENABLE_ALL          = $FF      // $D015: enable sprites 0–7
 .const RASTER_IRQ_LINE_INIT        = $FA      // $D012: raster line 250
+.const SPACE_CHAR              = $20    // ASCII space
+.const WORD_HARD_STOP           = $40    // In-word hard stop token; forces early termination
+.const WORD_TERMINATOR          = $00    // End-of-string marker for word/text data
+
