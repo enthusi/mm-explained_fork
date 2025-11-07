@@ -244,6 +244,8 @@
 .label mem_read_ptr        = $5D      // mem_src pointer (zp: lo @ $5D, hi @ $5E); hi increments after each full page
 .label mem_write_ptr       = $5F      // mem_dst pointer (zp: lo @ $5F, hi @ $60); hi increments after each full page
 
+.const HEAP_FREE_HDR_ADDR       = $7B7B    // Address of initial free block header
+.const HEAP_INIT_SIZE_BYTES     = $4C85    // Size of initial free span
 
 
 /*===========================================
@@ -1983,6 +1985,67 @@ copy_loop:
 		dex
 		bpl next_page
 		rts
+
+/*
+================================================================================
+  init_heap_free_list
+================================================================================
+Summary
+	Initialize the allocator with a single free-list node. Writes the initial
+	free block header at HEAP_FREE_HDR_ADDR with size HEAP_INIT_SIZE_BYTES and
+	null next pointer, then points mem_free_head and mem_free_tail to it.
+
+Global Outputs
+	[HEAP_FREE_HDR_ADDR+0]      size_lo := <HEAP_INIT_SIZE_BYTES
+	[HEAP_FREE_HDR_ADDR+1]      size_hi := >HEAP_INIT_SIZE_BYTES
+	[HEAP_FREE_HDR_ADDR+2]      next_lo := $00
+	[HEAP_FREE_HDR_ADDR+3]      next_hi := $00
+	mem_free_head               := HEAP_FREE_HDR_ADDR
+	mem_free_tail               := HEAP_FREE_HDR_ADDR
+
+Description
+	- Store the size of the initial free span into the header (lo, then hi).
+	- Null-terminate the “next” link to mark a single-node list.
+	- Seed both head and tail pointers with the header address.
+	- Result: a 1-node free list covering [HEAP_FREE_HDR_ADDR,
+	HEAP_END_ADDR_EXCL), ready for first-fit/split logic elsewhere.
+================================================================================
+*/
+* = $5D4C		
+init_heap_free_list:
+		// ------------------------------------------------------------
+		// Write initial block size into free-block header
+		// Sets header[+0] = size_lo and header[+1] = size_hi from
+		// HEAP_INIT_SIZE_BYTES, defining the span up to HEAP_END_ADDR_EXCL.
+		// ------------------------------------------------------------
+        lda     #<HEAP_INIT_SIZE_BYTES           
+        sta     HEAP_FREE_HDR_ADDR               // header[+0] := size_lo
+
+        lda     #>HEAP_INIT_SIZE_BYTES           
+        sta     HEAP_FREE_HDR_ADDR + 1           // header[+1] := size_hi
+
+		// ------------------------------------------------------------
+		// Null-terminate free-list link
+		// Zero header[+2..+3] (next_lo/next_hi) to mark end of list.
+		// ------------------------------------------------------------
+        lda     #$00                             
+        sta     HEAP_FREE_HDR_ADDR + 2           // header[+2] := next_lo = NULL
+        sta     HEAP_FREE_HDR_ADDR + 3           // header[+3] := next_hi = NULL
+
+		// ------------------------------------------------------------
+		// Seed free-list head and tail with header address
+		// Points both mem_free_head and mem_free_tail to HEAP_FREE_HDR_ADDR,
+		// establishing a single-node free list at startup.
+		// ------------------------------------------------------------
+        lda     #<HEAP_FREE_HDR_ADDR             
+        sta     <mem_free_head                   
+        sta     <mem_free_tail                   
+
+        lda     #>HEAP_FREE_HDR_ADDR             
+        sta     >mem_free_head                   
+        sta     >mem_free_tail                   
+
+        rts                                      // return with a 1-node free list
 
 /*
  * ===========================================
