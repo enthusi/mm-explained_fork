@@ -1,3 +1,5 @@
+#importonce
+
 /*
 Word pointers to character names
 Note: Pointers to "Dr Fred" (f14e) and "Meteor" (f199) are repeated twice
