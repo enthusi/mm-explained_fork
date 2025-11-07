@@ -165,6 +165,8 @@ Notes
 #import "registers.inc"
 #import "input_scan.asm"
 #import "ui_messages.asm"
+#import "ui_interaction.asm"
+#import "misc.asm"
 
 * = $1671
 // ------------------------------------------------------------
@@ -176,9 +178,7 @@ Notes
 cursor_colors:
         .byte $01, $0F, $0C, $0B, $0C, $0F    
 
-.label copy_color_ram = $0
 .label handle_paused_scripts = $0
-.label handle_cursor_and_interaction_area = $0
 .label sound_irq_handler = $0
 
 .label temp_y                      = $0FEC   // Saved Y during IRQ
@@ -563,7 +563,7 @@ h1_prepare_next:
         // Only copy color RAM to refresh the visible palette data;
         // no change to VIC screen or character memory layout.
         // ------------------------------------------------------------
-        jsr     copy_color_ram
+        jsr     copy_vic_color_ram
         jmp     h1_layout_complete
 
 h1_check_case_c800:
@@ -584,7 +584,7 @@ h1_check_case_c800:
         sta     <sprite_shape_data_ptr
         lda     #>SPRITE_SHAPE_SET1_ADDR
         sta     >sprite_shape_data_ptr
-        jsr     copy_color_ram
+        jsr     copy_vic_color_ram
         jmp     h1_layout_complete
 
         // ------------------------------------------------------------
@@ -601,7 +601,7 @@ h1_case_cc00:
         sta     <sprite_shape_data_ptr
         lda     #>SPRITE_SHAPE_SET2_ADDR
         sta     >sprite_shape_data_ptr
-        jsr     copy_color_ram
+        jsr     copy_vic_color_ram
 
         // ------------------------------------------------------------
         // Finalize layout change.
@@ -692,7 +692,7 @@ h1_keyboard:
         beq     h1_cutscene                    // yes → park/hide the cursor via cutscene path
 
         // cursor + interaction area
-        jsr     handle_cursor_and_interaction_area
+        jsr     process_cursor_hotspot_interaction
         jsr     $F3BC
         sta     cursor_sprite_x_hi
         stx     cursor_sprite_x_lo
