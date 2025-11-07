@@ -612,3 +612,7 @@ They were definitely intended as debugging aids.
 .label script_2_mem_attr = $7ad9
 
 .label  vic_color_ram      = $D800
+
+//Flashlight beam coordinates 
+.label flashlight_beam_x = $fe79
+.label flashlight_beam_y = $fe7a
