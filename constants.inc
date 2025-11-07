@@ -93,6 +93,7 @@
 .const ANIM_FLAG_REFRESH            = $20    // animation flag: refresh required
 .const ANIM_FLAG_NEEDS_DRAW         = $01    // animation flag: actor must be drawn
 .const ANIM_FLAGS_REFRESH_DRAW      = $21    // combined flags (#$20 | #$01)
+.const ACTOR_STATE_STOPPED        = $02    // Actor not moving
 
 .const OBJ_TYPE_ACTOR            = $02    // destination_obj_hi value for “actor”
 .const COSTUME_ID_PLANT          = $13    // costume id for plant (skip mirroring)
