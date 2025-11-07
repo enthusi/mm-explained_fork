@@ -357,8 +357,8 @@ Typical traces
 // Scratch / helpers
 .label verb_index              = $0e6f    // Latched verb ID for comparisons/table scans
 .label object_rsrc_ptr         = $15      // ZP pointer to object resource base (lo at $15, hi at $16)
-.label temp_x                  = $0e70    // Saves X across calls where X must be preserved
-.label temp_y                  = $0e71    // Saves Y across calls where Y must be preserved
+.label temp_x_2                = $0e70    // Saves X across calls where X must be preserved
+.label temp_y_2                = $0e71    // Saves Y across calls where Y must be preserved
 .label object_ptr              = $15      // ZP pointer used for target object index lookups (alias of object_rsrc_ptr)
 
 
@@ -1732,14 +1732,14 @@ Description
 	* Otherwise resolve the object resource, then scan its handler table for
 	  PICK_UP_VERB using find_object_verb_handler_offset.
 	* Return TRUE if a nonzero handler offset is found; else return FALSE.
-	* X and Y are preserved via temp_x and temp_y.
+	* X and Y are preserved via temp_x_2 and temp_y_2.
 ================================================================================
 */
 * = $0E73
 has_pickup_script_for_sentence_part:
         // Save X and Y
-        stx     temp_x                         
-        sty     temp_y                         
+        stx     temp_x_2                         
+        sty     temp_y_2                         
 
         // Load current stack index into Y
         ldy     sentstk_top_idx                // Y := top sentence stack index to select DO/IO ids
@@ -1802,8 +1802,8 @@ pickup_handler_present:
 
 has_object_pickup_exit:
         // Restore X and Y, then return
-        ldx     temp_x                          
-        ldy     temp_y                          
+        ldx     temp_x_2                          
+        ldy     temp_y_2                          
         rts                                     
 /*
 ================================================================================
@@ -1837,13 +1837,13 @@ Description
 	  #$00 → the object is in an inventory; nonzero → not in any inventory.
 	* If in an inventory, read object_attributes[y], mask the owner nibble, and
 	  compare to current_kid_idx. Match → FOUND, else NOT_FOUND.
-	* X is preserved via temp_x; Y exits holding the object index used for lookup.
+	* X is preserved via temp_x_2; Y exits holding the object index used for lookup.
 ================================================================================
 */
 * = $0EAE
 is_sentence_object_owned_by_current_kid:
         // Save X register to temporary
-        stx     temp_x                          
+        stx     temp_x_2                          
 
         // Fetch index of current sentence part being analyzed
         ldx     sentstk_top_idx                 // X := top-of-stack sentence index
@@ -1906,7 +1906,7 @@ return_not_owned_by_current_kid:
 
 exit_inv_check:
         // Restore X register and return
-        ldx     temp_x                          
+        ldx     temp_x_2                          
         rts                                     
 /*
 ================================================================================
@@ -1938,7 +1938,7 @@ Global Outputs
 	stacked_do_id_lo/hi[x]  Written with selected object id
 
 Description
-	* Preserve X in temp_x.
+	* Preserve X in temp_x_2.
 	* Read current stack top (sentstk_top_idx). Select DO or IO based on .A.
 	* Copy the chosen object id into object_ptr (lo/hi).
 	* Increment sentstk_top_idx and range-check against SENT_STACK_MAX_TOKENS.
@@ -1958,7 +1958,7 @@ Notes
 * = $0EE1
 push_pickup_for_sentence_part:
         // Save X
-        stx     temp_x                          
+        stx     temp_x_2                          
 
         // Fetch current stack index
         ldx     sentstk_top_idx                 // X := top sentence stack slot to read/write
@@ -2024,7 +2024,7 @@ push_pickup_obj:
         sta     stacked_do_id_hi,x              
 
         // Restore X and return
-        ldx     temp_x                          
+        ldx     temp_x_2                          
         rts                                     
 		
 /*
