@@ -227,3 +227,33 @@ game_paused_flag_msg:
 .label SPRITE_SHAPE_SET1_ADDR   = $CBF8 // Sprite shape data base for layout C800
 .label SPRITE_SHAPE_SET2_ADDR   = $CFF8 // Sprite shape data base for layout CC00
 
+
+// ----------------------------------------
+// Screen row byte offsets (40-column tile mode)
+// ----------------------------------------
+// Precomputed 16-bit offsets for the start of each tile row
+// within the screen buffer. Row stride = 40 bytes = $28.
+//
+// Rows: 25 total → indices 0..24.
+// offset(row) = row * $28
+//   e.g., row 0 → $0000, row 7 → $0118, row 24 → $03C0.
+//
+// Use: screen_base + screen_row_offsets_{hi,lo}[row]
+// to address the first cell of a given row.
+* = $3EA1
+screen_row_offsets_hi:
+.byte $00, $00, $00, $00, $00, $00, $00
+.byte $01, $01, $01, $01, $01, $01, $02
+.byte $02, $02, $02, $02, $02, $02, $03
+.byte $03, $03, $03, $03
+
+* = $3EBA
+screen_row_offsets_lo:
+.byte $00, $28, $50, $78, $A0, $C8, $F0
+.byte $18, $40, $68, $90, $B8, $E0, $08
+.byte $30, $58, $80, $A8, $D0, $F8, $20
+.byte $48, $70, $98, $C0
+
+
+.const  FRAMEBUF1_BASE     = $C800    
+.const  FRAMEBUF2_BASE      = $CC00   
