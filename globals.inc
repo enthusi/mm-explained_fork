@@ -174,8 +174,8 @@ Values observed
 
 .label  accel_h_mask            = $CB7B   // horizontal acceleration mask (expects $FA)
 .label  accel_v_mask            = $CB7C   // vertical   acceleration mask (expects $FF)
-.label cursor_x_grid = $cb86		
-.label cursor_y_grid = $cb87		//Range: 01-17 (01-23 decimal)
+.label cursor_x_cell = $cb86		
+.label cursor_y_cell = $cb87		//Range: 01-17 (01-23 decimal)
 .label cursor_y_pos_half = $fe7d				//Vertical range #08-63 (08-99)
 .label cursor_x_pos_quarter_relative = $fe7e			//Horizontal range #00-27 (00-39)			
 .label cursor_y_pos_half_off_by_8 = $fe7f	//Vertical range #00-5B (00-91)
@@ -551,13 +551,15 @@ They were definitely intended as debugging aids.
 .label refresh_items_displayed = $0
 
 //===========================================================
-// Interaction region variables
+// UI 
 //===========================================================
-.label interaction_region = $cb88
+.label hotspot_entry_ofs = $CB88   // Current hotspot offset (in bytes) from start of hotspot table
+                                    // Each hotspot entry = 6 bytes (see HOTSPOT_ENTRY_SIZE)
+                                    // Used as an index into hotspot metadata for current cursor region
+                                    // Valid range: 0 .. (num_hotspots * HOTSPOT_ENTRY_SIZE - 1)
+                                    // Serves as cursor’s current interaction context
 .label joystick_button_pressed = $cb89
 .label button_presses = $cb8a
-.label inv_display_item_offset = $cb8b
-.label region_text_color = $cb8f
 
 .label talking_costume = $fe9a
 .label msg_owner_costume = $fe9b	//#FF means nobody's talking (and thus the msg bar must be cleared)
