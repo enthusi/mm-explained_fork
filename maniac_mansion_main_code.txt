@@ -5844,8 +5844,8 @@ do_keyboard:
 .C:17f1  F0 12       BEQ cutscene_mode
 ;--------------------------------------------------
 ;Not in a cutscene, so update the cursor and the interaction area
-.C:17f3  20 16 F3    JSR process_cursor_hotspot_interaction
-.C:17f6  20 BC F3    JSR adjust_cursor_position
+.C:17f3  20 16 F3    JSR step_cursor_and_dispatch_hotspot
+.C:17f6  20 BC F3    JSR compute_corrected_cursor_pos
 .C:17f9  8D E8 0F    STA cursor_sprite_x_hi
 .C:17fc  8E D1 0F    STX cursor_sprite_x_lo
 .C:17ff  8C EB 0F    STY cursor_sprite_y
@@ -21573,7 +21573,7 @@ refresh_items_displayed:
 .C:5f3b  A0 25       LDY #$25
 .C:5f3d  84 01       STY cpu_port
 ;Update the items being displayed
-.C:5f3f  20 B3 F4    JSR refresh_inventory_hotspots
+.C:5f3f  20 B3 F4    JSR refresh_inventory_regions
 ;map_out_io
 .C:5f42  A0 24       LDY #$24
 .C:5f44  84 01       STY cpu_port
@@ -26380,7 +26380,7 @@ region_normal_colors = $f2cd
 f2cd:
 00 05 04 06 04
 
-region_highlight_colors = $f2d2
+region_apply_highlight_color_and_fill = $f2d2
 f2d2:
 00 07 07 07 07 
 
@@ -26398,36 +26398,36 @@ f2e4:
 hotspot_highlight_handlers = $f2e8
 hotspot_highlight_handlers:
 ;f3e8	0			do_nothing
-;f3e9	1			highlight_colors
-;f3e9	2			highlight_colors
-;f3e9	3			highlight_colors
-;f3e9	4			highlight_colors
+;f3e9	1			apply_highlight_color_and_fill
+;f3e9	2			apply_highlight_color_and_fill
+;f3e9	3			apply_highlight_color_and_fill
+;f3e9	4			apply_highlight_color_and_fill
 
 hotspot_click_handlers = $f2f2
 hotspot_click_handlers:
-;f427		0		on_click_room_scene
-;f42d		1		on_click_verb_hotspot
-;f452		2		on_click_inventory_item
-;f48f		3		on_click_inventory_scroll
-;f44d		4		on_click_sentence_bar
+;f427		0		click_room_scene_mark
+;f42d		1		click_set_verb_and_refresh
+;f452		2		click_inventory_item_set_do_or_io
+;f48f		3		click_inventory_scroll_page
+;f44d		4		click_sentence_bar_rebuild
 
 
 hotspot_dehighlight_handlers = $f2fc
 hotspot_dehighlight_handlers:
 	; f3e8		0		do_nothing
-	; f3f8		1		dehighlight_colors
-	; f3f8		2		dehighlight_colors
-	; f3f8		3		dehighlight_colors
-	; f3f8		4		dehighlight_colors
+	; f3f8		1		apply_normal_color_and_fill
+	; f3f8		2		apply_normal_color_and_fill
+	; f3f8		3		apply_normal_color_and_fill
+	; f3f8		4		apply_normal_color_and_fill
 
 	
 hotspot_render_handlers = $f306
 hotspot_render_handlers:
 	; f3e8		0		do_nothing
-	; f407		1		on_entry_verb_hotspot
-	; f40d		2		on_entry_item_hotspot
-	; f413		3		on_entry_scroll_arrow_hotspot
-	; f419		4		on_entry_sentence_bar_hotspot
+	; f407		1		enter_verb_hotspot_render
+	; f40d		2		enter_item_hotspot_render
+	; f413		3		enter_scroll_hotspot_render
+	; f419		4		enter_sentence_bar_render
 
 ;	Upper half of screen	0		
 ;	Verbs					1
@@ -26444,10 +26444,10 @@ f314: 07 07
 
 OUT_OF_BOUNDS_REGION = #$8A
 ;===========================================
-process_cursor_hotspot_interaction:
+step_cursor_and_dispatch_hotspot:
 .C:f316  20 B6 F6    JSR cursor_physics_step
 .C:f319  20 49 F6    JSR update_cursor_grid_coords
-.C:f31c  20 5C F6    JSR get_cursor_hotspot_index
+.C:f31c  20 5C F6    JSR find_hotspot_at_cursor
 .C:f31f  EC 88 CB    CPX hotspot_entry_ofs
 .C:f322  F0 44       BEQ check_for_click
 .C:f324  8A          TXA
@@ -26554,7 +26554,7 @@ next_region:
 ; If cursor_y_pos >= 90, cursor_y_pos++
 ; If cursor_y_pos >= 8, cursor_y_pos++
 ; Y = cursor_y_pos + 28
-adjust_cursor_position:
+compute_corrected_cursor_pos:
 .C:f3bc  AD 81 CB    LDA cursor_y_pos
 .C:f3bf  C9 90       CMP #$90
 .C:f3c1  69 00       ADC #$00
@@ -26585,33 +26585,33 @@ adjust_cursor_position:
 do_nothing:
 .C:f3e8  60          RTS
 ;===================================================
-highlight_colors:
+apply_highlight_color_and_fill:
 .C:f3e9  AE 88 CB    LDX hotspot_entry_ofs
 .C:f3ec  BC 47 F2    LDY hotspot_type,X
-.C:f3ef  B9 D2 F2    LDA region_highlight_colors,Y
+.C:f3ef  B9 D2 F2    LDA region_apply_highlight_color_and_fill,Y
 .C:f3f2  8D 8F CB    STA region_text_color
-.C:f3f5  4C 0A F6    JMP fill_hotspot_color
+.C:f3f5  4C 0A F6    JMP fill_hotspot_color_span
 ;===================================================
-dehighlight_colors:
+apply_normal_color_and_fill:
 .C:f3f8  AE 88 CB    LDX hotspot_entry_ofs
 .C:f3fb  BC 47 F2    LDY hotspot_type,X
 .C:f3fe  B9 CD F2    LDA region_normal_colors,Y
 .C:f401  8D 8F CB    STA region_text_color
-.C:f404  4C 0A F6    JMP fill_hotspot_color
+.C:f404  4C 0A F6    JMP fill_hotspot_color_span
 ;===================================================
-on_entry_verb_hotspot:
-.C:f407  20 30 F5    JSR render_hotspot_verb
-.C:f40a  4C F8 F3    JMP dehighlight_colors
+enter_verb_hotspot_render:
+.C:f407  20 30 F5    JSR render_verb_label
+.C:f40a  4C F8 F3    JMP apply_normal_color_and_fill
 ;===================================================
-on_entry_item_hotspot:
-.C:f40d  20 43 F5    JSR render_hotspot_item_name
-.C:f410  4C F8 F3    JMP dehighlight_colors
+enter_item_hotspot_render:
+.C:f40d  20 43 F5    JSR render_item_name_if_owned
+.C:f410  4C F8 F3    JMP apply_normal_color_and_fill
 ;===================================================
-on_entry_scroll_arrow_hotspot:
-.C:f413  20 F7 F4    JSR render_inventory_scroll_arrow
-.C:f416  4C F8 F3    JMP dehighlight_colors
+enter_scroll_hotspot_render:
+.C:f413  20 F7 F4    JSR render_scroll_arrow_if_eligible
+.C:f416  4C F8 F3    JMP apply_normal_color_and_fill
 ;===================================================
-on_entry_sentence_bar_hotspot:
+enter_sentence_bar_render:
 ;Point source to $F609, which contains a #00 
 ;Thus copying an empty string
 .C:f419  A9 09       LDA #$09
@@ -26619,14 +26619,14 @@ on_entry_sentence_bar_hotspot:
 .C:f41d  A9 F6       LDA #$F6
 .C:f41f  85 C6       STA $C6
 .C:f421  20 BB F5    JSR blit_text_to_hotspot_row
-.C:f424  4C F8 F3    JMP dehighlight_colors
+.C:f424  4C F8 F3    JMP apply_normal_color_and_fill
 ;===================================================
-on_click_room_scene:
+click_room_scene_mark:
 .C:f427  A9 01       LDA #$01
 .C:f429  8D 77 FD    STA room_scene_clicked_flag
 .C:f42c  60          RTS
 ;===================================================
-on_click_verb_hotspot:
+click_set_verb_and_refresh:
 ;Fetch verb for the interaction region
 .C:f42d  AE 88 CB    LDX hotspot_entry_ofs
 .C:f430  BD 48 F2    LDA int_region_operand,X
@@ -26647,16 +26647,16 @@ refresh_sentence:
 .C:f449  8D 49 FE    STA sentence_bar_needs_refresh
 .C:f44c  60          RTS
 ;===================================================
-on_click_sentence_bar:
+click_sentence_bar_rebuild:
 ;Rebuild the action sentence
 .C:f44d  A9 01       LDA #$01
 .C:f44f  85 95       STA needs_sentence_rebuild
 .C:f451  60          RTS
 ;===================================================
-on_click_inventory_item:
+click_inventory_item_set_do_or_io:
 .C:f452  AE 88 CB    LDX hotspot_entry_ofs
 .C:f455  BD 48 F2    LDA int_region_operand,X
-.C:f458  20 73 F5    JSR is_visible_inv_slot_owned
+.C:f458  20 73 F5    JSR find_owned_slot_for_display
 .C:f45b  B0 23       BCS item_not_in_possession
 ;Item is in possession
 .C:f45d  A0 00       LDY #$00
@@ -26688,7 +26688,7 @@ item_not_in_possession:
 ; Updates the display offset and then redraws
 ; the inventory items and scroll arrows.
 ;===================================================
-on_click_inventory_scroll:
+click_inventory_scroll_page:
 .C:f48f  AE 88 CB    LDX hotspot_entry_ofs
 ;The operand will be #00 if scroll up is clicked, #01 if scroll down is clicked
 .C:f492  BD 48 F2    LDA int_region_operand,X
@@ -26700,7 +26700,7 @@ scroll_down:
 .C:f49b  AD 8B CB    LDA inv_display_item_offset
 .C:f49e  69 02       ADC #$02
 .C:f4a0  8D 8B CB    STA inv_display_item_offset
-.C:f4a3  4C B3 F4    JMP refresh_inventory_hotspots
+.C:f4a3  4C B3 F4    JMP refresh_inventory_regions
 scroll_up:
 ;Subtract 2 from item display offset
 .C:f4a6  38          SEC
@@ -26716,7 +26716,7 @@ set_display_offset:
 ; Updates the inventory items being displayed.
 ; Display scroll arrows as applicable.
 ;===================================================
-refresh_inventory_hotspots:
+refresh_inventory_regions:
 ;Count how many items are in the inventory
 .C:f4b3  20 99 F5    JSR count_active_kid_inventory_items
 ;Subtract 4 from the count
@@ -26748,14 +26748,14 @@ check_region:
 .C:f4d4  C9 02       CMP #$02
 .C:f4d6  D0 06       BNE check_arrow
 ;If so, copy the item's text to the region
-.C:f4d8  20 43 F5    JSR render_hotspot_item_name
+.C:f4d8  20 43 F5    JSR render_item_name_if_owned
 .C:f4db  4C E5 F4    JMP next_region
 check_arrow:
 ;Is it of type #03? That is, is it an inventory scroll arrow?
 .C:f4de  C9 03       CMP #$03
 .C:f4e0  D0 03       BNE next_region
 ;If so, display the arrows as needed
-.C:f4e2  20 F7 F4    JSR render_inventory_scroll_arrow
+.C:f4e2  20 F7 F4    JSR render_scroll_arrow_if_eligible
 next_region:
 ;Add 6 to point to the next region
 .C:f4e5  18          CLC
@@ -26771,7 +26771,7 @@ next_region:
 .C:f4f6  60          RTS
 ;===================================================
 source = $C5
-render_inventory_scroll_arrow:
+render_scroll_arrow_if_eligible:
 .C:f4f7  AE 88 CB    LDX hotspot_entry_ofs
 .C:f4fa  BC 48 F2    LDY int_region_operand,X
 .C:f4fd  D0 08       BNE $F507
@@ -26809,7 +26809,7 @@ copy_and_exit:
 ;===================================================
 source = $C5
 
-render_hotspot_verb:
+render_verb_label:
 ;Fetch region and region's operand
 .C:f530  AE 88 CB    LDX hotspot_entry_ofs
 .C:f533  BC 48 F2    LDY int_region_operand,X
@@ -26828,10 +26828,10 @@ render_hotspot_verb:
 ;===================================================
 source = $C5
 
-render_hotspot_item_name:
+render_item_name_if_owned:
 .C:f543  AE 88 CB    LDX hotspot_entry_ofs
 .C:f546  BD 48 F2    LDA int_region_operand,X
-.C:f549  20 73 F5    JSR is_visible_inv_slot_owned
+.C:f549  20 73 F5    JSR find_owned_slot_for_display
 .C:f54c  90 0B       BCC item_in_possession
 ;Item NOT in possession
 ;Point source to $F609, which contains a #00 
@@ -26870,7 +26870,7 @@ exit:
 ;			Carry clear		if item is in possession
 ;===================================================
 counter = $cb8c
-is_visible_inv_slot_owned:
+find_owned_slot_for_display:
 ;Add the "item displayed" index (0-3) to the item offset (the item index of the top left item)
 .C:f573  18          CLC
 .C:f574  6D 8B CB    ADC inv_display_item_offset
@@ -27011,7 +27011,7 @@ inlined_column_length = $f605
 text_color_ptr = $c7
 color_base_addr = #$D800
 
-fill_hotspot_color:
+fill_hotspot_color_span:
 .C:f60a  AE 88 CB    LDX hotspot_entry_ofs
 ;Is it a valid region?
 .C:f60d  E0 8A       CPX HOTSPOT_NO_MATCH
@@ -27082,7 +27082,7 @@ update_cursor_grid_coords:
 ; Returns:		.X	the interaction region index
 ;	If no region could be matched, .X = #8A
 ;===================================================
-get_cursor_hotspot_index:
+find_hotspot_at_cursor:
 ;cursor_x_cell = cursor_x_pos / 4
 .C:f65c  AD 7F CB    LDA cursor_x_pos
 .C:f65f  4A          LSR A
