@@ -91,7 +91,6 @@
 .const VIC_MEM_LAYOUT_INIT         = $26      // $D018: screen=$0400, charset=$2000
 .const FRAMEBUFFER_INIT            = $01      // Initial framebuffer index
 .const VIC_CTRL2_INIT              = $18      // $D016: MCM text, 40 cols, hscroll=0
-.const RASTER_IRQ_LINE_INIT        = $FA      // $D012: raster line 250
 .const VIC_IRQ_BITS_RASTER         = $81      // $D019/$D01A: raster bit mask
 
 .const CIA2_VIC_BANK_MASK          = $FC      // $DD00: clear bits 0–1 (bank select)
@@ -99,7 +98,6 @@
 
 .const CIA1_TIMER_STOP_ON_UF       = $08      // $DC0E/$DC0F: stop on underflow
 
-.const SPRITES_ENABLE_ALL          = $FF      // $D015: enable sprites 0–7
 
 .const INIT_COPY_SRC_START         = $7B7F    // Copy src start
 .const INIT_COPY_DST_START         = $F040    // Copy dst start
@@ -336,7 +334,7 @@ Description
 		5. Init block to $CAD0 for #$00C0 bytes
 	* Set cursor_x_pos, cursor_y_pos, and interaction_region to initial values.
 	* Call update_cursor_physics_from_region to sync cursor motion parameters.
-	* Hide the cursor, enable IRQs with CLI, then call raster_setup.
+	* Hide the cursor, enable IRQs with CLI, then call init_raster_irq_env.
 ================================================================================
 */
 
@@ -448,7 +446,7 @@ relocate_memory:
         // ------------------------------------------------------------
         // Initialize raster interrupt handlers
         // ------------------------------------------------------------
-        jsr     raster_setup
+        jsr     init_raster_irq_env
 
         rts
 /*
