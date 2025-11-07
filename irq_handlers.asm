@@ -692,7 +692,7 @@ h1_keyboard:
         beq     h1_cutscene                    // yes → park/hide the cursor via cutscene path
 
         // cursor + interaction area
-        jsr     process_cursor_hotspot_interaction
+        jsr     step_cursor_and_dispatch_hotspot
         jsr     $F3BC
         sta     cursor_sprite_x_hi
         stx     cursor_sprite_x_lo
