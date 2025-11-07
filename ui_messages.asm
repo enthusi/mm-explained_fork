@@ -67,7 +67,6 @@ actor_text_color:
 .const APPEND_MODE_COPY        = $00    // msg_copy_mode ≥ 0 → copy bytes into buffer
 .const APPEND_MODE_SKIP        = $FF    // msg_copy_mode < 0  → scan only, no writes
 
-.const SPACE_CHAR              = $20    // ASCII space appended after high-bit chars
 .const TERMINATOR_CHAR         = $00    // NUL terminator in source strings
 .const CLEAR_CHAR              = $00    // NUL used for buffer clears (alias of TERMINATOR_CHAR)
 .const LINE_BREAK_CHAR         = $2F    // '/' used as explicit line break marker
