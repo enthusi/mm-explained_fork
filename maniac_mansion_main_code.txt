@@ -5844,7 +5844,7 @@ do_keyboard:
 .C:17f1  F0 12       BEQ cutscene_mode
 ;--------------------------------------------------
 ;Not in a cutscene, so update the cursor and the interaction area
-.C:17f3  20 16 F3    JSR handle_cursor_and_interaction_area
+.C:17f3  20 16 F3    JSR process_cursor_hotspot_interaction
 .C:17f6  20 BC F3    JSR adjust_cursor_position
 .C:17f9  8D E8 0F    STA cursor_sprite_x_hi
 .C:17fc  8E D1 0F    STX cursor_sprite_x_lo
@@ -26444,7 +26444,7 @@ f314: 07 07
 
 OUT_OF_BOUNDS_REGION = #$8A
 ;===========================================
-handle_cursor_and_interaction_area:
+process_cursor_hotspot_interaction:
 .C:f316  20 B6 F6    JSR cursor_physics_step
 .C:f319  20 49 F6    JSR update_cursor_grid_coords
 .C:f31c  20 5C F6    JSR get_cursor_hotspot_index
