@@ -21078,7 +21078,7 @@ clear_engine_state:
 .C:5d28  85 1C       STA $1C
 .C:5d2a  A2 00       LDX #$00
 .C:5d2c  20 32 5D    JSR mem_fill_x
-.C:5d2f  4C 4C 5D    JMP init_free_block
+.C:5d2f  4C 4C 5D    JMP init_heap_free_list
 ;===========================================
 ; Fills memory with a specific value
 ;
@@ -21115,7 +21115,7 @@ counter_lo_decrement_2:
 ;===========================================
 ; Initialize the single free block that exists when the game engine starts
 ;===========================================
-init_free_block:
+init_heap_free_list:
 ;Set free block size to 4C85
 ;7b7b+4c85 = c800
 .C:5d4c  A9 85       LDA #$85
