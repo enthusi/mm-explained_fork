@@ -36,6 +36,62 @@ Description
 		mix_src_x into A until mix_src_x becomes zero.
 	- Output is the mixed accumulator in A.
 ================================================================================
+
+The generator implements a 24-bit Linear Feedback Shift Register (LFSR) whose
+state is stored in three bytes: rng_state_hi, rng_state_mid, and rng_state_lo.
+Each call advances the register eight times and then combines the result with
+a user-supplied 8-bit value in X to produce the output byte.
+
+
+LFSR core
+	• Feedback taps:
+		The feedback bit is derived from (rng_state_hi bit6) XOR (rng_state_mid bit7).
+		This pair of taps determines the feedback polynomial implicitly.
+
+	• Shift sequence:
+		Each iteration performs a left rotation through the three bytes:
+		rng_state_hi ← (rng_state_hi << 1) | feedback
+		rng_state_mid← (rng_state_mid<< 1) | carry
+		rng_state_lo ← (rng_state_lo << 1) | carry
+		After eight iterations, the state has been advanced by eight LFSR steps.
+		The carry chain simulates a 24-bit shift register that wraps feedback into
+		the least-significant bit of the high byte.
+
+	• Entropy source:
+		The bit pattern across rng_state_hi..lo encodes a 24-bit repeating sequence.
+		A maximal-length tap combination would yield (2^24)-1 distinct non-zero states
+		before repeating. The taps used here are non-standard, so period length may
+		be shorter.
+
+
+Mixer stage
+	• After the LFSR step, the low byte (rng_state_lo) is copied into mix_gate,
+	and the caller’s X is copied into mix_src_x.
+
+	• The mixer uses a gated feedback loop:
+		A := 0
+		while mix_src_x ≠ 0:
+			shift mix_gate left → C
+			
+			if C = 1: shift mix_src_x right, add mix_src_x to A
+			else:     shift mix_src_x right only
+			
+	The carry from the shifts modulates how A accumulates X bits, injecting
+	non-linear coupling between rng_state_lo and X.
+
+• Result:
+	The accumulator A contains the mixed byte returned to the caller.
+	This post-processing hides LFSR linearity and slightly decorrelates output
+	values from sequential state bytes.
+
+Characteristics
+	* State size: 24 bits
+	* Steps per call: 8
+	* Output width: 8 bits
+	* Deterministic, repeatable sequence from initial seed.
+	* Low computational cost (~80 cycles total).
+	* Quality suitable for gameplay randomness, not cryptography.
+================================================================================
 */
 
 .label rng_state_hi   = $dd    // 24-bit LFSR state: high byte
