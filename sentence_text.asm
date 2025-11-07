@@ -5,10 +5,6 @@
 #import "text_data.inc"
 #import "sentence_action.asm"
 
-
-.const WORD_HARD_STOP           = $40    // In-word hard stop token; forces early termination
-.const WORD_TERMINATOR          = $00    // End-of-string marker for word/text data
-
 .const SENTENCE_BAR_LAST_IDX    = $27    // Last valid cell index (0..$27 ⇒ 40 cells wide)
 .const SENTENCE_BAR_END_IDX     = SENTENCE_BAR_LAST_IDX + 1  // One past last cell (#$28 sentinel)
 
