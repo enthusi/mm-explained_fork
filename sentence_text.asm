@@ -15,11 +15,9 @@
 
 .const OBJ_HI_COSTUME           = $02    // Object hi-id type tag: costume/character
 .const OBJ_HI_MOVABLE           = $00    // Object hi-id type tag: movable (ownership applies)
-.const OWNER_NIBBLE_MASK        = $0F    // Mask to extract owner nibble from attribute byte
 .const OWNER_IS_ROOM            = $0F    // Owner nibble value meaning “room/no owner”
 .const MAX_INVENTORY_INDEX      = $2C    // Highest inventory slot index (scan starts here)
 
-.const OBJ_NAME_OFS             = $0D    // Object byte +$0D: 8-bit offset from base to name
 .const OBJ_NAME_FOUND           = $00    // Return code: name pointer resolved successfully
 
 .const KID2_NAME_OFS            = $CEDD  // Sentence bar absolute address of kid #2 name slot
