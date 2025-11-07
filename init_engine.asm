@@ -103,7 +103,7 @@
 .const INIT_COPY_DST_START         = $F040    // Copy dst start
 .const INIT_COPY_SIZE_BYTES        = $0080    // Copy size in bytes
 
-.label update_cursor_physics_from_region = $0
+.label update_cursor_physics_from_hotspot = $0
 .label setup_vectors_and_drive_code = $0
 .label init_sound_voices = $0
 
@@ -332,8 +332,8 @@ Description
 		3. Engine constants to $F0C0 for #$073F bytes
 		4. Decompression routines to $0100 for #$009B bytes
 		5. Init block to $CAD0 for #$00C0 bytes
-	* Set cursor_x_pos, cursor_y_pos, and interaction_region to initial values.
-	* Call update_cursor_physics_from_region to sync cursor motion parameters.
+	* Set cursor_x_pos, cursor_y_pos, and hotspot_entry_ofs to initial values.
+	* Call update_cursor_physics_from_hotspot to sync cursor motion parameters.
 	* Hide the cursor, enable IRQs with CLI, then call init_raster_irq_env.
 ================================================================================
 */
@@ -433,8 +433,8 @@ relocate_memory:
         lda     #CURSOR_INIT_Y
         sta     cursor_y_pos
         lda     #INTERACTION_REGION_DEFAULT
-        sta     interaction_region
-        jsr     update_cursor_physics_from_region
+        sta     hotspot_entry_ofs
+        jsr     update_cursor_physics_from_hotspot
 
         // ------------------------------------------------------------
         // Hide cursor and enable interrupts
