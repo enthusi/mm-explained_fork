@@ -351,15 +351,9 @@ dec_count_lo:
 
 
 
-* = $3C3E
-
-.label candidate_object = $3EA0
-.label ancestor_overlay_req = $15
-.label check_cursor_contained_within_object = $0
-.const  OBJ_SCAN_START_IDX              = $01    // First room object index to test
-.const  NO_OBJECT_IDX                   = $00    // X return value when no hit
-
 /*
+================================================================================
+  find_object_at_cursor
 ================================================================================
 Summary
     Identify the room object under the current cursor and return its global
@@ -396,13 +390,19 @@ Global Inputs
     object_attributes        Per-object flags; bit5=removed, bit7=inside-parent.
     parent_idx_tbl           Room-indexed parent link; 0 means no parent.
     ancestor_overlay_req_tbl Required inside/overlay state for containment check.
-    (cursor position)        Consumed by check_cursor_contained_within_object.
+    (cursor position)        Consumed by check_cursor_object_bounds.
 
 Global Outputs
     candidate_object         Updated while scanning to hold current candidate.
     ancestor_overlay_req     Written with requirement byte for parent comparison.
 ================================================================================
 */
+.label candidate_object = $3EA0
+.label ancestor_overlay_req = $15
+.const OBJ_SCAN_START_IDX              = $01    // First room object index to test
+.const NO_OBJECT_IDX                   = $00    // X return value when no hit
+
+* = $3C3E
 find_object_at_cursor:
         // ------------------------------------------------------------
         // Check for presence of room objects
@@ -500,7 +500,7 @@ skip_due_to_ancestor_req_mismatch:
         // ------------------------------------------------------------
 hit_test_candidate_bounds:
         ldx     candidate_object               // Restore candidate room index
-        jmp     check_cursor_contained_within_object // Jump to cursor-in-bounds test
+        jmp     check_cursor_object_bounds // Jump to cursor-in-bounds test
 
         // ------------------------------------------------------------
         // Advance to next room object
@@ -515,3 +515,126 @@ move_to_next_object:
 		
         ldx     #NO_OBJECT_IDX                 // Exhausted all objects → X := #$00
         rts                                    // Return (no hit)
+/*
+================================================================================
+  check_cursor_object_bounds
+================================================================================
+Summary
+    Hit-test the current cursor against the bounds of the room object indexed
+    by X. On containment, returns the global object index in A/X; otherwise
+    tail-jumps to continue the outer scan.
+
+Arguments
+    X  Room object index (room-scoped) for the candidate under test.
+
+Returns
+On hit:
+        A = obj_idx_hi
+        X = obj_idx_lo
+    On miss:
+        Tail-jumps to move_to_next_object (no register guarantees)
+
+
+Global Inputs
+    cursor_y_pos_half_off_by_8  Half-resolution Y; requires >>2 to grid units.
+    cursor_x_pos_quarter_absolute  Quarter-absolute X; already in grid units.
+    obj_left_col_tbl            Object left column per room index.
+    obj_width_tbl               Object width per room index.
+    obj_top_row_tbl             Object top row per room index.
+    obj_height_tbl              Object height per room index.
+    room_obj_idx_hi             Global object index high byte per room index.
+    room_obj_idx_lo             Global object index low byte per room index.
+
+Vars/State
+    cursor_y  Zero-page scratch for normalized cursor Y.
+    cursor_x  Zero-page scratch for normalized cursor X.
+	
+Description
+    • Normalize cursor coordinates to the object grid:
+      - Y: shift half-off-by-8 value right twice.
+      - X: use quarter-absolute value directly.
+    • Test horizontal containment:
+      - If cursor_x < left → miss.
+      - If cursor_x == left → verify using right edge.
+      - right = left + width; treat right == cursor_x as outside.
+    • Test vertical containment with analogous rules:
+      - bottom = top + height; bottom == cursor_y is outside.
+    • On success, fetch global object index from tables and return with A/X.
+================================================================================
+*/
+.label cursor_y  = $15                        // ZP: cursor row (pixels→rows scaled)
+.label cursor_x  = $17                        // ZP: cursor column (pixels→cols scaled)
+
+check_cursor_object_bounds:
+        // ------------------------------------------------------------
+        // Compute cursor coordinates for hit testing
+        //
+        // - Y position: take half-resolution cursor value, divide by 4
+        //   (right-shift twice) to normalize to object grid scale.
+        // - X position: load quarter-absolute cursor value directly,
+        //   already scaled to object coordinate units.
+        // ------------------------------------------------------------
+        lda     cursor_y_pos_half_off_by_8     // source Y (half, off by 8)
+        lsr                                    // /2
+        lsr                                    // /4
+        sta     cursor_y                       // stash Y in ZP
+
+        lda     cursor_x_pos_quarter_absolute  // source X (quarter-absolute)
+        sta     cursor_x                       // stash X in ZP
+
+        // ------------------------------------------------------------
+        // X containment test
+        // - If cursor_x < obj_left → skip.
+        // - If cursor_x == obj_left → verify overlap using right edge.
+        // - Compute right edge = left + width; treat right==cursor as outside.
+        // ------------------------------------------------------------
+        lda     obj_left_col_tbl,x              // A := object X start
+        cmp     cursor_x                        // compare start vs cursor X
+        beq     check_cursor_x_overlap          // equal → need width overlap check
+        bcs     skip_to_next_object             // start > cursor X → left of object → skip
+
+check_cursor_x_overlap:
+        clc                                     // compute object X end = start + width
+        adc     obj_width_tbl,x                 // add object width
+        cmp     cursor_x                        // compare end vs cursor X
+        bcc     skip_to_next_object             // end < cursor X → right of object → skip
+        beq     skip_to_next_object             // end == cursor X → treat as outside → skip
+
+        // ------------------------------------------------------------
+        // Y containment test
+        // - If cursor_y < obj_top → skip.
+        // - If cursor_y == obj_top → verify overlap using bottom edge.
+        // - Compute bottom = top + height; treat bottom==cursor as outside.
+        // ------------------------------------------------------------
+        lda     obj_top_row_tbl,x               // A := object Y start
+        cmp     cursor_y                        // compare start vs cursor Y
+        beq     check_cursor_y_overlap          // equal → need height overlap check
+        bcs     skip_to_next_object             // start > cursor Y → above object → skip
+
+check_cursor_y_overlap:
+        clc                                     // compute object Y end = start + height
+        adc     obj_height_tbl,x                // add object height
+        cmp     cursor_y                        // compare end vs cursor Y
+        bcc     skip_to_next_object             // end < cursor Y → below object → skip
+        beq     skip_to_next_object             // end == cursor Y → treat as outside → skip
+
+        // ------------------------------------------------------------
+        // Hit detected: return global object index
+        //
+        // - Load object's global index hi/lo from tables.
+        // - Transfer lo-byte to X and restore hi-byte to A.
+        // - Return with A/X forming complete object index.
+        // ------------------------------------------------------------
+        lda     room_obj_idx_hi,x               // A := obj_idx_hi
+        pha                                     // Save high byte on stack
+        lda     room_obj_idx_lo,x               // A := obj_idx_lo
+        tax                                     // X := obj_idx_lo
+        pla                                     // A := obj_idx_hi
+        rts                                     // Return with A/X set
+
+		// -----------------------------------------------------------------
+		// Miss: continue with next object (tail-jump back to caller's loop)
+		// -----------------------------------------------------------------
+skip_to_next_object:
+        jmp     move_to_next_object             // advance outer scan
+
