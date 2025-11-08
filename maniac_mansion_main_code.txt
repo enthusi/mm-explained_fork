@@ -816,8 +816,8 @@ object_ptr_hi_tbl = $708b
 ; Concurrent script engine variables
 ;===================================================
 task_cur_idx = $70B8	;Script slot of script being executed
-task_ofs_hi_tbl = $70B9
-task_ofs_lo_tbl = $70C9
+task_pc_hi_tbl = $70B9
+task_pc_lo_tbl = $70C9
 ;Script states
 ;Bit 7 set = frozen for cutscene
 ;#00	Inactive (no script)
@@ -4020,10 +4020,10 @@ run_handler:
 ;Add verb index to room_obj_ofs, set result to script_offsets[0]
 .C:0e28  18          CLC
 .C:0e29  65 17       ADC <room_obj_ofs
-.C:0e2b  8D C9 70    STA task_ofs_lo_tbl
+.C:0e2b  8D C9 70    STA task_pc_lo_tbl
 .C:0e2e  A9 00       LDA #$00
 .C:0e30  65 18       ADC >room_obj_ofs
-.C:0e32  8D B9 70    STA task_ofs_hi_tbl
+.C:0e32  8D B9 70    STA task_pc_hi_tbl
 ;---------------------------------------
 ;Set current script slot to #00
 .C:0e35  A9 00       LDA #$00
@@ -10078,9 +10078,9 @@ keyboard_handle_one_key:
 .C:28d4  AE A7 FE    LDX interrupted_script_index
 ;Restore the offsets
 .C:28d7  AD A4 FE    LDA interrupted_script_offset_lo
-.C:28da  9D C9 70    STA task_ofs_lo_tbl,X
+.C:28da  9D C9 70    STA task_pc_lo_tbl,X
 .C:28dd  AD A5 FE    LDA interrupted_script_offset_hi
-.C:28e0  9D B9 70    STA task_ofs_hi_tbl,X
+.C:28e0  9D B9 70    STA task_pc_hi_tbl,X
 ;Set script state as running (#02)
 .C:28e3  A9 02       LDA #$02
 .C:28e5  9D D9 70    STA task_state_tbl,X
@@ -13769,9 +13769,9 @@ entry_script_present:
 .C:3a88  8D 19 71    STA task_type_tbl
 ;Load the script in the first slot
 .C:3a8b  AD 58 71    LDA <room_entry_script_ptr
-.C:3a8e  8D C9 70    STA task_ofs_lo_tbl
+.C:3a8e  8D C9 70    STA task_pc_lo_tbl
 .C:3a91  AD 59 71    LDA >room_entry_script_ptr
-.C:3a94  8D B9 70    STA task_ofs_hi_tbl
+.C:3a94  8D B9 70    STA task_pc_hi_tbl
 ;Launch the script
 .C:3a97  A2 00       LDX #$00
 .C:3a99  20 D0 5E    JSR resume_task
@@ -13792,9 +13792,9 @@ exit_script_present:
 .C:3aa8  8D 19 71    STA task_type_tbl
 ;Load the script in the first slot
 .C:3aab  AD 56 71    LDA <room_exit_script_ptr
-.C:3aae  8D C9 70    STA task_ofs_lo_tbl
+.C:3aae  8D C9 70    STA task_pc_lo_tbl
 .C:3ab1  AD 57 71    LDA >room_exit_script_ptr
-.C:3ab4  8D B9 70    STA task_ofs_hi_tbl
+.C:3ab4  8D B9 70    STA task_pc_hi_tbl
 ;Launch the script
 .C:3ab7  A2 00       LDX #$00
 .C:3ab9  20 D0 5E    JSR resume_task
@@ -21257,10 +21257,10 @@ set_current_script_read_address:
 ;Perform: script_read_pointer = current_script_rsrc_base + script_offsets
 .C:5de6  AD 8A FE    LDA script_base_lo
 .C:5de9  18          CLC
-.C:5dea  79 C9 70    ADC task_ofs_lo_tbl,Y
+.C:5dea  79 C9 70    ADC task_pc_lo_tbl,Y
 .C:5ded  8D 15 5E    STA script_pc_lo
 .C:5df0  AD 8B FE    LDA script_base_hi
-.C:5df3  79 B9 70    ADC task_ofs_hi_tbl,Y
+.C:5df3  79 B9 70    ADC task_pc_hi_tbl,Y
 .C:5df6  8D 16 5E    STA script_pc_hi
 .C:5df9  60          RTS
 ;===========================================
@@ -21274,10 +21274,10 @@ compute_script_relative_offset:
 .C:5dfd  AD 15 5E    LDA script_pc_lo
 .C:5e00  38          SEC
 .C:5e01  ED 8A FE    SBC script_base_lo
-.C:5e04  99 C9 70    STA task_ofs_lo_tbl,Y				
+.C:5e04  99 C9 70    STA task_pc_lo_tbl,Y				
 .C:5e07  AD 16 5E    LDA script_pc_hi
 .C:5e0a  ED 8B FE    SBC script_base_hi
-.C:5e0d  99 B9 70    STA task_ofs_hi_tbl,Y				
+.C:5e0d  99 B9 70    STA task_pc_hi_tbl,Y				
 .C:5e10  60          RTS
 ;===========================================
 ; Skip a 16-bit offset
@@ -21434,8 +21434,8 @@ script_in_memory:
 .C:5ea7  9D 29 71    STA task_script_idx_tbl,X
 ;Reset script offsets
 .C:5eaa  A9 00       LDA #$00
-.C:5eac  9D B9 70    STA task_ofs_hi_tbl,X
-.C:5eaf  9D C9 70    STA task_ofs_lo_tbl,X
+.C:5eac  9D B9 70    STA task_pc_hi_tbl,X
+.C:5eaf  9D C9 70    STA task_pc_lo_tbl,X
 ;Set script state to running (#02)
 .C:5eb2  A9 02       LDA #$02
 .C:5eb4  9D D9 70    STA task_state_tbl,X
@@ -21535,9 +21535,9 @@ resume_previous_script:
 .C:5f05  D0 11       BNE resource_mismatch
 ;Restore previous script's offset
 .C:5f07  68          PLA
-.C:5f08  99 B9 70    STA task_ofs_hi_tbl,Y
+.C:5f08  99 B9 70    STA task_pc_hi_tbl,Y
 .C:5f0b  68          PLA
-.C:5f0c  99 C9 70    STA task_ofs_lo_tbl,Y
+.C:5f0c  99 C9 70    STA task_pc_lo_tbl,Y
 ;Recompute script addresses
 .C:5f0f  20 20 5E    JSR set_script_base_from_type		;Compute script base pointer based on type/index into FE8A/8B
 .C:5f12  20 E3 5D    JSR set_current_script_read_address		;Compute script current pointer using script current offset

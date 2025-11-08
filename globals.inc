@@ -592,8 +592,8 @@ They were definitely intended as debugging aids.
 // Concurrent script engine variables
 //===================================================
 .label task_cur_idx = $70B8	//Script slot of script being executed
-.label task_ofs_hi_tbl = $70B9
-.label task_ofs_lo_tbl = $70C9
+.label task_pc_hi_tbl = $70B9
+.label task_pc_lo_tbl = $70C9
 //Script states
 //Bit 7 set = frozen for cutscene
 //#00	Inactive (no script)
