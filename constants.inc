@@ -288,3 +288,9 @@ screen_row_offsets_lo:
 .const TEXT_CHARSET_LAYOUT       = $3E    // Screen=$CC00, charset=$F800
 
 .const JOY1_FIRE_MASK              = $10    // Joystick #1 fire button bit mask (AND result nonzero → pressed)
+
+
+.const  ATTR_REMOVED_FROM_ROOM_MASK     = $20    // object_attributes bit5: removed from room
+.const  ATTR_INSIDE_PARENT_MASK         = $80    // object_attributes bit7: inside parent flag
+
+.const  NO_PARENT_IDX                   = $00    // parent index value meaning “no parent”
