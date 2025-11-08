@@ -14116,7 +14116,7 @@ continue_from_candidate:
 .C:3c7e  4C 87 3C    JMP move_to_next_object
 check_boundary:
 .C:3c81  AE A0 3E    LDX candidate_object
-.C:3c84  4C E8 3C    JMP check_cursor_contained_within_object
+.C:3c84  4C E8 3C    JMP check_cursor_object_bounds
 move_to_next_object:
 .C:3c87  E8          INX
 .C:3c88  EC 5C 71    CPX room_obj_count
@@ -14198,7 +14198,7 @@ move_to_next_object:
 ;===========================================
 cursor_y = $15
 cursor_x = $17
-check_cursor_contained_within_object:
+check_cursor_object_bounds:
 ;Compute cursor Y
 .C:3ce8  AD 7F FE    LDA cursor_y_pos_half_off_by_8
 .C:3ceb  4A          LSR A
