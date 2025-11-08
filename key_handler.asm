@@ -70,7 +70,6 @@ Notes
 // Script and slots
 //-----------------------------
 .const  SCRIPT_ID_SAVELOAD      = $02    // global script #2
-.const  SCRIPT_STATE_RUNNING    = $02    // resume state for script slot
 
 //-----------------------------
 // Text speed bounds
@@ -257,7 +256,7 @@ fkeys_dispatch_check:
         sta     current_script_slot
 		
         lda     #SCRIPT_ID_SAVELOAD           // A := script #2 id
-        jmp     start_global_script           // tail-call launcher
+        jmp     launch_global_script           // tail-call launcher
 
 kid_switch_mode_check:
         // ------------------------------------------------------------
