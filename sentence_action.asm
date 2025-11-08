@@ -289,7 +289,7 @@ Typical traces
   │
   ├─ A == 0  (no handler):
   │     ├─ GIVE:
-  │     │    if IO is kid → set object owner nibble, refresh_items_displayed, rts
+  │     │    if IO is kid → set object owner nibble, refresh_inventory_io_guarded, rts
   │     ├─ WALK_TO: rts
   │     └─ otherwise → launch_global_defaults_script(#3) with var_active_verb_id, rts
   │
@@ -331,6 +331,7 @@ Typical traces
 #import "registers.inc"
 #import "sentence_text.asm"
 #import "destination.asm"
+#import "ui_interaction.asm"
 
 .label find_actor_enclosing_cursor = $0
 .label get_object_enclosing_cursor = $0
@@ -1463,7 +1464,7 @@ Global Outputs
 	current_script_slot                    Cleared before launching scripts
 	script_offsets_lo/hi				   Computed handler offset (custom path)
 	object_attributes[x]                   Updated owner on GIVE→kid
-	(refresh) refresh_items_displayed      Invoked after ownership change
+	(refresh) refresh_inventory_io_guarded      Invoked after ownership change
 
 Description
 	* Mark UI for refresh.
@@ -1531,7 +1532,7 @@ execute_verb_handler_for_object:
         ora     active_io_id_lo                 // merge new owner id into lo nibble (recipient kid index)
         sta     object_attributes,x             // commit updated owner nibble back to object_attributes[X]
 		
-        jsr     refresh_items_displayed         // refresh inventory UI to reflect new ownership
+        jsr     refresh_inventory_io_guarded         // refresh inventory UI to reflect new ownership
 		
 return_after_give_path:
         rts
@@ -2081,7 +2082,7 @@ commit_kid_change:
         // Recenter camera and refresh inventory
         lda     current_kid_idx                 // A := new active kid for camera routine
         jsr     fix_camera_on_actor             // center viewport on new kid
-        jsr     refresh_items_displayed         // rebuild inventory UI for new kid
+        jsr     refresh_inventory_io_guarded         // rebuild inventory UI for new kid
 		//Fall through to init_sentence_ui_and_stack
 /*
 ================================================================================
