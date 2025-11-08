@@ -2,6 +2,7 @@
 #import "globals.inc"
 #import "constants.inc"
 #import "registers.inc"
+#import "input_scan.asm"
 
 /*
 ================================================================================
@@ -573,3 +574,103 @@ shutdown_topbar_talking_2:
 
 tick_topbar_msg_exit:
         rts                                 // end of tick; nothing else to do
+/*
+================================================================================
+print_message_wait_for_button
+================================================================================
+
+Summary
+    Print a zero-terminated message on the top bar, then block until the
+    joystick fire button is pressed. Handles VIC banking and optional
+    screen unblank/blank around the prompt.
+
+Arguments
+    print_msg_ptr    pointer to zero-terminated message string
+
+Global Inputs
+    raster_irq_init_pending      nonzero means raster init path is active
+
+Description
+    - Map in I/O to access screen and color RAM.
+    - If raster init is pending:
+        • Unblank screen.
+        • Set memory layout to CC00 screen and F800 charset.
+        • Set normal text mode preset.
+    - Clear the top bar, copy the message bytes until $00.
+    - Poll joystick until fire is pressed.
+    - Clear the top bar again.
+    - If raster init was pending, blank the screen.
+    - Map out I/O and return.
+================================================================================
+*/
+* = $3B15
+print_message_wait_for_button:
+        // ------------------------------------------------------------
+        // Map in I/O to access screen/color/VIC registers
+        // ------------------------------------------------------------
+        ldy     #MAP_IO_IN                   
+        sty     cpu_port                     
+
+        // ------------------------------------------------------------
+        // If raster IRQ init pending, ensure screen is on and set
+        // VIC memory layout and text mode
+        // ------------------------------------------------------------
+        lda     raster_irq_init_pending      // pending raster init?
+        beq     entry_clear_topbar           // no → keep current video config
+
+        lda     vic_screen_control_reg_1     
+        ora     #VIC_CTRL1_UNBLANK_MASK      // set bit4 → unblank screen
+        sta     vic_screen_control_reg_1     
+
+        lda     #VIC_LAYOUT_CC00_F800        // CC00 screen, F800 charset
+        ldy     #CTRL2_INT_REGION_PRESET     // standard text-mode preset
+        sta     vic_memory_layout_reg        // commit memory layout
+        sty     vic_screen_control_reg_2     // commit text mode
+
+entry_clear_topbar:
+        // ------------------------------------------------------------
+        // Clear the top bar text area
+        // ------------------------------------------------------------
+        jsr     clear_topbar_text            // fill topbar row with spaces
+
+        // ------------------------------------------------------------
+        // Copy message string to the top bar
+        // ------------------------------------------------------------
+        ldy     #$00                         // Y := src index into message
+copy_msg_next_char:
+        lda     (print_msg_ptr),y            // A := message[Y]
+        beq     wait_for_fire_press          // $00 terminator → stop copying
+        sta     topbar_text_base,y           // write char to screen at top bar
+        iny                                  // Y := Y+1
+        bne     copy_msg_next_char           // continue until terminator
+
+wait_for_fire_press:
+        // ------------------------------------------------------------
+        // Poll joystick and wait until fire button is pressed
+        // ------------------------------------------------------------
+        jsr     joy_latch                    // sample joystick state into A
+        and     #JOY1_FIRE_MASK              // isolate fire bit
+        bne     wait_for_fire_press          // loop until fire is pressed
+
+        // ------------------------------------------------------------
+        // Clear the top bar message
+        // ------------------------------------------------------------
+        jsr     clear_topbar_text            // erase the message from the bar
+
+        // ------------------------------------------------------------
+        // If raster init pending, re-blank the screen
+        // ------------------------------------------------------------
+        lda     raster_irq_init_pending      // was special raster setup active?
+        beq     exit_pmwfb                   // no → keep screen state as-is
+
+        lda     vic_screen_control_reg_1     
+        and     #VIC_CTRL1_BLANK_MASK        // clear bit4 → blank screen
+        sta     vic_screen_control_reg_1     
+
+exit_pmwfb:
+        // ------------------------------------------------------------
+        // Map out I/O and return
+        // ------------------------------------------------------------
+        ldy     #MAP_IO_OUT                  
+        sty     cpu_port                     
+        rts                                  
