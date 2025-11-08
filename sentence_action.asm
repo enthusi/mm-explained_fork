@@ -334,7 +334,6 @@ Typical traces
 #import "ui_interaction.asm"
 
 .label find_actor_enclosing_cursor = $0
-.label get_object_enclosing_cursor = $0
 .label set_script_resource_base_address = $0
 .label set_current_script_read_address = $0
 .label execute_next_operation = $0
@@ -556,7 +555,7 @@ on_forced_trigger:
 
 pick_object_under_cursor:                 	
 		// Select object under cursor (DO if no prep, else IO)
-        jsr     get_object_enclosing_cursor // Returns: X=object id lo, A=object id hi; X=OBJ_IDX_NONE if no hit
+        jsr     find_object_at_cursor // Returns: X=object id lo, A=object id hi; X=OBJ_IDX_NONE if no hit
 
 branch_on_cursor_hit:                   
 		// Object found under cursor?
