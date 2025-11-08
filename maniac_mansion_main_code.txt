@@ -2607,7 +2607,7 @@ sentence_forced_triggered:
 find_object_under_cursor:
 ;Find an object under the cursor's position
 ;If a valid object is found, .X/.A will contain the object lo/hi indexes
-.C:07ee  20 3E 3C    JSR get_object_enclosing_cursor
+.C:07ee  20 3E 3C    JSR find_object_at_cursor
 ;-------------------------------------------
 check_if_object_found:
 ;Did we find an object? (.X != #00)
@@ -14065,7 +14065,7 @@ next_actor:
 candidate_object = $3ea0
 current_parent_possible = $15
 
-get_object_enclosing_cursor:
+find_object_at_cursor:
 ;Are there any objects in this room? If not, exit now
 .C:3c3e  AE 5C 71    LDX room_obj_count
 .C:3c41  D0 01       BNE entry
@@ -14194,7 +14194,7 @@ move_to_next_object:
 ; 
 ; Returns:	if it's inside,		.A		obj_idx_hi
 ;								.X		obj_idx_lo
-;			if it's not, it will jump back to move_to_next_object (in get_object_enclosing_cursor)
+;			if it's not, it will jump back to move_to_next_object (in find_object_at_cursor)
 ;===========================================
 cursor_y = $15
 cursor_x = $17
@@ -14261,7 +14261,7 @@ check_cursor_contained_in_height:
 ;-------------------------------------------
 next_obj:
 ;The cursor coordinates are not contained within the object's limits
-;So continue with the next object (jump back to get_object_enclosing_cursor)
+;So continue with the next object (jump back to find_object_at_cursor)
 .C:3d24  4C 87 3C    JMP move_to_next_object
 ;===========================================
 ; Draw the visible part of an object
