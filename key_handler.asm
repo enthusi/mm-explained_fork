@@ -25,10 +25,10 @@ Global Inputs
 	 sid_master_volume_saved            cached SID master volume
 
 Global Outputs
-	 script_offsets_lo/hi[X]            restored PC for resumed script
-	 script_state_for_script_slot[X]    set to running when resuming
+	 task_ofs_lo_tbl/hi[X]            restored PC for resumed script
+	 task_state_tbl[X]    set to running when resuming
 	 interrupted_script_offset_lo/hi    cleared after resume attempt
-	 current_script_slot                set to #$FF before restart/save-load
+	 task_cur_idx                set to #$FF before restart/save-load
 	 sentence_bar_needs_refresh         flagged TRUE after unpause
 	 text_delay_factor                  clamped within [MIN..MAX]
 	 kbd_delay_lo/hi                    forced to zero in pause loop
@@ -107,13 +107,13 @@ keyboard_handle_one_key:
 		//There was an interrupted script, resume it
         ldx     interrupted_script_index      // X := target script index
         lda     interrupted_script_offset_lo  // restore script PC low
-        sta     script_offsets_lo,x
+        sta     task_ofs_lo_tbl,x
         lda     interrupted_script_offset_hi  // restore script PC high
-        sta     script_offsets_hi,x
+        sta     task_ofs_hi_tbl,x
 		
 		// Set script state to running
-        lda     #SCRIPT_STATE_RUNNING
-        sta     script_state_for_script_slot,x
+        lda     #TASK_STATE_RUNNING
+        sta     task_state_tbl,x
 		// Unknown purpose for debug var
         lda     #$01                          
         sta     var_destination_x
@@ -199,7 +199,7 @@ f8_key_check:
         bne     plus_key_check                // no → next key
 		
         lda     #$FF                          // sentinel "no current script"
-        sta     current_script_slot
+        sta     task_cur_idx
 		
         jmp     restart_game                  // tail-call restart
 
@@ -253,7 +253,7 @@ fkeys_dispatch_check:
         bne     kid_switch_mode_check         // yes → we're already running it, skip
 		
         lda     #$FF                          // set "no current script"
-        sta     current_script_slot
+        sta     task_cur_idx
 		
         lda     #SCRIPT_ID_SAVELOAD           // A := script #2 id
         jmp     launch_global_script           // tail-call launcher
