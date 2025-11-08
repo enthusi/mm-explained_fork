@@ -332,11 +332,8 @@ Typical traces
 #import "sentence_text.asm"
 #import "destination.asm"
 #import "ui_interaction.asm"
-
-.label find_actor_enclosing_cursor = $0
-.label set_script_base_from_type = $0
-.label set_current_script_read_address = $0
-.label dispatch_script_ops_loop = $0
+#import "misc.asm"
+#import "script_engine.asm"
 
 // Queued sentence parts (parallel LIFO stacks, max depth = 6)
 .label stacked_verb_ids        = $fe25    // Stack of verb IDs (index 0..5; top tracked separately)
@@ -381,7 +378,6 @@ Typical traces
 .const GLOBAL_DEFAULTS_SCRIPT_ID  = $03    // Global “verb defaults” script identifier
 
 .const DEFAULT_VERB_WALK_TO       = WALK_TO_VERB    // Verb id for “Walk to” default case
-.const ENTITY_NONE                = $00    // No destination entity selected/active
 
 .const SECOND_KID_NAME_COLUMN     = $0B    // Column threshold for kid #2 selection in UI
 .const THIRD_KID_NAME_COLUMN      = $18    // Column threshold for kid #3 selection in UI
