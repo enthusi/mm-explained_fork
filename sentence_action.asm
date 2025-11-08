@@ -299,7 +299,7 @@ Typical traces
           compute absolute script offset from room_obj_ofs + A
           seed script state (var_active_io_id_lo, script_offsets_*,
                         set_script_base_from_type,
-                        set_current_script_read_address)
+                        set_current_task_pc)
           dispatch_script_ops_loop, rts
 
 ┌────────────────────────────────────┐
@@ -1597,7 +1597,7 @@ launch_custom_handler:
 		
 		//Execute script
         jsr     set_script_base_from_type// set resource base for this script context
-        jsr     set_current_script_read_address // set PC/read pointer to script_offsets_{hi,lo}
+        jsr     set_current_task_pc // set PC/read pointer to script_offsets_{hi,lo}
         jsr     dispatch_script_ops_loop          // execute first script opcode
         rts                                     
 /*

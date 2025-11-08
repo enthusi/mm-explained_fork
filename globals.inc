@@ -623,7 +623,7 @@ They were definitely intended as debugging aids.
 .label script_base_lo = $fe8a			//Resource base address of script being executed
 .label script_base_hi = $fe8b
 //Read pointer of the current script
-.label script_pc_lo = $5e15
-.label script_pc_hi = $5e16
+.label task_pc_lo = $5e15
+.label task_pc_hi = $5e16
 
 .label ancestor_overlay_req    = $15     // zp: required ancestor bit7 ($00 clear / $80 set)

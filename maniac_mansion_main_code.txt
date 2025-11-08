@@ -796,8 +796,8 @@ music_track_ptrs_hi = $5499
 ; Resource variables
 ;===========================================================
 ;Read pointer of the current script
-script_pc_lo = $5e15
-script_pc_hi = $5e16
+task_pc_lo = $5e15
+task_pc_hi = $5e16
 
 ;Resource types
 ; #01	object
@@ -4033,7 +4033,7 @@ run_handler:
 .C:0e3d  8D 6C FF    STA var_active_io_id_lo
 ;Set up script execution and launch it
 .C:0e40  20 20 5E    JSR set_script_base_from_type
-.C:0e43  20 E3 5D    JSR set_current_script_read_address
+.C:0e43  20 E3 5D    JSR set_current_task_pc
 .C:0e46  20 97 5D    JSR dispatch_script_ops_loop
 .C:0e49  60          RTS
 ;===========================================
@@ -13774,7 +13774,7 @@ entry_script_present:
 .C:3a94  8D B9 70    STA task_pc_ofs_hi_tbl
 ;Launch the script
 .C:3a97  A2 00       LDX #$00
-.C:3a99  20 D0 5E    JSR resume_task
+.C:3a99  20 D0 5E    JSR invoke_task_then_resume_parent
 .C:3a9c  60          RTS
 ;===========================================
 ; Execute the room exit script, if present
@@ -13797,7 +13797,7 @@ exit_script_present:
 .C:3ab4  8D B9 70    STA task_pc_ofs_hi_tbl
 ;Launch the script
 .C:3ab7  A2 00       LDX #$00
-.C:3ab9  20 D0 5E    JSR resume_task
+.C:3ab9  20 D0 5E    JSR invoke_task_then_resume_parent
 .C:3abc  60          RTS
 ;===========================================
 ; Prepare load of a room data from disk
@@ -21151,7 +21151,7 @@ execute_running_scripts:
 ;Execute the script
 .C:5d7b  8E B8 70    STX task_cur_idx
 .C:5d7e  20 20 5E    JSR set_script_base_from_type
-.C:5d81  20 E3 5D    JSR set_current_script_read_address	
+.C:5d81  20 E3 5D    JSR set_current_task_pc	
 .C:5d84  20 97 5D    JSR dispatch_script_ops_loop
 next_script:
 .C:5d87  EE 89 FE    INC cur_script_slot
@@ -21193,7 +21193,7 @@ inlined_handler = $5dab
 ;===========================================
 save_script_relative_offset:
 ;Update the script relative offset (as we're halting execution)
-.C:5db0  20 FA 5D    JSR compute_script_relative_offset
+.C:5db0  20 FA 5D    JSR compute_task_relative_offset
 .C:5db3  60          RTS
 ;===========================================
 ; Handle possible script resource memory relocation
@@ -21240,42 +21240,42 @@ adjust_script_pointers:
 ;Compute the current relative offset
 ;It doesn't matter that the script block has moved as the base address and read pointer have not changed yet
 ;With them, we can compute the relative offset
-.C:5dd9  20 FA 5D    JSR compute_script_relative_offset
+.C:5dd9  20 FA 5D    JSR compute_task_relative_offset
 ;Reset the script resource base address (now we do use updated blocks that have been moved)
 .C:5ddc  20 20 5E    JSR set_script_base_from_type	
 ;Recompute the script's read address, now that we have the correct base and correct offset
-.C:5ddf  20 E3 5D    JSR set_current_script_read_address
+.C:5ddf  20 E3 5D    JSR set_current_task_pc
 exit:
 .C:5de2  60          RTS
 ;===========================================
 ; Sets the current script's read address
 ; It adds the script's base address to the relative offset
 ;===========================================
-set_current_script_read_address:
+set_current_task_pc:
 ;Load index of current script being executed
 .C:5de3  AC B8 70    LDY task_cur_idx
 ;Perform: script_read_pointer = current_script_rsrc_base + script_offsets
 .C:5de6  AD 8A FE    LDA script_base_lo
 .C:5de9  18          CLC
 .C:5dea  79 C9 70    ADC task_pc_ofs_lo_tbl,Y
-.C:5ded  8D 15 5E    STA script_pc_lo
+.C:5ded  8D 15 5E    STA task_pc_lo
 .C:5df0  AD 8B FE    LDA script_base_hi
 .C:5df3  79 B9 70    ADC task_pc_ofs_hi_tbl,Y
-.C:5df6  8D 16 5E    STA script_pc_hi
+.C:5df6  8D 16 5E    STA task_pc_hi
 .C:5df9  60          RTS
 ;===========================================
 ; Computes the current's script relative offset
 ; It subtracts the script's read pointer from the base address 
 ;===========================================
-compute_script_relative_offset:
+compute_task_relative_offset:
 ;Load index of current script being executed
 .C:5dfa  AC B8 70    LDY task_cur_idx
 ;Perform: script_offsets = script_read_pointer - current_script_rsrc_base
-.C:5dfd  AD 15 5E    LDA script_pc_lo
+.C:5dfd  AD 15 5E    LDA task_pc_lo
 .C:5e00  38          SEC
 .C:5e01  ED 8A FE    SBC script_base_lo
 .C:5e04  99 C9 70    STA task_pc_ofs_lo_tbl,Y				
-.C:5e07  AD 16 5E    LDA script_pc_hi
+.C:5e07  AD 16 5E    LDA task_pc_hi
 .C:5e0a  ED 8B FE    SBC script_base_hi
 .C:5e0d  99 B9 70    STA task_pc_ofs_hi_tbl,Y				
 .C:5e10  60          RTS
@@ -21301,9 +21301,9 @@ script_read_byte:
 ;The inlined pointer is a 16-bit address
 ;This is a (fast?) way of implementing a pointer without using indexed addressing
 .C:5e14  AD FF FF    LDA script_pointer
-.C:5e17  EE 15 5E    INC script_pc_lo
+.C:5e17  EE 15 5E    INC task_pc_lo
 .C:5e1a  D0 03       BNE exit
-.C:5e1c  EE 16 5E    INC script_pc_hi
+.C:5e1c  EE 16 5E    INC task_pc_hi
 exit:
 .C:5e1f  60          RTS
 ;===========================================
@@ -21443,7 +21443,7 @@ script_in_memory:
 .C:5eb7  A9 02       LDA #$02
 .C:5eb9  9D 19 71    STA task_type_tbl,X
 ;Launch the script in .X
-.C:5ebc  20 D0 5E    JSR resume_task
+.C:5ebc  20 D0 5E    JSR invoke_task_then_resume_parent
 .C:5ebf  60          RTS
 ;===========================================
 ; Finds the first available script slot
@@ -21475,18 +21475,18 @@ next_script_slot:
 ;
 ; Arguments:	.X	script execution index to launch
 ;===========================================
-resume_task:
+invoke_task_then_resume_parent:
 ;------------------------------------
 ; Save the current script being executed in the stack
 ; so we can resume it afterwards.
 ;------------------------------------
 ; Calculate the current relative offset: subtract script _current pointer_ from script base pointer
 ; Push it into the stack
-.C:5ed0  AD 15 5E    LDA script_pc_lo
+.C:5ed0  AD 15 5E    LDA task_pc_lo
 .C:5ed3  38          SEC
 .C:5ed4  ED 8A FE    SBC script_base_lo
 .C:5ed7  48          PHA
-.C:5ed8  AD 16 5E    LDA script_pc_hi
+.C:5ed8  AD 16 5E    LDA task_pc_hi
 .C:5edb  ED 8B FE    SBC script_base_hi
 .C:5ede  48          PHA
 ;Fetch current script execution index
@@ -21510,7 +21510,7 @@ resume_task:
 .C:5ee8  8E B8 70    STX task_cur_idx
 ;Compute the base address
 .C:5eeb  20 20 5E    JSR set_script_base_from_type
-.C:5eee  20 E3 5D    JSR set_current_script_read_address		;Compute script current pointer using script current offset
+.C:5eee  20 E3 5D    JSR set_current_task_pc		;Compute script current pointer using script current offset
 ;Launch the script
 .C:5ef1  20 97 5D    JSR dispatch_script_ops_loop
 ;Pull script execution index from stack, so we can resume the previous one
@@ -21540,7 +21540,7 @@ resume_previous_script:
 .C:5f0c  99 C9 70    STA task_pc_ofs_lo_tbl,Y
 ;Recompute script addresses
 .C:5f0f  20 20 5E    JSR set_script_base_from_type		;Compute script base pointer based on type/index into FE8A/8B
-.C:5f12  20 E3 5D    JSR set_current_script_read_address		;Compute script current pointer using script current offset
+.C:5f12  20 E3 5D    JSR set_current_task_pc		;Compute script current pointer using script current offset
 .C:5f15  4C 2A 5F    JMP exit
 ;------------------------------------
 resource_mismatch:
@@ -22003,11 +22003,11 @@ set_hi:
 ;Calculate the current relative offset of the script
 ; by subtracting: script_pointer - current_script_base
 ; Save the result in interrupted_script_offset so we can restore it later
-.C:60b6  AD 15 5E    LDA script_pc_lo
+.C:60b6  AD 15 5E    LDA task_pc_lo
 .C:60b9  38          SEC
 .C:60ba  ED 8A FE    SBC script_base_lo
 .C:60bd  8D A4 FE    STA interrupted_script_offset_lo
-.C:60c0  AD 16 5E    LDA script_pc_hi
+.C:60c0  AD 16 5E    LDA task_pc_hi
 .C:60c3  ED 8B FE    SBC script_base_hi
 .C:60c6  8D A5 FE    STA interrupted_script_offset_hi
 ;Save the interrupted script index
@@ -22031,13 +22031,13 @@ script_displace_pointer:
 .C:60db  20 14 5E    JSR script_read_byte
 .C:60de  85 D3       STA >relative_offset
 ;Add offset to script_pointer
-.C:60e0  AD 15 5E    LDA script_pc_lo
+.C:60e0  AD 15 5E    LDA task_pc_lo
 .C:60e3  18          CLC
 .C:60e4  65 D2       ADC <relative_offset
-.C:60e6  8D 15 5E    STA script_pc_lo
-.C:60e9  AD 16 5E    LDA script_pc_hi
+.C:60e6  8D 15 5E    STA task_pc_lo
+.C:60e9  AD 16 5E    LDA task_pc_hi
 .C:60ec  65 D3       ADC >relative_offset
-.C:60ee  8D 16 5E    STA script_pc_lo
+.C:60ee  8D 16 5E    STA task_pc_lo
 .C:60f1  60          RTS
 ;===========================================
 ;Opcode #00, #A0 - stop object code
@@ -23127,18 +23127,18 @@ src_msg_ptr = $15
 
 actor_says_message:
 ;Set the current script pointer as the message address
-.C:6477  AD 15 5E    LDA script_pc_lo
+.C:6477  AD 15 5E    LDA task_pc_lo
 .C:647a  85 15       STA <src_msg_ptr
-.C:647c  AD 16 5E    LDA script_pc_hi
+.C:647c  AD 16 5E    LDA task_pc_hi
 .C:647f  85 16       STA >src_msg_ptr
 ;Print the message
 .C:6481  20 9B 27    JSR prepare_message_for_topbar
 ;Update the script pointer (it has been moved when printing the message)
 ;It points just past the message data
 .C:6484  A5 15       LDA <src_msg_ptr
-.C:6486  8D 15 5E    STA script_pc_lo
+.C:6486  8D 15 5E    STA task_pc_lo
 .C:6489  A5 16       LDA >src_msg_ptr
-.C:648b  8D 16 5E    STA script_pc_hi
+.C:648b  8D 16 5E    STA task_pc_hi
 .C:648e  60          RTS
 ;===========================================
 ;Opcode #0D - player says message
@@ -23157,10 +23157,10 @@ actor_says_message_with_offset:
 ;Add offset to current script pointer to get the message address
 .C:649f  18          CLC
 .C:64a0  A5 15       LDA <offset
-.C:64a2  6D 15 5E    ADC script_pc_lo
+.C:64a2  6D 15 5E    ADC task_pc_lo
 .C:64a5  85 15       STA <src_msg_ptr
 .C:64a7  A5 16       LDA >offset
-.C:64a9  6D 16 5E    ADC script_pc_hi
+.C:64a9  6D 16 5E    ADC task_pc_hi
 .C:64ac  85 16       STA >src_msg_ptr
 ;Subtract 1 from the address
 ; If we call the high and low bytes of src_msg_ptr, "hi" and "lo" respectively, then:
