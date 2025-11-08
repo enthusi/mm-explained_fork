@@ -545,7 +545,7 @@ on_forced_trigger:
         lda     current_preposition         // Check if a preposition has been chosen
         beq     pick_object_under_cursor    // None yet → select DO under cursor
 		
-        jsr     find_actor_enclosing_cursor // Preposition set → pick actor under cursor as IO
+        jsr     find_actor_under_cursor_excl_kid // Preposition set → pick actor under cursor as IO
         jmp     branch_on_cursor_hit        // Continue with common cursor-hit handling
 
 pick_object_under_cursor:                 	
@@ -1453,10 +1453,10 @@ Global Inputs
 
 Global Outputs
 	sentence_bar_needs_refresh             Set TRUE to redraw the sentence bar
-	resource_index_for_script_slot         Bound to object’s resource for script VM
-	script_type_for_script_slot            Script type associated with resource
-	current_script_slot                    Cleared before launching scripts
-	script_offsets_lo/hi				   Computed handler offset (custom path)
+	task_script_idx_tbl         Bound to object’s resource for script VM
+	task_type_tbl            Script type associated with resource
+	task_cur_idx                    Cleared before launching scripts
+	task_ofs_lo_tbl/hi				   Computed handler offset (custom path)
 	object_attributes[x]                   Updated owner on GIVE→kid
 	(refresh) refresh_inventory_io_guarded      Invoked after ownership change
 
@@ -1490,8 +1490,8 @@ execute_verb_handler_for_object:
         ldx     active_do_id_lo                 // X := active object id (low byte)
         lda     active_do_id_hi                 // A := active object id (high byte)
         jsr     resolve_object_resource         // resolve (A:hi, X:lo) → resource; returns Y=index, A=script type
-        sty     resource_index_for_script_slot  // stash Y: resource index for script slot
-        sta     script_type_for_script_slot     // stash A: script type for this slot (room/global)
+        sty     task_script_idx_tbl  // stash Y: resource index for script slot
+        sta     task_type_tbl     // stash A: script type for this slot (room/global)
 
         // ------------------------------------------------------------
         // Get the object's script handler for the verb, if any
@@ -1545,8 +1545,8 @@ launch_global_defaults_script:
         lda     active_verb_id                  // A := current verb id
         sta     var_active_verb_id              // copy to debug var
 		
-        lda     #SCRIPT_SLOT_NONE               // A := sentinel slot (no existing script)
-        sta     current_script_slot             // mark no script bound to this slot
+        lda     #TASK_IDX_NONE               // A := sentinel slot (no existing script)
+        sta     task_cur_idx             // mark no script bound to this slot
 		
         lda     #GLOBAL_DEFAULTS_SCRIPT_ID      // A := id of global defaults script
         jsr     launch_global_script             // start script #3 using seeded verb
@@ -1582,14 +1582,14 @@ launch_custom_handler:
 		// Build pointer to script
         clc                                     
         adc.zp  <room_obj_ofs                   // A := low(addr) = handler_ofs + room_obj_ofs.lo
-        sta     script_offsets_lo               
+        sta     task_ofs_lo_tbl               
         lda     #$00                            
         adc.zp  >room_obj_ofs                   
-        sta     script_offsets_hi               // save high byte of script address
+        sta     task_ofs_hi_tbl               // save high byte of script address
 
 		//Select script slot 0
         lda     #$00                            
-        sta     current_script_slot             
+        sta     task_cur_idx             
 		
 		//Copy IO to debug var
         lda     active_io_id_lo                 
@@ -2037,18 +2037,18 @@ Arguments
 Global Inputs
 	kid_ids[]                  lookup table: UI slot → kid id
 	current_kid_idx            active kid id
-	current_script_slot        active script slot id
+	task_cur_idx        active script slot id
 
 Global Outputs
 	current_kid_idx            ← kid_ids[X]        (if different)
-	current_script_slot        ← $FF               (script stopped)
+	task_cur_idx        ← $FF               (script stopped)
 
 Description
 	• Load kid id from kid_ids[X].
 	• If it matches current_kid_idx, return with no changes.
 	• Otherwise:
 		– Write new kid id to current_kid_idx.
-		– Stop any running script by setting current_script_slot to $FF.
+		– Stop any running script by setting task_cur_idx to $FF.
 		– Recenter camera on the new kid’s actor.
 		– Refresh the items/inventory display.
 	• Execution then falls through to init_sentence_ui_and_stack to reset
@@ -2071,7 +2071,7 @@ commit_kid_change:
         sta     current_kid_idx                 // set active kid id
         sta     current_kid_idx                 // redundant write (kept to mirror original binary)
         lda     #$FF                            // A := sentinel "no active script slot"
-        sta     current_script_slot             // stop or clear current script
+        sta     task_cur_idx             // stop or clear current script
 
         // Recenter camera and refresh inventory
         lda     current_kid_idx                 // A := new active kid for camera routine
