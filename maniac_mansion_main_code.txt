@@ -3975,7 +3975,7 @@ execute_verb_handler_for_object:
 .C:0df7  0D 1D FE    ORA active_io_id_lo
 .C:0dfa  9D 01 73    STA object_attributes,X
 ;Refresh inventory
-.C:0dfd  20 2B 5F    JSR refresh_items_displayed
+.C:0dfd  20 2B 5F    JSR refresh_inventory_io_guarded
 exit:
 .C:0e00  60          RTS
 ;---------------------------------------
@@ -10264,7 +10264,7 @@ change_to_new_kid:
 .C:29c3  AD 67 FF    LDA current_kid_idx
 .C:29c6  20 23 68    JSR fix_camera_on_actor
 ;Refresh inventory displayed
-.C:29c9  20 2B 5F    JSR refresh_items_displayed
+.C:29c9  20 2B 5F    JSR refresh_inventory_io_guarded
 ;===========================================
 ; Resets all components of the sentence queue system
 ;===========================================
@@ -21558,7 +21558,7 @@ resource_mismatch:
 exit:
 .C:5f2a  60          RTS
 ;===========================================
-refresh_items_displayed:
+refresh_inventory_io_guarded:
 ;If control mode is #00 (cutscene), exit
 .C:5f2b  AD A8 FE    LDA control_mode
 .C:5f2e  C9 00       CMP #$00
@@ -22770,7 +22770,7 @@ copy_loop:
 .C:6306  A9 C8       LDA #$C8
 .C:6308  8D 67 06    STA camera_current_position
 .C:630b  20 B4 5D    JSR handle_script_relocation
-.C:630e  20 2B 5F    JSR refresh_items_displayed
+.C:630e  20 2B 5F    JSR refresh_inventory_io_guarded
 .C:6311  60          RTS
 ;===========================================
 ; Loads a room
@@ -22877,7 +22877,7 @@ max_var_index = $d2
 .C:6399  A9 19       LDA #$19
 .C:639b  85 D2       STA max_var_index
 .C:639d  20 C8 63    JSR set_or_clear_bit_on_var
-.C:63a0  4C 2B 5F    JMP refresh_items_displayed
+.C:63a0  4C 2B 5F    JMP refresh_inventory_io_guarded
 ;===========================================
 ; Get actor's bit attribute
 ;Opcode #1B, #5B, #9B, #DB
@@ -23081,7 +23081,7 @@ owner_determined:
 .C:6445  05 D0       ORA owner
 .C:6447  99 01 73    STA object_attributes,Y
 ;Refresh the inventory items displayed
-.C:644a  20 2B 5F    JSR refresh_items_displayed
+.C:644a  20 2B 5F    JSR refresh_inventory_io_guarded
 .C:644d  A5 D0       LDA owner
 .C:644f  20 B4 5D    JSR handle_script_relocation
 .C:6452  60          RTS
@@ -24284,7 +24284,7 @@ copy_object_name:
 ;If not, keep copying
 .C:69fe  D0 F6       BNE copy_object_name
 ;Refresh items displayed in inventory
-.C:6a00  20 2B 5F    JSR refresh_items_displayed
+.C:6a00  20 2B 5F    JSR refresh_inventory_io_guarded
 .C:6a03  60          RTS
 ;===========================================
 ;Opcode #22, #A2 - save/load game
