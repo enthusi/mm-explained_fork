@@ -1369,9 +1369,9 @@ get_walkboxes_ptr:
         clc                               // clear carry for 8-bit addition
         adc     <box_ptr             // add offset to LO; C=1 if wrap occurred
         sta     <box_ptr             // commit updated LO
-        bcc     exit                      // no carry → HI unchanged
+        bcc     exit_gwp                      // no carry → HI unchanged
         inc     >box_ptr             // carry → increment HI to complete pointer
-exit:
+exit_gwp:
         lda     #$00                      // success sentinel in A
         rts                               // return to caller with box_ptr valid
 
