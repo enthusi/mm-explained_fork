@@ -287,7 +287,7 @@ copy_color_column:
 
 /*
 ================================================================================
-mem_fill_x — write X to memory fill_byte_cnt times starting at dest
+mem_fill_x  write X to memory fill_byte_cnt times starting at dest
 
   Arguments:
     X      Fill byte to write to each destination address.
@@ -349,8 +349,112 @@ dec_count_lo:
         bne     fill_loop          // not done → continue
         rts                        // done (Z=1, Y=0, X preserved)
 
+/*
+==============================================================================
+Summary
+	Find the first non-kid actor under the cursor by scanning actor slots from
+	highest to lowest and testing an axis-aligned bounding box in engine units.
 
+Global Inputs
+	costume_for_actor[x]   			Usage flag (bit7) and actor id for slot x
+	actor_x_pos[x]         			Actor left X edge (quarter-char units)
+	actor_y_pos[x]         			Actor bottom Y (half-row off-by-8 domain)
+	cursor_x_pos_quarter_absolute  	Cursor X (quarter-char units)
+	cursor_y_pos_half_off_by_8     	Cursor Y (half-row off-by-8 domain)
+	current_kid_idx        			Index of the player-controlled kid to exclude
 
+Returns
+	A  			FIND_ACTOR_FOUND 		if a non-kid actor is hit
+				FIND_ACTOR_NOT_FOUND 	otherwise
+	X  			Index of the hit costume on success; #$00 if no actor matches
+
+Description
+	- Initialize X to ACTOR_MAX_INDEX and iterate down to 0.
+	- Skip unused slots where costume_for_actor bit7 = 1.
+	- Horizontal hit if cursor X ∈ [actor_x_pos .. actor_x_pos+ACTOR_X_RIGHT_PAD].
+	- Vertical hit if cursor Y ∈ [actor_y_pos−VIEW_COLS .. actor_y_pos],
+	  with the lower bound clamped to CURSOR_Y_MIN_ROW on underflow.
+	- Exclude current_kid_idx from hits.
+	- On first qualifying hit: TAX to return the costume index and set A=FIND_ACTOR_FOUND.
+	- If none match: return X=#$00 and A≠#$02.
+==============================================================================
+*/
+.const ACTOR_X_RIGHT_PAD      = $03    // Inclusive right-edge pad (quarter-char units) for X hit test
+.const CURSOR_Y_MIN_ROW       = $01    // Clamp for top bound after (actor_y_pos - VIEW_COLS) underflow
+.const FIND_ACTOR_FOUND       = $02    // Return code in A when a valid actor is hit
+.const FIND_ACTOR_NOT_FOUND   = $00    // Return code in A when no actor is hit
+
+* = $3BFD
+find_actor_under_cursor_excl_kid:
+        // ------------------------------------------------------------
+        // Iterate actors in X from #$03 down to #$00.
+        // Skip unused actors (costume bit7=1). Stop on first hit.
+        // ------------------------------------------------------------
+        ldx     #ACTOR_MAX_INDEX              // X := highest actor index to test
+
+test_actor_bounds:
+        // ------------------------------------------------------------
+        // Active actor? costume_for_actor bit7=0 means in use.
+        // ------------------------------------------------------------
+        lda     costume_for_actor,x           // A := costume flags for actor X
+        bmi     step_prev_actor_or_exit       // bit7=1 → slot unused → try previous
+
+        // ------------------------------------------------------------
+        // Horizontal test: cursor_x_quarter must be within
+        // [actor_x_pos .. actor_x_pos+ACTOR_X_RIGHT_PAD]
+        // ------------------------------------------------------------
+        lda     actor_x_pos,x                 // A := left X edge (quarter chars)
+        cmp     cursor_x_pos_quarter_absolute // cursor left-of-or-on left edge?
+        beq     check_x_right_edge            // equal → still possible, check right edge
+        bcs     step_prev_actor_or_exit       // carry set → actor_x_pos > cursor_x → left of box
+
+check_x_right_edge:
+        clc                                   
+        adc     #ACTOR_X_RIGHT_PAD            // compute inclusive right edge
+        cmp     cursor_x_pos_quarter_absolute // cursor to the right of box?
+        bcc     step_prev_actor_or_exit       // cursor_x > right edge → no hit
+
+        // ------------------------------------------------------------
+        // Vertical test: cursor_y_half_off8 must be within
+        // [actor_y_pos-#VIEW_COLS .. actor_y_pos]
+        // Clamp lower bound to CURSOR_Y_MIN_ROW if subtraction underflows.
+        // ------------------------------------------------------------
+        lda     actor_y_pos,x                 // A := bottom Y
+        cmp     cursor_y_pos_half_off_by_8    // cursor below bottom?
+        bcc     step_prev_actor_or_exit       // cursor_y > bottom → no hit
+
+        sec                                   // compute bottom - height
+        sbc     #VIEW_COLS                    // tentative top bound
+        bpl     check_y_upper_bound           // no underflow → use computed top
+        lda     #CURSOR_Y_MIN_ROW             // underflow → clamp top to minimal row
+
+check_y_upper_bound:
+        cmp     cursor_y_pos_half_off_by_8    // cursor above top?
+        beq     accept_hit_if_not_kid         // on the top edge → accept path
+        bcs     step_prev_actor_or_exit       // A >= cursor_y implies top >= cursor_y → cursor above
+
+accept_hit_if_not_kid:
+        // ------------------------------------------------------------
+        // Inside actor box. Exclude current kid before accepting.
+        // costume_for_actor is used as actor identifier here.
+        // ------------------------------------------------------------
+        lda     costume_for_actor,x           // A := costume for actor X
+        cmp     current_kid_idx               // is this the player-controlled kid?
+        beq     step_prev_actor_or_exit       // ignore current kid; continue scanning
+
+        tax                                   // X := costume id to return
+        lda     #FIND_ACTOR_FOUND             // A := success code
+        rts                                   // found a non-kid actor under cursor
+
+step_prev_actor_or_exit:
+        dex                                   // X := X-1
+        bpl     test_actor_bounds             // more actors to test? → loop
+
+        // ------------------------------------------------------------
+        // No actor matched. Return X=#$00, A left non-#$02 by design.
+        // ------------------------------------------------------------
+        ldx     #$00                          // canonical “no actor” index
+        rts
 /*
 ================================================================================
   find_object_at_cursor
@@ -398,7 +502,6 @@ Global Outputs
 ================================================================================
 */
 .label candidate_object = $3EA0
-.label ancestor_overlay_req = $15
 .const OBJ_SCAN_START_IDX              = $01    // First room object index to test
 .const NO_OBJECT_IDX                   = $00    // X return value when no hit
 
