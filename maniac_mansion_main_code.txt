@@ -796,8 +796,8 @@ music_track_ptrs_hi = $5499
 ; Resource variables
 ;===========================================================
 ;Read pointer of the current script
-script_read_pointer_lo = $5e15
-script_read_pointer_hi = $5e16
+script_pc_lo = $5e15
+script_pc_hi = $5e16
 
 ;Resource types
 ; #01	object
@@ -815,15 +815,15 @@ object_ptr_hi_tbl = $708b
 ;===================================================
 ; Concurrent script engine variables
 ;===================================================
-current_script_slot = $70B8	;Script slot of script being executed
-script_offsets_hi = $70B9
-script_offsets_lo = $70C9
+task_cur_idx = $70B8	;Script slot of script being executed
+task_ofs_hi_tbl = $70B9
+task_ofs_lo_tbl = $70C9
 ;Script states
 ;Bit 7 set = frozen for cutscene
 ;#00	Inactive (no script)
 ;#01	Paused
 ;#02	Running
-script_state_for_script_slot = $70D9
+task_state_tbl = $70D9
 script_pause_counter_1 = $70e9
 script_pause_counter_2 = $70f9
 script_pause_counter_3 = $7109
@@ -831,8 +831,8 @@ script_pause_counter_3 = $7109
 ;#00 = object script
 ;#01 = room script
 ;#02 = global script
-script_type_for_script_slot = $7119
-resource_index_for_script_slot = $7129
+task_type_tbl = $7119
+task_script_idx_tbl = $7129
 ;===================================================
 
 room_data = $7139
@@ -1425,8 +1425,8 @@ cursor_x_pos_quarter_relative = $fe7e			;Horizontal range #00-27 (00-39)
 cursor_y_pos_half_off_by_8 = $fe7f	;Vertical range #00-5B (00-91)
 cursor_x_pos_quarter_absolute = $fe80	;Horizontal range #07-2E (07-46)
 cur_script_slot = $fe89			;Script engine's slot index for script being executed
-current_script_rsrc_base_lo = $fe8a			;Resource base address of script being executed
-current_script_rsrc_base_hi = $fe8b
+script_base_lo = $fe8a			;Resource base address of script being executed
+script_base_hi = $fe8b
 opcode = $fe8c
 init_sentence_ui_flag = $fe8f
 
@@ -1915,7 +1915,7 @@ start_game:
 .C:04a7  8D 6B 06    STA camera_costume_to_follow
 ;Set current script slot to #FF (no script)
 .C:04aa  A9 FF       LDA #$FF
-.C:04ac  8D B8 70    STA current_script_slot
+.C:04ac  8D B8 70    STA task_cur_idx
 ;Clear engine variables (FEAC-FF14)
 .C:04af  A2 68       LDX #$68
 clear_engine_vars:
@@ -2446,7 +2446,7 @@ check_actor:
 .C:073e  F0 0A       BEQ next_actor
 ;Mark that no script is being executed
 .C:0740  A0 FF       LDY #$FF
-.C:0742  8C B8 70    STY current_script_slot
+.C:0742  8C B8 70    STY task_cur_idx
 ;Play the walking sound resulting from the AND
 .C:0745  20 2E 66    JSR start_sound_entry2
 ;Set .X to #00 to break the loop
@@ -2601,7 +2601,7 @@ sentence_forced_triggered:
 ;-------------------------------------------
 ;Preposition is already set for "give", which means a direct object has been set
 ;Now find the actor under the cursor - to determine the indirect object
-.C:07e8  20 FD 3B    JSR find_actor_enclosing_cursor
+.C:07e8  20 FD 3B    JSR find_actor_under_cursor_excl_kid
 .C:07eb  4C F1 07    JMP check_if_object_found
 ;-------------------------------------------
 find_object_under_cursor:
@@ -3947,8 +3947,8 @@ execute_verb_handler_for_object:
 .C:0dca  AE 1A FE    LDX active_do_id_lo
 .C:0dcd  AD 1B FE    LDA active_do_id_hi
 .C:0dd0  20 05 0A    JSR resolve_object_resource
-.C:0dd3  8C 29 71    STY resource_index_for_script_slot
-.C:0dd6  8D 19 71    STA script_type_for_script_slot
+.C:0dd3  8C 29 71    STY task_script_idx_tbl
+.C:0dd6  8D 19 71    STA task_type_tbl
 ;Get the object's script handler for the verb, if any
 .C:0dd9  AD 19 FE    LDA active_verb_id
 .C:0ddc  20 4A 0E    JSR find_object_verb_handler_offset
@@ -3989,7 +3989,7 @@ run_verb_defaults_script:
 .C:0e08  8D 70 FF    STA var_active_verb_id
 ;Set that no script is being executed
 .C:0e0b  A9 FF       LDA #$FF
-.C:0e0d  8D B8 70    STA current_script_slot
+.C:0e0d  8D B8 70    STA task_cur_idx
 ;Execute global script #3 (verb defaults)
 .C:0e10  A9 03       LDA #$03
 .C:0e12  20 8A 5E    JSR launch_global_script
@@ -4020,14 +4020,14 @@ run_handler:
 ;Add verb index to room_obj_ofs, set result to script_offsets[0]
 .C:0e28  18          CLC
 .C:0e29  65 17       ADC <room_obj_ofs
-.C:0e2b  8D C9 70    STA script_offsets_lo
+.C:0e2b  8D C9 70    STA task_ofs_lo_tbl
 .C:0e2e  A9 00       LDA #$00
 .C:0e30  65 18       ADC >room_obj_ofs
-.C:0e32  8D B9 70    STA script_offsets_hi
+.C:0e32  8D B9 70    STA task_ofs_hi_tbl
 ;---------------------------------------
 ;Set current script slot to #00
 .C:0e35  A9 00       LDA #$00
-.C:0e37  8D B8 70    STA current_script_slot
+.C:0e37  8D B8 70    STA task_cur_idx
 ;Copy debugging variable
 .C:0e3a  AD 1D FE    LDA active_io_id_lo
 .C:0e3d  8D 6C FF    STA var_active_io_id_lo
@@ -10078,12 +10078,12 @@ keyboard_handle_one_key:
 .C:28d4  AE A7 FE    LDX interrupted_script_index
 ;Restore the offsets
 .C:28d7  AD A4 FE    LDA interrupted_script_offset_lo
-.C:28da  9D C9 70    STA script_offsets_lo,X
+.C:28da  9D C9 70    STA task_ofs_lo_tbl,X
 .C:28dd  AD A5 FE    LDA interrupted_script_offset_hi
-.C:28e0  9D B9 70    STA script_offsets_hi,X
+.C:28e0  9D B9 70    STA task_ofs_hi_tbl,X
 ;Set script state as running (#02)
 .C:28e3  A9 02       LDA #$02
-.C:28e5  9D D9 70    STA script_state_for_script_slot,X
+.C:28e5  9D D9 70    STA task_state_tbl,X
 ;Set debugging variable to #01
 .C:28e8  A9 01       LDA #$01
 .C:28ea  8D 6D FF    STA var_destination_x
@@ -10158,7 +10158,7 @@ check_f8_key:
 ; F8 - restart game
 ;---------------------------------
 .C:2945  A9 FF       LDA #$FF		
-.C:2947  8D B8 70    STA current_script_slot
+.C:2947  8D B8 70    STA task_cur_idx
 .C:294a  4C C3 6A    JMP restart_game
 ;---------------------------------
 check_plus_key:
@@ -10208,7 +10208,7 @@ check_function_keys:
 .C:297c  D0 0A       BNE check_new_kid_key
 ;Disable current script execution
 .C:297e  A9 FF       LDA #$FF
-.C:2980  8D B8 70    STA current_script_slot
+.C:2980  8D B8 70    STA task_cur_idx
 ;Execute script #2 (load-save game)
 .C:2983  A9 02       LDA #$02
 .C:2985  4C 8A 5E    JMP launch_global_script		
@@ -10259,7 +10259,7 @@ change_to_new_kid:
 .C:29bb  8D 67 FF    STA current_kid_idx
 ;Stop script execution
 .C:29be  A9 FF       LDA #$FF
-.C:29c0  8D B8 70    STA current_script_slot
+.C:29c0  8D B8 70    STA task_cur_idx
 ;Fix camera on the new kid actor
 .C:29c3  AD 67 FF    LDA current_kid_idx
 .C:29c6  20 23 68    JSR fix_camera_on_actor
@@ -13766,15 +13766,15 @@ execute_room_entry_script:
 entry_script_present:
 ;Set script type to room script
 .C:3a86  A9 01       LDA #$01
-.C:3a88  8D 19 71    STA script_type_for_script_slot
+.C:3a88  8D 19 71    STA task_type_tbl
 ;Load the script in the first slot
 .C:3a8b  AD 58 71    LDA <room_entry_script_ptr
-.C:3a8e  8D C9 70    STA script_offsets_lo
+.C:3a8e  8D C9 70    STA task_ofs_lo_tbl
 .C:3a91  AD 59 71    LDA >room_entry_script_ptr
-.C:3a94  8D B9 70    STA script_offsets_hi
+.C:3a94  8D B9 70    STA task_ofs_hi_tbl
 ;Launch the script
 .C:3a97  A2 00       LDX #$00
-.C:3a99  20 D0 5E    JSR launch_script_in_slot
+.C:3a99  20 D0 5E    JSR resume_task
 .C:3a9c  60          RTS
 ;===========================================
 ; Execute the room exit script, if present
@@ -13789,15 +13789,15 @@ execute_room_exit_script:
 exit_script_present:
 ;Set script type to room script
 .C:3aa6  A9 01       LDA #$01
-.C:3aa8  8D 19 71    STA script_type_for_script_slot
+.C:3aa8  8D 19 71    STA task_type_tbl
 ;Load the script in the first slot
 .C:3aab  AD 56 71    LDA <room_exit_script_ptr
-.C:3aae  8D C9 70    STA script_offsets_lo
+.C:3aae  8D C9 70    STA task_ofs_lo_tbl
 .C:3ab1  AD 57 71    LDA >room_exit_script_ptr
-.C:3ab4  8D B9 70    STA script_offsets_hi
+.C:3ab4  8D B9 70    STA task_ofs_hi_tbl
 ;Launch the script
 .C:3ab7  A2 00       LDX #$00
-.C:3ab9  20 D0 5E    JSR launch_script_in_slot
+.C:3ab9  20 D0 5E    JSR resume_task
 .C:3abc  60          RTS
 ;===========================================
 ; Prepare load of a room data from disk
@@ -13994,7 +13994,7 @@ exit:
 ;					#00 if not
 ;			.X		index of actor found
 ;===========================================
-find_actor_enclosing_cursor:
+find_actor_under_cursor_excl_kid:
 
 ;Use .X as actor index, start at #03, go downwards
 .C:3bfd  A2 03       LDX #$03
@@ -21145,11 +21145,11 @@ init_heap_free_list:
 execute_running_scripts:
 .C:5d71  AE 89 FE    LDX cur_script_slot
 ;Is it running? If not, skip
-.C:5d74  BD D9 70    LDA script_state_for_script_slot,X
+.C:5d74  BD D9 70    LDA task_state_tbl,X
 .C:5d77  C9 02       CMP #$02
 .C:5d79  D0 0C       BNE next_script
 ;Execute the script
-.C:5d7b  8E B8 70    STX current_script_slot
+.C:5d7b  8E B8 70    STX task_cur_idx
 .C:5d7e  20 20 5E    JSR set_script_base_from_type
 .C:5d81  20 E3 5D    JSR set_current_script_read_address	
 .C:5d84  20 97 5D    JSR dispatch_script_ops_loop
@@ -21206,16 +21206,16 @@ debug_semaphore = $2f
 
 refresh_script_addresses_if_moved:
 ;Is there a current script running? If not, exit
-.C:5db4  AD B8 70    LDA current_script_slot
+.C:5db4  AD B8 70    LDA task_cur_idx
 .C:5db7  C9 FF       CMP #$FF
 .C:5db9  F0 27       BEQ exit
 ;Is there a loaded base address for the script resource?
-.C:5dbb  AD 8B FE    LDA current_script_rsrc_base_hi
+.C:5dbb  AD 8B FE    LDA script_base_hi
 ;If so, adjust the script pointers
 .C:5dbe  D0 19       BNE adjust_script_pointers
 ;-------------------------------------
 ;We shouldn't ever reach this section unless there's a bug
-;If there's a running script, current_script_rsrc_base_hi should always be set
+;If there's a running script, script_base_hi should always be set
 ;If semaphore bit 7 is set, skip this section
 .C:5dc0  A5 2F       LDA debug_semaphore
 .C:5dc2  30 15       BMI adjust_script_pointers
@@ -21253,15 +21253,15 @@ exit:
 ;===========================================
 set_current_script_read_address:
 ;Load index of current script being executed
-.C:5de3  AC B8 70    LDY current_script_slot
+.C:5de3  AC B8 70    LDY task_cur_idx
 ;Perform: script_read_pointer = current_script_rsrc_base + script_offsets
-.C:5de6  AD 8A FE    LDA current_script_rsrc_base_lo
+.C:5de6  AD 8A FE    LDA script_base_lo
 .C:5de9  18          CLC
-.C:5dea  79 C9 70    ADC script_offsets_lo,Y
-.C:5ded  8D 15 5E    STA script_read_pointer_lo
-.C:5df0  AD 8B FE    LDA current_script_rsrc_base_hi
-.C:5df3  79 B9 70    ADC script_offsets_hi,Y
-.C:5df6  8D 16 5E    STA script_read_pointer_hi
+.C:5dea  79 C9 70    ADC task_ofs_lo_tbl,Y
+.C:5ded  8D 15 5E    STA script_pc_lo
+.C:5df0  AD 8B FE    LDA script_base_hi
+.C:5df3  79 B9 70    ADC task_ofs_hi_tbl,Y
+.C:5df6  8D 16 5E    STA script_pc_hi
 .C:5df9  60          RTS
 ;===========================================
 ; Computes the current's script relative offset
@@ -21269,15 +21269,15 @@ set_current_script_read_address:
 ;===========================================
 compute_script_relative_offset:
 ;Load index of current script being executed
-.C:5dfa  AC B8 70    LDY current_script_slot
+.C:5dfa  AC B8 70    LDY task_cur_idx
 ;Perform: script_offsets = script_read_pointer - current_script_rsrc_base
-.C:5dfd  AD 15 5E    LDA script_read_pointer_lo
+.C:5dfd  AD 15 5E    LDA script_pc_lo
 .C:5e00  38          SEC
-.C:5e01  ED 8A FE    SBC current_script_rsrc_base_lo
-.C:5e04  99 C9 70    STA script_offsets_lo,Y				
-.C:5e07  AD 16 5E    LDA script_read_pointer_hi
-.C:5e0a  ED 8B FE    SBC current_script_rsrc_base_hi
-.C:5e0d  99 B9 70    STA script_offsets_hi,Y				
+.C:5e01  ED 8A FE    SBC script_base_lo
+.C:5e04  99 C9 70    STA task_ofs_lo_tbl,Y				
+.C:5e07  AD 16 5E    LDA script_pc_hi
+.C:5e0a  ED 8B FE    SBC script_base_hi
+.C:5e0d  99 B9 70    STA task_ofs_hi_tbl,Y				
 .C:5e10  60          RTS
 ;===========================================
 ; Skip a 16-bit offset
@@ -21301,9 +21301,9 @@ script_read_byte:
 ;The inlined pointer is a 16-bit address
 ;This is a (fast?) way of implementing a pointer without using indexed addressing
 .C:5e14  AD FF FF    LDA script_pointer
-.C:5e17  EE 15 5E    INC script_read_pointer_lo
+.C:5e17  EE 15 5E    INC script_pc_lo
 .C:5e1a  D0 03       BNE exit
-.C:5e1c  EE 16 5E    INC script_read_pointer_hi
+.C:5e1c  EE 16 5E    INC script_pc_hi
 exit:
 .C:5e1f  60          RTS
 ;===========================================
@@ -21315,9 +21315,9 @@ exit:
 ;===========================================
 set_script_base_from_type:
 ;Load index of current script being executed
-.C:5e20  AC B8 70    LDY current_script_slot
+.C:5e20  AC B8 70    LDY task_cur_idx
 ;Switch on the script type
-.C:5e23  B9 19 71    LDA script_type_for_script_slot,Y		
+.C:5e23  B9 19 71    LDA task_type_tbl,Y		
 .C:5e26  C9 02       CMP #$02
 .C:5e28  D0 15       BNE is_01
 ;-----------------------------
@@ -21325,14 +21325,14 @@ set_script_base_from_type:
 ;-----------------------------
 ;Copy the script resource base address
 ;Add 4 to skip the header 
-.C:5e2a  BE 29 71    LDX resource_index_for_script_slot,Y
+.C:5e2a  BE 29 71    LDX task_script_idx_tbl,Y
 .C:5e2d  BD 37 7A    LDA script_ptr_lo_tbl,X
 .C:5e30  18          CLC
 .C:5e31  69 04       ADC #$04
-.C:5e33  8D 8A FE    STA current_script_rsrc_base_lo
+.C:5e33  8D 8A FE    STA script_base_lo
 .C:5e36  BD 97 79    LDA script_ptr_hi_tbl,X
 .C:5e39  69 00       ADC #$00
-.C:5e3b  8D 8B FE    STA current_script_rsrc_base_hi
+.C:5e3b  8D 8B FE    STA script_base_hi
 .C:5e3e  60          RTS
 ;-----------------------------
 is_01:
@@ -21344,9 +21344,9 @@ is_01:
 ;Copy the room resource address
 .C:5e43  AE 49 71    LDX current_room
 .C:5e46  BD 2A 78    LDA room_ptr_lo_tbl,X
-.C:5e49  8D 8A FE    STA current_script_rsrc_base_lo
+.C:5e49  8D 8A FE    STA script_base_lo
 .C:5e4c  BD F3 77    LDA room_ptr_hi_tbl,X
-.C:5e4f  8D 8B FE    STA current_script_rsrc_base_hi
+.C:5e4f  8D 8B FE    STA script_base_hi
 .C:5e52  60          RTS
 ;-----------------------------
 is_00:
@@ -21357,11 +21357,11 @@ is_00:
 ;Case #00 - object script
 ;-----------------------------
 ;Copy the object resource address
-.C:5e57  BE 29 71    LDX resource_index_for_script_slot,Y
+.C:5e57  BE 29 71    LDX task_script_idx_tbl,Y
 .C:5e5a  BD 5E 70    LDA object_ptr_lo_tbl,X
-.C:5e5d  8D 8A FE    STA current_script_rsrc_base_lo
+.C:5e5d  8D 8A FE    STA script_base_lo
 .C:5e60  BD 8B 70    LDA object_ptr_hi_tbl,X
-.C:5e63  8D 8B FE    STA current_script_rsrc_base_hi
+.C:5e63  8D 8B FE    STA script_base_hi
 .C:5e66  60          RTS
 ;===========================================
 ; Scans through all in memory scripts,
@@ -21378,25 +21378,25 @@ deactivate_script_by_resource:
 check_script_resource_index:
 ;Compare script resource with the target resource index
 ;If they don't match, skip
-.C:5e69  D9 29 71    CMP resource_index_for_script_slot,Y
+.C:5e69  D9 29 71    CMP task_script_idx_tbl,Y
 .C:5e6c  D0 18       BNE next_script
 ;There's a resource match
 ;Is the script inactive? 
-.C:5e6e  BE D9 70    LDX script_state_for_script_slot,Y
+.C:5e6e  BE D9 70    LDX task_state_tbl,Y
 .C:5e71  E0 00       CPX #$00
 ;If so, skip
 .C:5e73  F0 11       BEQ next_script
 ;------------------
 ;We found a matching active script
 ;Decrement script's memory reference count
-.C:5e75  BE 29 71    LDX resource_index_for_script_slot,Y
+.C:5e75  BE 29 71    LDX task_script_idx_tbl,Y
 .C:5e78  DE D7 7A    DEC script_mem_attrs,X
 ;Clear script resource
 .C:5e7b  A9 00       LDA #$00
-.C:5e7d  99 29 71    STA resource_index_for_script_slot,Y
+.C:5e7d  99 29 71    STA task_script_idx_tbl,Y
 ;Set script state to inactive (#00)
 .C:5e80  A9 00       LDA #$00
-.C:5e82  99 D9 70    STA script_state_for_script_slot,Y
+.C:5e82  99 D9 70    STA task_state_tbl,Y
 .C:5e85  60          RTS
 ;------------------
 next_script:
@@ -21428,22 +21428,22 @@ script_in_memory:
 .C:5e9d  A6 15       LDX script_rsrc_index
 .C:5e9f  FE D7 7A    INC script_mem_attrs,X
 ;Find an available script slot
-.C:5ea2  20 C0 5E    JSR find_free_script_slot
+.C:5ea2  20 C0 5E    JSR find_free_task
 ;Store resource index for the new script
 .C:5ea5  A5 15       LDA script_rsrc_index
-.C:5ea7  9D 29 71    STA resource_index_for_script_slot,X
+.C:5ea7  9D 29 71    STA task_script_idx_tbl,X
 ;Reset script offsets
 .C:5eaa  A9 00       LDA #$00
-.C:5eac  9D B9 70    STA script_offsets_hi,X
-.C:5eaf  9D C9 70    STA script_offsets_lo,X
+.C:5eac  9D B9 70    STA task_ofs_hi_tbl,X
+.C:5eaf  9D C9 70    STA task_ofs_lo_tbl,X
 ;Set script state to running (#02)
 .C:5eb2  A9 02       LDA #$02
-.C:5eb4  9D D9 70    STA script_state_for_script_slot,X
+.C:5eb4  9D D9 70    STA task_state_tbl,X
 ;Set script type to global (#02)
 .C:5eb7  A9 02       LDA #$02
-.C:5eb9  9D 19 71    STA script_type_for_script_slot,X
+.C:5eb9  9D 19 71    STA task_type_tbl,X
 ;Launch the script in .X
-.C:5ebc  20 D0 5E    JSR launch_script_in_slot
+.C:5ebc  20 D0 5E    JSR resume_task
 .C:5ebf  60          RTS
 ;===========================================
 ; Finds the first available script slot
@@ -21452,12 +21452,12 @@ script_in_memory:
 ; Arguments: None
 ; Returns:	.X		script slot index (#10 if none found)
 ;===========================================
-find_free_script_slot:
+find_free_task:
 ;Use .X as script slot index, start at #01, move upwards
 .C:5ec0  A2 01       LDX #$01
 check_script_state:
 ;Check if the script slot state is inactive (#00)
-.C:5ec2  BD D9 70    LDA script_state_for_script_slot,X
+.C:5ec2  BD D9 70    LDA task_state_tbl,X
 .C:5ec5  C9 00       CMP #$00
 ;If not, continue with the next script
 .C:5ec7  D0 01       BNE next_script_slot
@@ -21475,24 +21475,24 @@ next_script_slot:
 ;
 ; Arguments:	.X	script execution index to launch
 ;===========================================
-launch_script_in_slot:
+resume_task:
 ;------------------------------------
 ; Save the current script being executed in the stack
 ; so we can resume it afterwards.
 ;------------------------------------
 ; Calculate the current relative offset: subtract script _current pointer_ from script base pointer
 ; Push it into the stack
-.C:5ed0  AD 15 5E    LDA script_read_pointer_lo
+.C:5ed0  AD 15 5E    LDA script_pc_lo
 .C:5ed3  38          SEC
-.C:5ed4  ED 8A FE    SBC current_script_rsrc_base_lo
+.C:5ed4  ED 8A FE    SBC script_base_lo
 .C:5ed7  48          PHA
-.C:5ed8  AD 16 5E    LDA script_read_pointer_hi
-.C:5edb  ED 8B FE    SBC current_script_rsrc_base_hi
+.C:5ed8  AD 16 5E    LDA script_pc_hi
+.C:5edb  ED 8B FE    SBC script_base_hi
 .C:5ede  48          PHA
 ;Fetch current script execution index
-.C:5edf  AC B8 70    LDY current_script_slot
+.C:5edf  AC B8 70    LDY task_cur_idx
 ;Fetch the script resource index
-.C:5ee2  B9 29 71    LDA resource_index_for_script_slot,Y
+.C:5ee2  B9 29 71    LDA task_script_idx_tbl,Y
 ;Save both in stack
 .C:5ee5  48          PHA
 .C:5ee6  98          TYA
@@ -21507,7 +21507,7 @@ launch_script_in_slot:
 ;
 ;------------------------------------
 ;Set the new execution script index
-.C:5ee8  8E B8 70    STX current_script_slot
+.C:5ee8  8E B8 70    STX task_cur_idx
 ;Compute the base address
 .C:5eeb  20 20 5E    JSR set_script_base_from_type
 .C:5eee  20 E3 5D    JSR set_current_script_read_address		;Compute script current pointer using script current offset
@@ -21525,19 +21525,19 @@ launch_script_in_slot:
 ;------------------------------------
 resume_previous_script:
 ;Reset the previous execution script index
-.C:5efd  8D B8 70    STA current_script_slot
+.C:5efd  8D B8 70    STA task_cur_idx
 .C:5f00  A8          TAY
 ;Restore the script resource index
 .C:5f01  68          PLA
 ;Sanity check - validate that it matches the resource index for the script slot
-.C:5f02  D9 29 71    CMP resource_index_for_script_slot,Y
+.C:5f02  D9 29 71    CMP task_script_idx_tbl,Y
 ;If it doesn't, we shouldn't resume it
 .C:5f05  D0 11       BNE resource_mismatch
 ;Restore previous script's offset
 .C:5f07  68          PLA
-.C:5f08  99 B9 70    STA script_offsets_hi,Y
+.C:5f08  99 B9 70    STA task_ofs_hi_tbl,Y
 .C:5f0b  68          PLA
-.C:5f0c  99 C9 70    STA script_offsets_lo,Y
+.C:5f0c  99 C9 70    STA task_ofs_lo_tbl,Y
 ;Recompute script addresses
 .C:5f0f  20 20 5E    JSR set_script_base_from_type		;Compute script base pointer based on type/index into FE8A/8B
 .C:5f12  20 E3 5D    JSR set_current_script_read_address		;Compute script current pointer using script current offset
@@ -21552,9 +21552,9 @@ resource_mismatch:
 .C:5f1f  68          PLA
 ;Clear the current script's base address
 .C:5f20  A9 00       LDA #$00
-.C:5f22  8D 8A FE    STA current_script_rsrc_base_lo
+.C:5f22  8D 8A FE    STA script_base_lo
 .C:5f25  A9 00       LDA #$00
-.C:5f27  8D 8B FE    STA current_script_rsrc_base_hi
+.C:5f27  8D 8B FE    STA script_base_hi
 exit:
 .C:5f2a  60          RTS
 ;===========================================
@@ -21919,7 +21919,7 @@ handle_paused_scripts:
 .C:6064  A2 0F       LDX #$0F
 check_script:
 ;Is the script paused?
-.C:6066  BD D9 70    LDA script_state_for_script_slot,X
+.C:6066  BD D9 70    LDA task_state_tbl,X
 .C:6069  C9 01       CMP #$01
 ;If not, continue
 .C:606b  D0 14       BNE next_script
@@ -21932,7 +21932,7 @@ check_script:
 .C:607a  D0 05       BNE next_script
 ;If the most significant counter reached 00, unpause the script
 .C:607c  A9 02       LDA #$02
-.C:607e  9D D9 70    STA script_state_for_script_slot,X
+.C:607e  9D D9 70    STA task_state_tbl,X
 next_script:
 .C:6081  CA          DEX
 .C:6082  D0 E2       BNE check_script
@@ -22003,15 +22003,15 @@ set_hi:
 ;Calculate the current relative offset of the script
 ; by subtracting: script_pointer - current_script_base
 ; Save the result in interrupted_script_offset so we can restore it later
-.C:60b6  AD 15 5E    LDA script_read_pointer_lo
+.C:60b6  AD 15 5E    LDA script_pc_lo
 .C:60b9  38          SEC
-.C:60ba  ED 8A FE    SBC current_script_rsrc_base_lo
+.C:60ba  ED 8A FE    SBC script_base_lo
 .C:60bd  8D A4 FE    STA interrupted_script_offset_lo
-.C:60c0  AD 16 5E    LDA script_read_pointer_hi
-.C:60c3  ED 8B FE    SBC current_script_rsrc_base_hi
+.C:60c0  AD 16 5E    LDA script_pc_hi
+.C:60c3  ED 8B FE    SBC script_base_hi
 .C:60c6  8D A5 FE    STA interrupted_script_offset_hi
 ;Save the interrupted script index
-.C:60c9  AD B8 70    LDA current_script_slot
+.C:60c9  AD B8 70    LDA task_cur_idx
 .C:60cc  8D A7 FE    STA interrupted_script_index
 ;The next 3 bytes are read and discarded
 .C:60cf  20 14 5E    JSR script_read_byte
@@ -22031,24 +22031,24 @@ script_displace_pointer:
 .C:60db  20 14 5E    JSR script_read_byte
 .C:60de  85 D3       STA >relative_offset
 ;Add offset to script_pointer
-.C:60e0  AD 15 5E    LDA script_read_pointer_lo
+.C:60e0  AD 15 5E    LDA script_pc_lo
 .C:60e3  18          CLC
 .C:60e4  65 D2       ADC <relative_offset
-.C:60e6  8D 15 5E    STA script_read_pointer_lo
-.C:60e9  AD 16 5E    LDA script_read_pointer_hi
+.C:60e6  8D 15 5E    STA script_pc_lo
+.C:60e9  AD 16 5E    LDA script_pc_hi
 .C:60ec  65 D3       ADC >relative_offset
-.C:60ee  8D 16 5E    STA script_read_pointer_lo
+.C:60ee  8D 16 5E    STA script_pc_lo
 .C:60f1  60          RTS
 ;===========================================
 ;Opcode #00, #A0 - stop object code
 ;===========================================
 stop_object_code:
 ;Load current script index
-.C:60f2  AE B8 70    LDX current_script_slot
+.C:60f2  AE B8 70    LDX task_cur_idx
 ;If it's zero, stop this script
 .C:60f5  F0 06       BEQ stop_this_script
 ;It's nonzero - get the script's resource index
-.C:60f7  BD 29 71    LDA resource_index_for_script_slot,X
+.C:60f7  BD 29 71    LDA task_script_idx_tbl,X
 ;Find and deactivate it
 .C:60fa  20 67 5E    JSR deactivate_script_by_resource
 ;Stop the _current_ script we're executing (the one that ran the stop object code operation)
@@ -22369,14 +22369,14 @@ stop_script_index_check:
 .C:61b1  D0 06       BNE script_nonzero
 script_zero:
 ;The script index provided was #00, so set things to stop the current script
-.C:61b3  AE B8 70    LDX current_script_slot
-.C:61b6  BD 29 71    LDA resource_index_for_script_slot,X
+.C:61b3  AE B8 70    LDX task_cur_idx
+.C:61b6  BD 29 71    LDA task_script_idx_tbl,X
 script_nonzero:
 ;Load the current script index - if it's #00, stop the script
-.C:61b9  AE B8 70    LDX current_script_slot
+.C:61b9  AE B8 70    LDX task_cur_idx
 .C:61bc  F0 08       BEQ stop_script
 ;Check if the current script resource index matches the script index to stop
-.C:61be  DD 29 71    CMP resource_index_for_script_slot,X
+.C:61be  DD 29 71    CMP task_script_idx_tbl,X
 ;If not, stop the current script
 .C:61c1  D0 03       BNE stop_script
 ;The current script resource index does not match the script index to stop
@@ -22395,7 +22395,7 @@ stop_script:
 ;Start the script
 .C:61cd  20 8A 5E    JSR launch_global_script
 ;Sanity check - validate that the current script's base address is non-zero
-.C:61d0  AD 8B FE    LDA current_script_rsrc_base_hi
+.C:61d0  AD 8B FE    LDA script_base_hi
 ;If so, it's valid - exit
 .C:61d3  D0 02       BNE exit
 ;It's zero, so something went wrong
@@ -23127,18 +23127,18 @@ src_msg_ptr = $15
 
 actor_says_message:
 ;Set the current script pointer as the message address
-.C:6477  AD 15 5E    LDA script_read_pointer_lo
+.C:6477  AD 15 5E    LDA script_pc_lo
 .C:647a  85 15       STA <src_msg_ptr
-.C:647c  AD 16 5E    LDA script_read_pointer_hi
+.C:647c  AD 16 5E    LDA script_pc_hi
 .C:647f  85 16       STA >src_msg_ptr
 ;Print the message
 .C:6481  20 9B 27    JSR prepare_message_for_topbar
 ;Update the script pointer (it has been moved when printing the message)
 ;It points just past the message data
 .C:6484  A5 15       LDA <src_msg_ptr
-.C:6486  8D 15 5E    STA script_read_pointer_lo
+.C:6486  8D 15 5E    STA script_pc_lo
 .C:6489  A5 16       LDA >src_msg_ptr
-.C:648b  8D 16 5E    STA script_read_pointer_hi
+.C:648b  8D 16 5E    STA script_pc_hi
 .C:648e  60          RTS
 ;===========================================
 ;Opcode #0D - player says message
@@ -23157,10 +23157,10 @@ actor_says_message_with_offset:
 ;Add offset to current script pointer to get the message address
 .C:649f  18          CLC
 .C:64a0  A5 15       LDA <offset
-.C:64a2  6D 15 5E    ADC script_read_pointer_lo
+.C:64a2  6D 15 5E    ADC script_pc_lo
 .C:64a5  85 15       STA <src_msg_ptr
 .C:64a7  A5 16       LDA >offset
-.C:64a9  6D 16 5E    ADC script_read_pointer_hi
+.C:64a9  6D 16 5E    ADC script_pc_hi
 .C:64ac  85 16       STA >src_msg_ptr
 ;Subtract 1 from the address
 ; If we call the high and low bytes of src_msg_ptr, "hi" and "lo" respectively, then:
@@ -23359,11 +23359,11 @@ destination_variable = $5f76
 .C:6581  A2 0F       LDX #$0F
 check_script:
 ;Check if the script in the slot matches the script index
-.C:6583  DD 29 71    CMP resource_index_for_script_slot,X
+.C:6583  DD 29 71    CMP task_script_idx_tbl,X
 ;If not, continue with next script
 .C:6586  D0 08       BNE next_script
 ;It matches - set result to #01
-.C:6588  BD D9 70    LDA script_state_for_script_slot,X	;Unnecessary line
+.C:6588  BD D9 70    LDA task_state_tbl,X	;Unnecessary line
 .C:658b  A9 01       LDA #$01
 .C:658d  4C 95 65    JMP set_result
 next_script:
@@ -23382,7 +23382,7 @@ set_result:
 ; Opcode #2A - set script pause counters
 ;===========================================
 ;Read 3 bytes and set them as the respective bytes for the pause counters
-.C:659c  AE B8 70    LDX current_script_slot
+.C:659c  AE B8 70    LDX task_cur_idx
 .C:659f  20 14 5E    JSR script_read_byte
 .C:65a2  9D 09 71    STA script_pause_counter_3,X
 .C:65a5  20 14 5E    JSR script_read_byte
@@ -23391,7 +23391,7 @@ set_result:
 .C:65ae  9D E9 70    STA script_pause_counter_1,X
 ;Set script state as paused (#01)
 .C:65b1  A9 01       LDA #$01
-.C:65b3  9D D9 70    STA script_state_for_script_slot,X
+.C:65b3  9D D9 70    STA task_state_tbl,X
 ;Stop script execution
 .C:65b6  4C 00 61    JMP stop_script_execution
 ;===========================================
@@ -23702,15 +23702,15 @@ freeze_noncurrent_scripts:
 .C:6755  A2 0F       LDX #$0F
 check_script_state:
 ;Skip if the script is the current one
-.C:6757  EC B8 70    CPX current_script_slot
+.C:6757  EC B8 70    CPX task_cur_idx
 .C:675a  F0 0C       BEQ next_script
 ; If the script slot is free (state == #00), do nothing
-.C:675c  BD D9 70    LDA script_state_for_script_slot,X
+.C:675c  BD D9 70    LDA task_state_tbl,X
 .C:675f  C9 00       CMP #$00
 .C:6761  F0 05       BEQ next_script
 ; Script's state is paused or running, so set bit 7 to freeze the script
 .C:6763  09 80       ORA #$80
-.C:6765  9D D9 70    STA script_state_for_script_slot,X
+.C:6765  9D D9 70    STA task_state_tbl,X
 next_script:
 .C:6768  CA          DEX
 .C:6769  D0 EC       BNE check_script_state
@@ -23723,9 +23723,9 @@ unfreeze_all_scripts:
 .C:676c  A2 0F       LDX #$0F
 unfreeze_script:
 ;Clear bit 7 of the script
-.C:676e  BD D9 70    LDA script_state_for_script_slot,X
+.C:676e  BD D9 70    LDA task_state_tbl,X
 .C:6771  29 7F       AND #$7F
-.C:6773  9D D9 70    STA script_state_for_script_slot,X
+.C:6773  9D D9 70    STA task_state_tbl,X
 .C:6776  CA          DEX
 .C:6777  D0 F5       BNE unfreeze_script
 .C:6779  60          RTS
@@ -23755,7 +23755,7 @@ save_sentence_part:
 .C:679a  A9 00       LDA #$00
 .C:679c  8D 8E FE    STA forced_sentence_trigger
 ;Save current script
-.C:679f  AD B8 70    LDA current_script_slot
+.C:679f  AD B8 70    LDA task_cur_idx
 .C:67a2  8D A6 FE    STA saved_script_index
 ;Reset script offsets
 .C:67a5  A9 00       LDA #$00
