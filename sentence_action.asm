@@ -1456,7 +1456,7 @@ Global Outputs
 	task_script_idx_tbl         Bound to object’s resource for script VM
 	task_type_tbl            Script type associated with resource
 	task_cur_idx                    Cleared before launching scripts
-	task_pc_lo_tbl/hi				   Computed handler offset (custom path)
+	task_pc_ofs_lo_tbl/hi				   Computed handler offset (custom path)
 	object_attributes[x]                   Updated owner on GIVE→kid
 	(refresh) refresh_inventory_io_guarded      Invoked after ownership change
 
@@ -1582,10 +1582,10 @@ launch_custom_handler:
 		// Build pointer to script
         clc                                     
         adc.zp  <room_obj_ofs                   // A := low(addr) = handler_ofs + room_obj_ofs.lo
-        sta     task_pc_lo_tbl               
+        sta     task_pc_ofs_lo_tbl               
         lda     #$00                            
         adc.zp  >room_obj_ofs                   
-        sta     task_pc_hi_tbl               // save high byte of script address
+        sta     task_pc_ofs_hi_tbl               // save high byte of script address
 
 		//Select script slot 0
         lda     #$00                            

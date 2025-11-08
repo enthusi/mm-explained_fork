@@ -25,7 +25,7 @@ Global Inputs
 	 sid_master_volume_saved            cached SID master volume
 
 Global Outputs
-	 task_pc_lo_tbl/hi[X]            restored PC for resumed script
+	 task_pc_ofs_lo_tbl/hi[X]            restored PC for resumed script
 	 task_state_tbl[X]    set to running when resuming
 	 interrupted_script_offset_lo/hi    cleared after resume attempt
 	 task_cur_idx                set to #$FF before restart/save-load
@@ -107,9 +107,9 @@ keyboard_handle_one_key:
 		//There was an interrupted script, resume it
         ldx     interrupted_script_index      // X := target script index
         lda     interrupted_script_offset_lo  // restore script PC low
-        sta     task_pc_lo_tbl,x
+        sta     task_pc_ofs_lo_tbl,x
         lda     interrupted_script_offset_hi  // restore script PC high
-        sta     task_pc_hi_tbl,x
+        sta     task_pc_ofs_hi_tbl,x
 		
 		// Set script state to running
         lda     #TASK_STATE_RUNNING
