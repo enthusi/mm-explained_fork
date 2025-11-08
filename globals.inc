@@ -591,15 +591,15 @@ They were definitely intended as debugging aids.
 //===================================================
 // Concurrent script engine variables
 //===================================================
-.label current_script_slot = $70B8	//Script slot of script being executed
-.label script_offsets_hi = $70B9
-.label script_offsets_lo = $70C9
+.label task_cur_idx = $70B8	//Script slot of script being executed
+.label task_ofs_hi_tbl = $70B9
+.label task_ofs_lo_tbl = $70C9
 //Script states
 //Bit 7 set = frozen for cutscene
 //#00	Inactive (no script)
 //#01	Paused
 //#02	Running
-.label script_state_for_script_slot = $70D9
+.label task_state_tbl = $70D9
 .label script_pause_counter_1 = $70e9
 .label script_pause_counter_2 = $70f9
 .label script_pause_counter_3 = $7109
@@ -607,8 +607,8 @@ They were definitely intended as debugging aids.
 //#00 = object script
 //#01 = room script
 //#02 = global script
-.label script_type_for_script_slot = $7119
-.label resource_index_for_script_slot = $7129
+.label task_type_tbl = $7119
+.label task_script_idx_tbl = $7129
 .label script_2_mem_attr = $7ad9
 
 .label  vic_color_ram      = $D800
@@ -620,10 +620,10 @@ They were definitely intended as debugging aids.
 
 .label opcode = $fe8c
 .label cur_script_slot = $fe89			//Script engine's slot index for script being executed
-.label current_script_rsrc_base_lo = $fe8a			//Resource base address of script being executed
-.label current_script_rsrc_base_hi = $fe8b
+.label script_base_lo = $fe8a			//Resource base address of script being executed
+.label script_base_hi = $fe8b
 //Read pointer of the current script
-.label script_read_pointer_lo = $5e15
-.label script_read_pointer_hi = $5e16
+.label script_pc_lo = $5e15
+.label script_pc_hi = $5e16
 
 .label ancestor_overlay_req    = $15     // zp: required ancestor bit7 ($00 clear / $80 set)
