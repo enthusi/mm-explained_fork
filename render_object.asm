@@ -127,7 +127,6 @@ Example B (living room): Old rusty key (hanging) from the glass chandelier
 
 // render_room_objects
 .label draw_candidate_idx      = $3EA0   // candidate object index saved for render/advance
-.label ancestor_overlay_req    = $15     // zp: required ancestor bit7 ($00 clear / $80 set)
 
 .const OVERLAY_MASK            = $80     // attributes bit7: needs overlay redraw
 
