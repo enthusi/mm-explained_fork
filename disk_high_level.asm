@@ -89,6 +89,7 @@
 #import "constants.inc"
 #import "disk_low_level.asm"
 #import "pause.asm"
+#import "ui_messages.asm"
 
 /*
  * ===========================================
