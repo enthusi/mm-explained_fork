@@ -268,3 +268,23 @@ screen_row_offsets_lo:
 .const  OWNER_NIBBLE_MASK         = MSK_LOW_NIBBLE  // Mask to extract owner nibble from attributes
 .const  OBJ_NAME_OFS              = $0D    // Byte offset to name pointer within object record
 .const NO_SPRITE                 = $FF    // Sentinel: no sprite assigned
+
+// ------------------------------------------------------------
+// VIC-II control register presets
+// ------------------------------------------------------------
+.const CTRL1_ROOM_REGION_PRESET  = $1C    // $D011: DEN=1, 25 rows, VSCROLL=4, bitmap/ECM=0
+.const CTRL2_ROOM_REGION_PRESET  = $18    // $D016: multicolor ON, 40 cols, HSCROLL=0
+.const CTRL1_INT_REGION_PRESET   = $1D    // $D011: DEN=1, 25 rows, VSCROLL=5 (UI band)
+.const CTRL2_INT_REGION_PRESET   = $09    // $D016: multicolor OFF, 40 cols, HSCROLL=1
+.const CTRL1_BLANK_PRESET 		 = $0B	  // $D011: blank, 25 rows, vscroll 3
+.const VIC_CTRL1_UNBLANK_MASK      = $10    // $D011 OR-mask to set bit 4 (unblank screen per this routine)
+.const VIC_CTRL1_BLANK_MASK    = $EF    // $D011 AND-mask to clear bit 4 (blank screen per this routine)
+// ------------------------------------------------------------
+// VIC memory layout ($D018) presets
+// ------------------------------------------------------------
+.const VIC_LAYOUT_C800          = $26   // Screen base $C800, char base $D800
+.const VIC_LAYOUT_CC00          = $36   // Screen base $CC00, char base $D800
+.const VIC_LAYOUT_CC00_F800     = $3E    // $D018 value: screen at $CC00, character set at $F800
+.const TEXT_CHARSET_LAYOUT       = $3E    // Screen=$CC00, charset=$F800
+
+.const JOY1_FIRE_MASK              = $10    // Joystick #1 fire button bit mask (AND result nonzero → pressed)
