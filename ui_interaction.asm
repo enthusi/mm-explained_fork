@@ -59,7 +59,7 @@
 // Destination pointers (lo at $C7, hi at $C8). Dual use:
 // - Screen character destination
 // - Color RAM row pointer (paired with COLOR_BASE paging logic)
-.label dest_ptr                  = $C7       // ZP pointer to screen destination
+.label scr_dest_ptr                  = $C7       // ZP pointer to screen destination
 
 // ------------------------------------------------------------
 // Hotspot metadata view (decoded fields for current hotspot)
@@ -110,6 +110,53 @@
 .label pos16_lo                = $CB8C    // 16-bit position low (shared scratch)
 .label pos16_hi                = $CB8D    // 16-bit position high
 
+/*
+================================================================================
+refresh_inventory_regions_with_io_guard
+================================================================================
+
+Summary
+    Safely refresh inventory hotspots by temporarily switching to cutscene
+    control mode and banking I/O in, then restoring both on exit.
+
+Global Inputs
+    control_mode      current UI control state; read to decide early exit
+
+Global Outputs
+    control_mode      restored to its prior value after the redraw
+
+Description
+    - If already in cutscene mode, return immediately.
+    - Save current control_mode on the stack and force cutscene mode.
+    - Map in I/O and color RAM via cpu_port.
+    - Call refresh_inventory_regions to redraw items and arrows.
+    - Map I/O back out and restore the original control_mode.
+================================================================================
+*/
+* = $5F2B
+refresh_inventory_io_guarded:
+        lda     control_mode                 // load current control mode
+        cmp     CUTSCENE_CONTROL_MODE        // are we already in cutscene mode?
+        beq     return_early_if_cutscene     // yes → nothing to redraw safely here
+
+        lda     control_mode                 // save previous control mode
+        pha
+        lda     #CUTSCENE_CONTROL_MODE       // force cutscene mode to suppress input/side effects
+        sta     control_mode
+
+        ldy     #MAP_IO_IN                   // map in I/O and color RAM ($D000–$DFFF)
+        sty     cpu_port
+
+        jsr     refresh_inventory_regions    // redraw item names and scroll arrows
+
+        ldy     #MAP_IO_OUT                  // restore normal memory mapping
+        sty     cpu_port
+
+        pla                                  // restore prior control mode
+        sta     control_mode
+
+return_early_if_cutscene:
+        rts                                   
 
 /*
 ================================================================================
@@ -1590,7 +1637,7 @@ Arguments
     None
 
 Vars/State
-    dest_ptr               destination pointer into screen RAM (lo/hi)
+    scr_dest_ptr               destination pointer into screen RAM (lo/hi)
     inlined_column_length  self-modified byte for CPY #column_count
     src_ptr                source pointer for text bytes (lo/hi)
 
@@ -1607,7 +1654,7 @@ Returns
 
 Description
     - Guard: if hotspot_entry_ofs == HOTSPOT_END, return.
-    - Compute dest_ptr = SCREEN_BASE + screen_row_offset[row_start] + col_start.
+    - Compute scr_dest_ptr = SCREEN_BASE + screen_row_offset[row_start] + col_start.
     - Compute column_count = col_end_ex - col_start and patch CPY immediate.
     - Copy bytes from src_ptr:
         • Treat $40 and $00 as space.
@@ -1638,25 +1685,25 @@ blit_text_to_hotspot_row:
 compute_screen_ptr_for_hotspot:
         // ------------------------------------------------------------
         // Compute destination pointer:
-        // dest_ptr = SCREEN_BASE + screen_row_offsets[row_start]
-        // dest_ptr += hotspot_col_start
+        // scr_dest_ptr = SCREEN_BASE + screen_row_offsets[row_start]
+        // scr_dest_ptr += hotspot_col_start
         // ------------------------------------------------------------
         ldy     hotspot_row_start,x
         clc
         lda     screen_row_offsets_lo,y
         adc     #<SCREEN_BASE
-        sta     dest_ptr
+        sta     scr_dest_ptr
         lda     screen_row_offsets_hi,y
         adc     #>SCREEN_BASE
-        sta     dest_ptr+1
+        sta     scr_dest_ptr+1
 
         // Add column offset
         clc
-        lda     dest_ptr
+        lda     scr_dest_ptr
         adc     hotspot_col_start,x
-        sta     dest_ptr
+        sta     scr_dest_ptr
         bcc     calc_hotspot_col_width
-        inc     dest_ptr+1
+        inc     scr_dest_ptr+1
 
 calc_hotspot_col_width:
         // ------------------------------------------------------------
@@ -1690,7 +1737,7 @@ check_space_conversion:
         tax                                    // enter fill mode
 
 emit_char_to_screen:
-        sta     (dest_ptr),y
+        sta     (scr_dest_ptr),y
         iny
         cpy     #$FF                           // patched with col_end_ex
         bne     copy_or_fill_loop
@@ -1710,7 +1757,7 @@ Arguments
     None
 
 Vars/State
-    dest_ptr              destination pointer into color RAM (lo/hi)
+    scr_dest_ptr              destination pointer into color RAM (lo/hi)
     tmp_row_index         working copy of current row index
     inlined_max_column    self-modified byte for CPY #col_end_ex
     inlined_max_row       self-modified byte for CPY #row_end_ex
@@ -1733,7 +1780,7 @@ Description
     - Patch the column and row end limits into inlined_max_column and
       inlined_max_row to drive CPY immediate bounds in the inner loops.
     - For each row from row_start to row_end_ex:
-        • Build dest_ptr = COLOR_BASE + screen_row_offset[row]
+        • Build scr_dest_ptr = COLOR_BASE + screen_row_offset[row]
         • Fill columns [col_start, col_end_ex) with hotspot_text_color.
 
 Notes
@@ -1775,15 +1822,15 @@ row_begin_compute_color_ptr:
 
         // ------------------------------------------------------------
         // Compute color buffer address for this row:
-        // dest_ptr = COLOR_BASE + screen_row_offset[Y]
+        // scr_dest_ptr = COLOR_BASE + screen_row_offset[Y]
         // ------------------------------------------------------------
         clc
         lda     screen_row_offsets_lo,y
         adc     #<COLOR_BASE
-        sta     dest_ptr
+        sta     scr_dest_ptr
         lda     screen_row_offsets_hi,y
         adc     #>COLOR_BASE
-        sta     dest_ptr+1
+        sta     scr_dest_ptr+1
 
         // ------------------------------------------------------------
         // Prepare column loop
@@ -1792,7 +1839,7 @@ row_begin_compute_color_ptr:
         lda     hotspot_text_color
 
 fill_row_colors_loop:
-        sta     (dest_ptr),y
+        sta     (scr_dest_ptr),y
         iny
         cpy     #$FF                         // patched with col_end_ex
         bne     fill_row_colors_loop
