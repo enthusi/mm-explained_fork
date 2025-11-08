@@ -539,7 +539,6 @@ They were definitely intended as debugging aids.
 .label irq_handler = $fffe
 
 //Placeholders for routines not modularized yet
-.label print_message_wait_for_button = $0 // UI: print message pointed by msg_to_print_ptr, wait for button
 .label execute_room_exit_script = $0
 .label execute_room_entry_script = $0
 .label open_shutter_flag = $0
@@ -548,7 +547,6 @@ They were definitely intended as debugging aids.
 .label restart_game = $0
 .label start_global_script = $0
 .label fix_camera_on_actor = $0
-.label refresh_items_displayed = $0
 
 //===========================================================
 // UI 
