@@ -545,7 +545,6 @@ They were definitely intended as debugging aids.
 .label init_sprites_sound = $0
 .label prepare_video_for_new_room = $0
 .label restart_game = $0
-.label start_global_script = $0
 .label fix_camera_on_actor = $0
 
 //===========================================================
@@ -617,3 +616,12 @@ They were definitely intended as debugging aids.
 //Flashlight beam coordinates 
 .label flashlight_beam_x = $fe79
 .label flashlight_beam_y = $fe7a
+
+
+.label opcode = $fe8c
+.label cur_script_slot = $fe89			//Script engine's slot index for script being executed
+.label current_script_rsrc_base_lo = $fe8a			//Resource base address of script being executed
+.label current_script_rsrc_base_hi = $fe8b
+//Read pointer of the current script
+.label script_read_pointer_lo = $5e15
+.label script_read_pointer_hi = $5e16
