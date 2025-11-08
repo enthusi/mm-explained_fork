@@ -1424,7 +1424,7 @@ cursor_y_pos_half = $fe7d				;Vertical range #08-63 (08-99)
 cursor_x_pos_quarter_relative = $fe7e			;Horizontal range #00-27 (00-39)			
 cursor_y_pos_half_off_by_8 = $fe7f	;Vertical range #00-5B (00-91)
 cursor_x_pos_quarter_absolute = $fe80	;Horizontal range #07-2E (07-46)
-current_script_slot = $fe89			;Script engine's slot index for script being executed
+cur_script_slot = $fe89			;Script engine's slot index for script being executed
 current_script_rsrc_base_lo = $fe8a			;Resource base address of script being executed
 current_script_rsrc_base_hi = $fe8b
 opcode = $fe8c
@@ -1958,7 +1958,7 @@ clear_game_variables:
 .C:04f5  20 1C 34    JSR init_raster_irq_env
 ;Start global script #01 (the kid selection screen)
 .C:04f8  A9 01       LDA #$01
-.C:04fa  20 8A 5E    JSR start_global_script
+.C:04fa  20 8A 5E    JSR launch_global_script
 ;Fall through to main loop
 ;===========================================
 ; The main loop of the game engine
@@ -3992,7 +3992,7 @@ run_verb_defaults_script:
 .C:0e0d  8D B8 70    STA current_script_slot
 ;Execute global script #3 (verb defaults)
 .C:0e10  A9 03       LDA #$03
-.C:0e12  20 8A 5E    JSR start_global_script
+.C:0e12  20 8A 5E    JSR launch_global_script
 exit_2:
 .C:0e15  60          RTS
 ;---------------------------------------
@@ -4032,9 +4032,9 @@ run_handler:
 .C:0e3a  AD 1D FE    LDA active_io_id_lo
 .C:0e3d  8D 6C FF    STA var_active_io_id_lo
 ;Set up script execution and launch it
-.C:0e40  20 20 5E    JSR set_script_resource_base_address
+.C:0e40  20 20 5E    JSR set_script_base_from_type
 .C:0e43  20 E3 5D    JSR set_current_script_read_address
-.C:0e46  20 97 5D    JSR execute_next_operation
+.C:0e46  20 97 5D    JSR dispatch_script_ops_loop
 .C:0e49  60          RTS
 ;===========================================
 ; Get an object's script offset for a given verb
@@ -10211,7 +10211,7 @@ check_function_keys:
 .C:2980  8D B8 70    STA current_script_slot
 ;Execute script #2 (load-save game)
 .C:2983  A9 02       LDA #$02
-.C:2985  4C 8A 5E    JMP start_global_script		
+.C:2985  4C 8A 5E    JMP launch_global_script		
 ;---------------------------------
 check_new_kid_key:
 ;Check which control mode is current
@@ -13774,7 +13774,7 @@ entry_script_present:
 .C:3a94  8D B9 70    STA script_offsets_hi
 ;Launch the script
 .C:3a97  A2 00       LDX #$00
-.C:3a99  20 D0 5E    JSR launch_script
+.C:3a99  20 D0 5E    JSR launch_script_in_slot
 .C:3a9c  60          RTS
 ;===========================================
 ; Execute the room exit script, if present
@@ -13797,7 +13797,7 @@ exit_script_present:
 .C:3ab4  8D B9 70    STA script_offsets_hi
 ;Launch the script
 .C:3ab7  A2 00       LDX #$00
-.C:3ab9  20 D0 5E    JSR launch_script
+.C:3ab9  20 D0 5E    JSR launch_script_in_slot
 .C:3abc  60          RTS
 ;===========================================
 ; Prepare load of a room data from disk
@@ -21143,24 +21143,24 @@ init_heap_free_list:
 ; Once the last slot is done, the current script slot is reset back to #01.
 ;===========================================
 execute_running_scripts:
-.C:5d71  AE 89 FE    LDX current_script_slot
+.C:5d71  AE 89 FE    LDX cur_script_slot
 ;Is it running? If not, skip
 .C:5d74  BD D9 70    LDA script_state_for_script_slot,X
 .C:5d77  C9 02       CMP #$02
 .C:5d79  D0 0C       BNE next_script
 ;Execute the script
 .C:5d7b  8E B8 70    STX current_script_slot
-.C:5d7e  20 20 5E    JSR set_script_resource_base_address
+.C:5d7e  20 20 5E    JSR set_script_base_from_type
 .C:5d81  20 E3 5D    JSR set_current_script_read_address	
-.C:5d84  20 97 5D    JSR execute_next_operation
+.C:5d84  20 97 5D    JSR dispatch_script_ops_loop
 next_script:
-.C:5d87  EE 89 FE    INC current_script_slot
-.C:5d8a  AD 89 FE    LDA current_script_slot
+.C:5d87  EE 89 FE    INC cur_script_slot
+.C:5d8a  AD 89 FE    LDA cur_script_slot
 .C:5d8d  C9 10       CMP #$10
 .C:5d8f  D0 E0       BNE execute_running_scripts
 ;Reset script index back to #01
 .C:5d91  A9 01       LDA #$01
-.C:5d93  8D 89 FE    STA current_script_slot
+.C:5d93  8D 89 FE    STA cur_script_slot
 .C:5d96  60          RTS
 ;===========================================
 ; Execute a script's next operation
@@ -21169,7 +21169,7 @@ next_script:
 ; Execution has to be interrupted explicitly by the script  itself, 
 ; giving a chance to other scripts to execute, and even the rest of the game engine itself.
 ;===========================================
-execute_next_operation:
+dispatch_script_ops_loop:
 ;Read an operation byte
 .C:5d97  20 14 5E    JSR script_read_byte
 ;Save it as the "opcode"
@@ -21184,7 +21184,7 @@ execute_next_operation:
 inlined_handler = $5dab
 .C:5daa  20 00 00    JSR $0000		;Inlined address
 ;Process next script operation
-.C:5dad  4C 97 5D    JMP execute_next_operation
+.C:5dad  4C 97 5D    JMP dispatch_script_ops_loop
 ;===========================================
 ; Compute a script's relative offset
 ;
@@ -21204,7 +21204,7 @@ save_script_relative_offset:
 ;===========================================
 debug_semaphore = $2f
 
-handle_script_relocation:
+refresh_script_addresses_if_moved:
 ;Is there a current script running? If not, exit
 .C:5db4  AD B8 70    LDA current_script_slot
 .C:5db7  C9 FF       CMP #$FF
@@ -21242,7 +21242,7 @@ adjust_script_pointers:
 ;With them, we can compute the relative offset
 .C:5dd9  20 FA 5D    JSR compute_script_relative_offset
 ;Reset the script resource base address (now we do use updated blocks that have been moved)
-.C:5ddc  20 20 5E    JSR set_script_resource_base_address	
+.C:5ddc  20 20 5E    JSR set_script_base_from_type	
 ;Recompute the script's read address, now that we have the correct base and correct offset
 .C:5ddf  20 E3 5D    JSR set_current_script_read_address
 exit:
@@ -21313,7 +21313,7 @@ exit:
 ;				#01		room script
 ;				#02		global script
 ;===========================================
-set_script_resource_base_address:
+set_script_base_from_type:
 ;Load index of current script being executed
 .C:5e20  AC B8 70    LDY current_script_slot
 ;Switch on the script type
@@ -21352,7 +21352,7 @@ is_01:
 is_00:
 .C:5e53  C9 00       CMP #$00
 ;Type unknown - deactivate the script
-.C:5e55  D0 10       BNE find_and_deactivate_script
+.C:5e55  D0 10       BNE deactivate_script_by_resource
 ;-----------------------------
 ;Case #00 - object script
 ;-----------------------------
@@ -21372,7 +21372,7 @@ is_00:
 ;
 ; Arguments:	.A	script resource index
 ;===========================================
-find_and_deactivate_script:
+deactivate_script_by_resource:
 ;Use .Y as script index, start from #0F, go downwards
 .C:5e67  A0 0F       LDY #$0F
 check_script_resource_index:
@@ -21410,11 +21410,11 @@ next_script:
 ;===========================================
 script_rsrc_index = $15
 
-start_global_script:
+launch_global_script:
 ;Save the script's resource
 .C:5e8a  85 15       STA script_rsrc_index
 ;Deactive the script first, if needed
-.C:5e8c  20 67 5E    JSR find_and_deactivate_script
+.C:5e8c  20 67 5E    JSR deactivate_script_by_resource
 ;Is the script resource already in memory?
 .C:5e8f  A6 15       LDX script_rsrc_index
 .C:5e91  BD 97 79    LDA script_ptr_hi_tbl,X
@@ -21422,13 +21422,13 @@ start_global_script:
 ;It's not in memory, load it
 .C:5e96  8A          TXA
 .C:5e97  20 29 3A    JSR rsrc_ensure_script_resident
-.C:5e9a  20 B4 5D    JSR handle_script_relocation
+.C:5e9a  20 B4 5D    JSR refresh_script_addresses_if_moved
 script_in_memory:
 ;Increment script's memory refcount
 .C:5e9d  A6 15       LDX script_rsrc_index
 .C:5e9f  FE D7 7A    INC script_mem_attrs,X
 ;Find an available script slot
-.C:5ea2  20 C0 5E    JSR find_available_script_slot
+.C:5ea2  20 C0 5E    JSR find_free_script_slot
 ;Store resource index for the new script
 .C:5ea5  A5 15       LDA script_rsrc_index
 .C:5ea7  9D 29 71    STA resource_index_for_script_slot,X
@@ -21443,7 +21443,7 @@ script_in_memory:
 .C:5eb7  A9 02       LDA #$02
 .C:5eb9  9D 19 71    STA script_type_for_script_slot,X
 ;Launch the script in .X
-.C:5ebc  20 D0 5E    JSR launch_script
+.C:5ebc  20 D0 5E    JSR launch_script_in_slot
 .C:5ebf  60          RTS
 ;===========================================
 ; Finds the first available script slot
@@ -21452,7 +21452,7 @@ script_in_memory:
 ; Arguments: None
 ; Returns:	.X		script slot index (#10 if none found)
 ;===========================================
-find_available_script_slot:
+find_free_script_slot:
 ;Use .X as script slot index, start at #01, move upwards
 .C:5ec0  A2 01       LDX #$01
 check_script_state:
@@ -21475,7 +21475,7 @@ next_script_slot:
 ;
 ; Arguments:	.X	script execution index to launch
 ;===========================================
-launch_script:
+launch_script_in_slot:
 ;------------------------------------
 ; Save the current script being executed in the stack
 ; so we can resume it afterwards.
@@ -21509,10 +21509,10 @@ launch_script:
 ;Set the new execution script index
 .C:5ee8  8E B8 70    STX current_script_slot
 ;Compute the base address
-.C:5eeb  20 20 5E    JSR set_script_resource_base_address
+.C:5eeb  20 20 5E    JSR set_script_base_from_type
 .C:5eee  20 E3 5D    JSR set_current_script_read_address		;Compute script current pointer using script current offset
 ;Launch the script
-.C:5ef1  20 97 5D    JSR execute_next_operation
+.C:5ef1  20 97 5D    JSR dispatch_script_ops_loop
 ;Pull script execution index from stack, so we can resume the previous one
 .C:5ef4  68          PLA
 ;If it's #FF, then nothing was being executed, clean stack and exit
@@ -21539,7 +21539,7 @@ resume_previous_script:
 .C:5f0b  68          PLA
 .C:5f0c  99 C9 70    STA script_offsets_lo,Y
 ;Recompute script addresses
-.C:5f0f  20 20 5E    JSR set_script_resource_base_address		;Compute script base pointer based on type/index into FE8A/8B
+.C:5f0f  20 20 5E    JSR set_script_base_from_type		;Compute script base pointer based on type/index into FE8A/8B
 .C:5f12  20 E3 5D    JSR set_current_script_read_address		;Compute script current pointer using script current offset
 .C:5f15  4C 2A 5F    JMP exit
 ;------------------------------------
@@ -22050,7 +22050,7 @@ stop_object_code:
 ;It's nonzero - get the script's resource index
 .C:60f7  BD 29 71    LDA resource_index_for_script_slot,X
 ;Find and deactivate it
-.C:60fa  20 67 5E    JSR find_and_deactivate_script
+.C:60fa  20 67 5E    JSR deactivate_script_by_resource
 ;Stop the _current_ script we're executing (the one that ran the stop object code operation)
 ; by pulling the return address from the stack
 stop_this_script:
@@ -22383,7 +22383,7 @@ script_nonzero:
 ;So stop the object code
 .C:61c3  4C F2 60    JMP stop_object_code
 stop_script:
-.C:61c6  20 67 5E    JSR find_and_deactivate_script
+.C:61c6  20 67 5E    JSR deactivate_script_by_resource
 .C:61c9  60          RTS
 ;===========================================
 ; Start a script
@@ -22393,14 +22393,14 @@ stop_script:
 ;Load operand (script index)
 .C:61ca  20 98 5F    JSR script_load_operand_bit7
 ;Start the script
-.C:61cd  20 8A 5E    JSR start_global_script
+.C:61cd  20 8A 5E    JSR launch_global_script
 ;Sanity check - validate that the current script's base address is non-zero
 .C:61d0  AD 8B FE    LDA current_script_rsrc_base_hi
 ;If so, it's valid - exit
 .C:61d3  D0 02       BNE exit
 ;It's zero, so something went wrong
 ;Stop the _current_ script we're executing by pulling the return address from the stack
-;The return address would return execution to execute_next_operation
+;The return address would return execution to dispatch_script_ops_loop
 ;By eliminating that routine from the stack, the script execution is effectively halted
 .C:61d5  68          PLA
 .C:61d6  68          PLA
@@ -22769,7 +22769,7 @@ copy_loop:
 ;Set default camera position
 .C:6306  A9 C8       LDA #$C8
 .C:6308  8D 67 06    STA camera_current_position
-.C:630b  20 B4 5D    JSR handle_script_relocation
+.C:630b  20 B4 5D    JSR refresh_script_addresses_if_moved
 .C:630e  20 2B 5F    JSR refresh_inventory_io_guarded
 .C:6311  60          RTS
 ;===========================================
@@ -22791,7 +22791,7 @@ room_index = $d0
 .C:6321  20 66 34    JSR load_room
 room_loaded:
 ;Room loaded
-.C:6324  20 B4 5D    JSR handle_script_relocation
+.C:6324  20 B4 5D    JSR refresh_script_addresses_if_moved
 ;Set default camera position
 .C:6327  A9 C8       LDA #$C8
 .C:6329  8D 67 06    STA camera_current_position
@@ -23083,7 +23083,7 @@ owner_determined:
 ;Refresh the inventory items displayed
 .C:644a  20 2B 5F    JSR refresh_inventory_io_guarded
 .C:644d  A5 D0       LDA owner
-.C:644f  20 B4 5D    JSR handle_script_relocation
+.C:644f  20 B4 5D    JSR refresh_script_addresses_if_moved
 .C:6452  60          RTS
 ;===========================================
 ; Remove object from inventory
@@ -23431,7 +23431,7 @@ sound_code_ptr_hi = $6622
 ;Load the music matching the disk side number
 .C:65dc  48          PHA
 .C:65dd  20 E6 39    JSR load_sound
-.C:65e0  20 B4 5D    JSR handle_script_relocation
+.C:65e0  20 B4 5D    JSR refresh_script_addresses_if_moved
 .C:65e3  68          PLA
 .C:65e4  AA          TAX
 play_music:
@@ -23468,7 +23468,7 @@ inlined_music_init_code_ptr = $6621
 ;map_out_io
 .C:6623  A0 24       LDY #$24
 .C:6625  84 01       STY cpu_port
-.C:6627  20 B4 5D    JSR handle_script_relocation
+.C:6627  20 B4 5D    JSR refresh_script_addresses_if_moved
 .C:662a  60          RTS
 ;===========================================
 ;Opcode #1C, #5C, #9C, #DC - start sound
@@ -23499,7 +23499,7 @@ start_sound_entry2:
 ;map_out_io
 .C:664b  A0 24       LDY #$24
 .C:664d  84 01       STY cpu_port
-.C:664f  20 B4 5D    JSR handle_script_relocation
+.C:664f  20 B4 5D    JSR refresh_script_addresses_if_moved
 .C:6652  60          RTS
 ;===========================================
 ;Opcode #76, #F6 - walk actor to object, mode #01 (object in room)
@@ -23571,7 +23571,7 @@ move_actor:
 .C:66a2  8D EA FD    STA room_destination
 ;Move actor to destination
 .C:66a5  20 9C 26    JSR teleport_costume_to_destination
-.C:66a8  20 B4 5D    JSR handle_script_relocation
+.C:66a8  20 B4 5D    JSR refresh_script_addresses_if_moved
 .C:66ab  60          RTS
 ;===========================================
 ;Opcode #15, #55, #95, #D5 - walk actor to actor
@@ -23644,7 +23644,7 @@ both_actors_assigned:
 .C:670c  8D EA FD    STA room_destination
 ;Move actor to destination
 .C:670f  20 9C 26    JSR teleport_costume_to_destination
-.C:6712  20 B4 5D    JSR handle_script_relocation
+.C:6712  20 B4 5D    JSR refresh_script_addresses_if_moved
 .C:6715  60          RTS
 ;===========================================
 ;Opcode #2D, #6D, #AD, #ED - put actor in room
@@ -23847,7 +23847,7 @@ exit:
 fix_camera_on_actor_2:
 ;Fix camera on actor
 .C:681c  20 23 68    JSR fix_camera_on_actor
-.C:681f  20 B4 5D    JSR handle_script_relocation
+.C:681f  20 B4 5D    JSR refresh_script_addresses_if_moved
 .C:6822  60          RTS
 ;===========================================
 ; Fix camera on an actor
@@ -24312,7 +24312,7 @@ save_state:
 set_variable:
 .C:6a21  A6 D0       LDX destination_variable
 .C:6a23  9D 67 FF    STA game_vars,X
-.C:6a26  20 B4 5D    JSR handle_script_relocation
+.C:6a26  20 B4 5D    JSR refresh_script_addresses_if_moved
 .C:6a29  20 1C 34    JSR init_raster_irq_env
 .C:6a2c  60          RTS
 ;===========================================
@@ -24323,7 +24323,7 @@ set_variable:
 .C:6a30  AA          TAX
 ;Load costume
 .C:6a31  20 A8 38    JSR load_costume
-.C:6a34  20 B4 5D    JSR handle_script_relocation
+.C:6a34  20 B4 5D    JSR refresh_script_addresses_if_moved
 .C:6a37  60          RTS
 ;===========================================
 ;Operand #4A, #CA - load room - intended to load a room resource into memory just to further get subresources from it
@@ -24334,7 +24334,7 @@ set_variable:
 .C:6a3b  AA          TAX
 ;Load room resource
 .C:6a3c  20 33 38    JSR load_room_resource
-.C:6a3f  20 B4 5D    JSR handle_script_relocation
+.C:6a3f  20 B4 5D    JSR refresh_script_addresses_if_moved
 .C:6a42  60          RTS
 ;===========================================
 ; Load script
@@ -24344,7 +24344,7 @@ set_variable:
 .C:6a43  20 98 5F    JSR script_load_operand_bit7
 ;Load script resource
 .C:6a46  20 29 3A    JSR rsrc_ensure_script_resident
-.C:6a49  20 B4 5D    JSR handle_script_relocation
+.C:6a49  20 B4 5D    JSR refresh_script_addresses_if_moved
 .C:6a4c  60          RTS
 ;===========================================
 ;Opcode #0C - load sound
@@ -24353,7 +24353,7 @@ set_variable:
 .C:6a4d  20 98 5F    JSR script_load_operand_bit7
 ;Load sound
 .C:6a50  20 E6 39    JSR load_sound
-.C:6a53  20 B4 5D    JSR handle_script_relocation
+.C:6a53  20 B4 5D    JSR refresh_script_addresses_if_moved
 .C:6a56  60          RTS
 ;===========================================
 ;Opcode #20 - stop music
