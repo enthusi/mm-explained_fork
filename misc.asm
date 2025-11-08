@@ -351,3 +351,167 @@ dec_count_lo:
 
 
 
+* = $3C3E
+
+.label candidate_object = $3EA0
+.label ancestor_overlay_req = $15
+.label check_cursor_contained_within_object = $0
+.const  OBJ_SCAN_START_IDX              = $01    // First room object index to test
+.const  NO_OBJECT_IDX                   = $00    // X return value when no hit
+
+/*
+================================================================================
+Summary
+    Identify the room object under the current cursor and return its global
+    object index. Iterates room objects, filters removed mutable objects,
+    resolves parent containment, then dispatches to a bounds hit test.
+
+Arguments
+    None (uses globals; cursor position consumed by the hit-test routine)
+
+Returns
+    On hit:
+        A = obj_idx_hi
+        X = obj_idx_lo
+    On miss:
+        X = #$00  
+
+Description
+    • Early-exit if there are no room objects.
+    • Scan room indices from 1..room_obj_count inclusive.
+    • Immutable objects (hi≠0) are always candidates.
+    • Mutable objects are skipped if "removed from room" (attributes bit5).
+    • If a parent link exists, compare parent "inside" flag (bit7) against the
+      required overlay state; on match, promote parent and re-check to support
+      multi-level ancestry.
+    • On a candidate, tail-jump to the bounds routine which sets A/X on hit.
+
+Vars/State
+    candidate_object         Temp room-object index latched for parent/hit checks.
+    ancestor_overlay_req     Temp required overlay/inside state for parent compare.
+
+Global Inputs
+    room_obj_count           Total room objects; determines loop bounds.
+    room_obj_idx_hi/lo       Map room index → global object index; hi≠0 marks immutable.
+    object_attributes        Per-object flags; bit5=removed, bit7=inside-parent.
+    parent_idx_tbl           Room-indexed parent link; 0 means no parent.
+    ancestor_overlay_req_tbl Required inside/overlay state for containment check.
+    (cursor position)        Consumed by check_cursor_contained_within_object.
+
+Global Outputs
+    candidate_object         Updated while scanning to hold current candidate.
+    ancestor_overlay_req     Written with requirement byte for parent comparison.
+================================================================================
+*/
+find_object_at_cursor:
+        // ------------------------------------------------------------
+        // Check for presence of room objects
+        //
+        // - Loads the total room object count.
+        // - If count = 0, return immediately (no scan required).
+        // - Otherwise, branch to initialization of object scan loop.
+        // ------------------------------------------------------------
+        ldx     room_obj_count                 // Load room object count; if zero, no scan needed
+        bne     init_object_scan               // If X != 0, branch to init; else return
+        rts                                    // No objects in room → exit
+
+        // ------------------------------------------------------------
+        // Initialize room object scan
+        //
+        // - Begin iteration at the first valid room object index.
+        // - Each loop checks whether the object is immutable (always
+        //   present) or mutable (presence depends on attributes).
+        // ------------------------------------------------------------
+init_object_scan:
+        ldx     #OBJ_SCAN_START_IDX            // Initialize scan at first testable room object index
+
+scan_room_objects:
+        lda     room_obj_idx_hi,x              // Check immutability: hi≠0 means object is always present
+        beq     path_mutable_check             // If hi==0, object is mutable
+        jmp     latch_candidate_room_idx       // Immutable → treat as candidate
+
+        // ------------------------------------------------------------
+        // Validate mutable object presence
+        // - Map room index to global index
+        // - Skip if removed-from-room flag (bit5) is set
+        // ------------------------------------------------------------
+path_mutable_check:
+        ldy     room_obj_idx_lo,x              // Map room index X → global object index in Y
+        lda     object_attributes,y            // Load global object attributes
+        and     #ATTR_REMOVED_FROM_ROOM_MASK   // Mask “removed from room” bit5
+        bne     move_to_next_object            // Skip if removed
+
+        // ------------------------------------------------------------
+        // Latch candidate room index
+        // - Preserve current room object index for parent checks and
+        //   bounds testing
+        // ------------------------------------------------------------
+latch_candidate_room_idx:
+        stx     candidate_object               // Cache current room object index as candidate
+
+        // ------------------------------------------------------------
+        // Resolve parent containment
+        // - Load required overlay/inside state for this object
+        // - If a parent exists, confirm its “inside” flag matches the
+        //   required state; on match, promote parent and re-check
+        // - If no parent, proceed to bounds test
+        // ------------------------------------------------------------
+resolve_parent_containment:
+        lda     ancestor_overlay_req_tbl,x     // Load required parent/overlay state
+        sta     ancestor_overlay_req           // Save requirement for comparison
+        lda     parent_idx_tbl,x               // Read parent link; zero means no parent
+        bne     ancestor_link_present          // If parent exists, validate containment
+        jmp     hit_test_candidate_bounds      // No parent → check cursor bounds
+
+        // ------------------------------------------------------------
+        // Validate ancestor link and promote if required
+        // - Y := parent room index; map to parent’s global index in X
+        // - Compare parent “inside” flag (bit7) with required overlay
+        // - On mismatch, skip candidate; on match, promote parent and
+        //   re-check to support multi-level ancestry
+        // ------------------------------------------------------------
+ancestor_link_present:
+        tay                                    // Y := parent room index
+        lda     room_obj_idx_lo,y              // Load parent’s global object index (lo)
+        tax                                    // X := parent’s global object index
+
+        lda     object_attributes,x            // Load parent’s attributes
+        and     #ATTR_INSIDE_PARENT_MASK       // Isolate parent “inside” flag bit7
+        cmp     ancestor_overlay_req           // Compare flag to required overlay state
+        bne     skip_due_to_ancestor_req_mismatch // Mismatch → skip this candidate
+
+        tya                                    // Match → promote parent as new subject
+        tax                                    // X := parent index
+        jmp     resolve_parent_containment     // Recurse to check multi-level ancestry
+
+        // ------------------------------------------------------------
+        // Skip candidate on ancestor requirement mismatch
+        // - Restore the original candidate room index
+        // - Continue scanning with the next room object
+        // ------------------------------------------------------------
+skip_due_to_ancestor_req_mismatch:
+        ldx     candidate_object               // Restore original candidate room index
+        jmp     move_to_next_object            // Skip to next object in outer scan
+
+        // ------------------------------------------------------------
+        // Hit-test candidate bounds against cursor
+        // - Restore candidate room index
+        // - Tail-jump to cursor containment test routine
+        // ------------------------------------------------------------
+hit_test_candidate_bounds:
+        ldx     candidate_object               // Restore candidate room index
+        jmp     check_cursor_contained_within_object // Jump to cursor-in-bounds test
+
+        // ------------------------------------------------------------
+        // Advance to next room object
+        // - Increment X and compare with room_obj_count
+        // - Inclusive loop: if X == room_obj_count, iterate once more
+        // ------------------------------------------------------------
+move_to_next_object:
+        inx                                    // Increment X (next room object index)
+        cpx     room_obj_count                 // Compare with total object count
+        bcc     scan_room_objects              // Continue if below limit
+        beq     scan_room_objects              // Include final index (equal case)
+		
+        ldx     #NO_OBJECT_IDX                 // Exhausted all objects → X := #$00
+        rts                                    // Return (no hit)
