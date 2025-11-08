@@ -303,3 +303,5 @@ screen_row_offsets_lo:
 
 .const SCRIPT_SLOT_TOTAL = $10
 .const SCRIPT_SLOT_MAX_INDEX = SCRIPT_SLOT_TOTAL - 1 
+
+.const ENTITY_NONE                = $00    // No destination entity selected/active
