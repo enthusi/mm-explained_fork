@@ -294,3 +294,12 @@ screen_row_offsets_lo:
 .const  ATTR_INSIDE_PARENT_MASK         = $80    // object_attributes bit7: inside parent flag
 
 .const  NO_PARENT_IDX                   = $00    // parent index value meaning “no parent”
+.const  SCRIPT_STATE_RUNNING    = $02    // resume state for script slot
+.const  SCRIPT_STATE_INACTIVE    = $00
+.const SCRIPT_SLOT_NONE           = $FF    // No script running (idle slot sentinel)
+.const SCRIPT_TYPE_GLOBAL = $02
+.const SCRIPT_TYPE_ROOM = $01
+.const SCRIPT_TYPE_OBJECT = $00
+
+.const SCRIPT_SLOT_TOTAL = $10
+.const SCRIPT_SLOT_MAX_INDEX = SCRIPT_SLOT_TOTAL - 1 
