@@ -122,7 +122,7 @@ Verb execution
 		  * Else run the global defaults script (#3).
 		* Guard: READ requires lights; if dark, fall back to global defaults.
 		* If a custom handler exists: compute its script offset from the object’s
-		  base, set script read address, and execute_next_operation.
+		  base, set script read address, and dispatch_script_ops_loop.
 
 Helper scans and guards
 	find_object_verb_handler_offset:
@@ -298,9 +298,9 @@ Typical traces
         else:
           compute absolute script offset from room_obj_ofs + A
           seed script state (var_active_io_id_lo, script_offsets_*,
-                        set_script_resource_base_address,
+                        set_script_base_from_type,
                         set_current_script_read_address)
-          execute_next_operation, rts
+          dispatch_script_ops_loop, rts
 
 ┌────────────────────────────────────┐
 │ find_object_verb_handler_offset    │
@@ -334,9 +334,9 @@ Typical traces
 #import "ui_interaction.asm"
 
 .label find_actor_enclosing_cursor = $0
-.label set_script_resource_base_address = $0
+.label set_script_base_from_type = $0
 .label set_current_script_read_address = $0
-.label execute_next_operation = $0
+.label dispatch_script_ops_loop = $0
 
 // Queued sentence parts (parallel LIFO stacks, max depth = 6)
 .label stacked_verb_ids        = $fe25    // Stack of verb IDs (index 0..5; top tracked separately)
@@ -378,7 +378,6 @@ Typical traces
 .const OBJ_IDX_NONE               = $00    // Sentinel lo byte for “no object selected”
 .const PREPOSITION_NONE           = $00    // No preposition selected
 
-.const SCRIPT_SLOT_NONE           = $FF    // No script running (idle slot sentinel)
 .const GLOBAL_DEFAULTS_SCRIPT_ID  = $03    // Global “verb defaults” script identifier
 
 .const DEFAULT_VERB_WALK_TO       = WALK_TO_VERB    // Verb id for “Walk to” default case
@@ -1478,7 +1477,7 @@ Description
 			  – If verb = READ and lights are off: fall back to defaults script.
 			  – Else compute absolute script offset (room_obj_ofs + handler_ofs),
 			  seed VM state (script_offsets_*), set base and read address, 
-			  then execute_next_operation.
+			  then dispatch_script_ops_loop.
 ================================================================================
 */
 * = $0DC5
@@ -1554,7 +1553,7 @@ launch_global_defaults_script:
         sta     current_script_slot             // mark no script bound to this slot
 		
         lda     #GLOBAL_DEFAULTS_SCRIPT_ID      // A := id of global defaults script
-        jsr     start_global_script             // start script #3 using seeded verb
+        jsr     launch_global_script             // start script #3 using seeded verb
 		
 return_after_walk_to:
         rts                                     // return to caller (no further handling needed)
@@ -1601,9 +1600,9 @@ launch_custom_handler:
         sta     var_active_io_id_lo             
 		
 		//Execute script
-        jsr     set_script_resource_base_address// set resource base for this script context
+        jsr     set_script_base_from_type// set resource base for this script context
         jsr     set_current_script_read_address // set PC/read pointer to script_offsets_{hi,lo}
-        jsr     execute_next_operation          // execute first script opcode
+        jsr     dispatch_script_ops_loop          // execute first script opcode
         rts                                     
 /*
 ================================================================================
