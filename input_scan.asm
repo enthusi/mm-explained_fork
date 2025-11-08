@@ -132,7 +132,7 @@
  *   so that no keyboard rows are selected and only joystick switches are seen.
  * -------------------------------------------------------------------------------
  */
-
+#importonce
 #import "registers.inc"
 #import "globals.inc"
 
