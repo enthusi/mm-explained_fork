@@ -929,7 +929,7 @@ dispatch_traverse_vert:
 dispatch_regular_motion:
         cmp     #MOTION_WALKING                // check for regular walking mode
         beq     step_regular_motion            // yes → run per-axis DDA stepping
-        jmp     exit                           // no → leave routine (no walking step this frame)
+        jmp     exit_saap                      // no → leave routine (no walking step this frame)
 
         // ------------------------------------------------------------
         // Regular in-box walking step
@@ -1091,7 +1091,7 @@ commit_x_dirmask_and_walk:
         jsr     resolve_turning_and_facing     // update facing based on new X-axis direction
         jsr     apply_walking_clip    // apply walking animation for updated facing
         jmp     traverse_vertically        // proceed with vertical walkbox traversal
-
+exit_saap:
         rts                                     // unreachable (kept for alignment/consistency)
 /*
 ================================================================================
