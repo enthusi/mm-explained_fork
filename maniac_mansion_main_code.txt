@@ -824,9 +824,9 @@ task_pc_ofs_lo_tbl = $70C9
 ;#01	Paused
 ;#02	Running
 task_state_tbl = $70D9
-script_pause_counter_1 = $70e9
-script_pause_counter_2 = $70f9
-script_pause_counter_3 = $7109
+task_pause_counter_1 = $70e9
+task_pause_counter_2 = $70f9
+task_pause_counter_3 = $7109
 ;Script types
 ;#00 = object script
 ;#01 = room script
@@ -5804,7 +5804,7 @@ section_entry:
 ;If the game is paused, skip these actions
 .C:17b4  D0 25       BNE do_keyboard
 .C:17b6  20 62 28    JSR tick_topbar_message
-.C:17b9  20 64 60    JSR handle_paused_scripts
+.C:17b9  20 64 60    JSR handle_paused_tasks
 ;--------------------------------------------------
 ; Cursor color change
 ;--------------------------------------------------
@@ -21915,7 +21915,7 @@ exit:
 ; And so on with carry propagation with counter_1.
 ; When counter_1 reaches 0, the script is unpaused.
 ;===========================================
-handle_paused_scripts:
+handle_paused_tasks:
 .C:6064  A2 0F       LDX #$0F
 check_script:
 ;Is the script paused?
@@ -21924,11 +21924,11 @@ check_script:
 ;If not, continue
 .C:606b  D0 14       BNE next_script
 ;Increment the pause counters, propagating carries
-.C:606d  FE 09 71    INC script_pause_counter_3,X
+.C:606d  FE 09 71    INC task_pause_counter_3,X
 .C:6070  D0 0F       BNE next_script
-.C:6072  FE F9 70    INC script_pause_counter_2,X
+.C:6072  FE F9 70    INC task_pause_counter_2,X
 .C:6075  D0 0A       BNE next_script
-.C:6077  FE E9 70    INC script_pause_counter_1,X
+.C:6077  FE E9 70    INC task_pause_counter_1,X
 .C:607a  D0 05       BNE next_script
 ;If the most significant counter reached 00, unpause the script
 .C:607c  A9 02       LDA #$02
@@ -23384,11 +23384,11 @@ set_result:
 ;Read 3 bytes and set them as the respective bytes for the pause counters
 .C:659c  AE B8 70    LDX task_cur_idx
 .C:659f  20 14 5E    JSR script_read_byte
-.C:65a2  9D 09 71    STA script_pause_counter_3,X
+.C:65a2  9D 09 71    STA task_pause_counter_3,X
 .C:65a5  20 14 5E    JSR script_read_byte
-.C:65a8  9D F9 70    STA script_pause_counter_2,X
+.C:65a8  9D F9 70    STA task_pause_counter_2,X
 .C:65ab  20 14 5E    JSR script_read_byte
-.C:65ae  9D E9 70    STA script_pause_counter_1,X
+.C:65ae  9D E9 70    STA task_pause_counter_1,X
 ;Set script state as paused (#01)
 .C:65b1  A9 01       LDA #$01
 .C:65b3  9D D9 70    STA task_state_tbl,X
