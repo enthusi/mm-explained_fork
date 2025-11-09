@@ -167,6 +167,7 @@ Notes
 #import "ui_messages.asm"
 #import "ui_interaction.asm"
 #import "misc.asm"
+#import "script_primitives.asm"
 
 * = $1671
 // ------------------------------------------------------------
@@ -178,7 +179,6 @@ Notes
 cursor_colors:
         .byte $01, $0F, $0C, $0B, $0C, $0F    
 
-.label handle_paused_scripts = $0
 .label sound_irq_handler = $0
 
 .label temp_y                      = $0FEC   // Saved Y during IRQ
@@ -639,7 +639,7 @@ h1_section_entry:
         bne     h1_keyboard                   // if paused → skip these updates
 		
         jsr     tick_topbar_message
-        jsr     handle_paused_scripts
+        jsr     handle_paused_tasks
 
         // Cursor color stepper
         dec     cursor_color_wait_ticks       // decrement frame wait counter before next color change
