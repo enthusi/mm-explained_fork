@@ -600,9 +600,9 @@ They were definitely intended as debugging aids.
 //#01	Paused
 //#02	Running
 .label task_state_tbl = $70D9
-.label script_pause_counter_1 = $70e9
-.label script_pause_counter_2 = $70f9
-.label script_pause_counter_3 = $7109
+.label task_pause_counter_1 = $70e9
+.label task_pause_counter_2 = $70f9
+.label task_pause_counter_3 = $7109
 //Script types
 //#00 = object script
 //#01 = room script
