@@ -257,6 +257,7 @@
 .const TASK_MAX_INDEX 				= TASK_TOTAL - 1 
 .const TASK_IDX_NONE           		= $FF    // No script running (idle slot sentinel)
 .const TASK_STATE_INACTIVE    		= $00
+.const TASK_STATE_PAUSED    		= $01
 .const TASK_STATE_RUNNING    		= $02    // resume state for script slot
 
 * = $3BA6
