@@ -13,7 +13,7 @@
 
 /*
 ================================================================================
-  execute_running_scripts
+  execute_running_tasks
 ================================================================================
 Summary
 	Sweep script tasks from the current index to TASK_TOTAL-1. For each task in
@@ -38,7 +38,7 @@ Notes
 ================================================================================
 */
 * = $5D71
-execute_running_scripts:
+execute_running_tasks:
 		ldx     task_cur_idx                    // X := current task index
 
 		// ------------------------------------------------------------
@@ -63,7 +63,7 @@ next_task:
 		inc     task_cur_idx                    // task_cur_idx := task_cur_idx + 1
 		lda     task_cur_idx
 		cmp     #TASK_TOTAL                     // reached end?
-		bne     execute_running_scripts         // no → continue sweep
+		bne     execute_running_tasks         // no → continue sweep
 
 		// ------------------------------------------------------------
 		// Wrap to task #$01 and return
@@ -123,7 +123,7 @@ dispatch_script_ops_loop:
 		jmp     dispatch_script_ops_loop
 /*
 ================================================================================
-  save_script_relative_offset
+  save_task_relative_offset
 ================================================================================
 
 Summary
@@ -150,7 +150,7 @@ Notes
 ================================================================================
 */
 * = $5DB0
-save_script_relative_offset:
+save_task_relative_offset:
         // ------------------------------------------------------------
         // Update the script’s relative offset before halting execution
         // so we can resume from the correct position later.
