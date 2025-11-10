@@ -13,9 +13,6 @@
 .const OBJ_FOUND_IN_ROOM        = $01    // Resolver status: found in room; obj_ptr_* valid
 .const OBJ_NOT_FOUND            = $FF    // Resolver status: not found; obj_ptr_* unspecified
 
-.const OBJ_HI_MOVABLE           = $00    // Object hi-id type tag: movable (ownership applies)
-.const OBJ_HI_IMMOVABLE         = $01    // Object hi-id type tag: immovable (in a room)
-.const OBJ_HI_COSTUME           = $02    // Object hi-id type tag: costume/character
 .const OWNER_IS_ROOM            = $0F    // Owner nibble value meaning “room/no owner”
 .const MAX_INVENTORY_INDEX      = $2C    // Highest inventory slot index (scan starts here)
 
