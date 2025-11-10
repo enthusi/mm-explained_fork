@@ -597,7 +597,7 @@ kernal_nmi_vector = $0318
 ;===========================================================
 room_scene_left_edge = $0664	;Left column for the visible room scene
 room_scene_right_edge = $0665	;Right column for the visible room scene
-camera_desired_position = $0666
+cam_target_pos = $0666
 camera_current_position = $0667
 camera_mode = $066a				;#02 = follow costume, #03 = pan to position
 camera_costume_to_follow = $066b	;Index of costume to follow
@@ -1988,7 +1988,7 @@ main_loop:
 ;Set debugging script variables
 .C:0507  AD 67 FF    LDA current_kid_idx
 .C:050a  8D 67 FF    STA current_kid_idx	;Redundant code
-.C:050d  AD 66 06    LDA camera_desired_position
+.C:050d  AD 66 06    LDA cam_target_pos
 .C:0510  8D 69 FF    STA var_camera_position
 .C:0513  A5 C9       LDA topbar_mode
 .C:0515  8D 6A FF    STA var_msg_flag
@@ -2013,7 +2013,7 @@ main_loop:
 ; Script execution
 ;--------------------------------------------------
 ;Execute scripts
-.C:0537  20 71 5D    JSR execute_running_scripts
+.C:0537  20 71 5D    JSR execute_running_tasks
 ;--------------------------------------------------
 ; Inventory removal of objects
 ;--------------------------------------------------
@@ -2042,7 +2042,7 @@ check_if_object_is_in_inventory:
 .C:0553  48          PHA
 ;Remove object from inventory
 .C:0554  A9 00       LDA #$00
-.C:0556  20 53 64    JSR remove_from_inventory
+.C:0556  20 53 64    JSR op_remove_from_inventory
 ;Restore inventory index from stack
 .C:0559  68          PLA
 .C:055a  A8          TAY
@@ -2098,7 +2098,7 @@ next_actor:
 .C:058b  85 4E       STA screen_scroll_flag
 ;Has the camera reached its desired position?
 ;If not, we have to update the room scene
-.C:058d  AE 66 06    LDX camera_desired_position
+.C:058d  AE 66 06    LDX cam_target_pos
 .C:0590  EC 67 06    CPX camera_current_position
 .C:0593  F0 26       BEQ update_actors
 ;Draw the updated room scene
@@ -2248,7 +2248,7 @@ next_costume:
 .C:0651  C9 19       CMP #$19
 .C:0653  D0 CE       BNE check_if_costume_gets_drawn
 ;--------------------------------------------------
-.C:0655  AD 66 06    LDA camera_desired_position
+.C:0655  AD 66 06    LDA cam_target_pos
 .C:0658  8D 67 06    STA camera_current_position
 wait_for_handler_entry_count:
 ;Wait for 4 executions of the IRQ handlers before looping again
@@ -2278,19 +2278,19 @@ move_camera:
 ; Move the camera one position to the left or right towards the desired position
 ;------------------------------------
 camera_mode_pan:
-.C:0678  AD 66 06    LDA camera_desired_position
+.C:0678  AD 66 06    LDA cam_target_pos
 .C:067b  CD 6C 06    CMP pan_camera_to
 .C:067e  B0 06       BCS camera_pos_ge_pan_pos
 ;Camera position < pan position
 ;Move camera 1 position to the right
-.C:0680  EE 66 06    INC camera_desired_position
+.C:0680  EE 66 06    INC cam_target_pos
 .C:0683  4C 8D 06    JMP pan_exit
 ;Camera position >= pan position
 camera_pos_ge_pan_pos:
 .C:0686  90 05       BCC pan_exit
 .C:0688  F0 03       BEQ pan_exit
 ;Move camera 1 position to the left
-.C:068a  CE 66 06    DEC camera_desired_position
+.C:068a  CE 66 06    DEC cam_target_pos
 pan_exit:
 ;Ensure the camera stays within proper limits
 .C:068d  4C E0 06    JMP camera_boundary_check
@@ -2338,7 +2338,7 @@ is_pan_needed:
 ;We need to pan
 ;Compare the actor position and the camera position
 .C:06c3  BD 41 FD    LDA actor_x_pos,X
-.C:06c6  CD 66 06    CMP camera_desired_position
+.C:06c6  CD 66 06    CMP cam_target_pos
 .C:06c9  D0 08       BNE actor_pos_ne_camera_pos
 ;Actor and camera positions are equal
 ;Stop the pan and continue to the next section
@@ -2352,12 +2352,12 @@ actor_pos_ne_camera_pos:
 .C:06d3  90 08       BCC actor_pos_le_camera_pos
 .C:06d5  F0 06       BEQ actor_pos_le_camera_pos
 ;Actor position > camera position
-.C:06d7  EE 66 06    INC camera_desired_position
+.C:06d7  EE 66 06    INC cam_target_pos
 .C:06da  4C E0 06    JMP camera_boundary_check
 ;------------------------------------
 ;Actor position <= camera position
 actor_pos_le_camera_pos:
-.C:06dd  CE 66 06    DEC camera_desired_position
+.C:06dd  CE 66 06    DEC cam_target_pos
 ;------------------------------------
 camera_boundary_check:
 ;A room scene is #28 columns wide (the visible part of a room)
@@ -2366,18 +2366,18 @@ camera_boundary_check:
 ;To achieve that, we have to make sure it's always centered at the right spot and doesn't move farther
 ;
 ;Is the camera position lower than the mid point for the room's absolute left edge?
-.C:06e0  AD 66 06    LDA camera_desired_position
+.C:06e0  AD 66 06    LDA cam_target_pos
 .C:06e3  38          SEC
 .C:06e4  E9 14       SBC #$14
 .C:06e6  B0 08       BCS check_right_anchor
 ;Anchor the room scene's left edge and then set the camera at exactly the visible mid point
 ;A room scene has #28 columns, so the mid point is #00 + #14
 .C:06e8  A9 14       LDA #$14
-.C:06ea  8D 66 06    STA camera_desired_position
+.C:06ea  8D 66 06    STA cam_target_pos
 .C:06ed  4C 04 07    JMP calculate_visible_edges
 check_right_anchor:
 ;Is the camera position greater than the mid point for the room's absolute right edge?
-.C:06f0  AD 66 06    LDA camera_desired_position
+.C:06f0  AD 66 06    LDA cam_target_pos
 .C:06f3  18          CLC
 .C:06f4  69 14       ADC #$14
 .C:06f6  CD 39 71    CMP room_width
@@ -2387,11 +2387,11 @@ check_right_anchor:
 .C:06fb  AD 39 71    LDA room_width
 .C:06fe  38          SEC
 .C:06ff  E9 14       SBC #$14
-.C:0701  8D 66 06    STA camera_desired_position
+.C:0701  8D 66 06    STA cam_target_pos
 ;------------------------------------
 calculate_visible_edges:
 ;Calculate the room scene's left and right edges
-.C:0704  AD 66 06    LDA camera_desired_position
+.C:0704  AD 66 06    LDA cam_target_pos
 .C:0707  38          SEC
 .C:0708  E9 14       SBC #$14
 .C:070a  8D 64 06    STA room_scene_left_edge
@@ -12603,7 +12603,7 @@ next_costume:
 .C:3484  8E 6B FF    STX var_current_room
 ;Set default camera position
 .C:3487  A9 C8       LDA #$C8
-.C:3489  8D 66 06    STA camera_desired_position
+.C:3489  8D 66 06    STA cam_target_pos
 ;Initialize sprites and sound
 .C:348c  20 E0 33    JSR init_sprites_sound
 ;Load new room's assets
@@ -12888,7 +12888,7 @@ next_sound:
 ;Read sound index
 .C:35fc  B1 15       LDA (room_subresources_ptr),Y
 ;Load the sound by index
-.C:35fe  20 E6 39    JSR load_sound
+.C:35fe  20 E6 39    JSR rsrc_ensure_sound_resident
 ;Move to the next byte, update counter, continue if needed
 .C:3601  C8          INY
 .C:3602  C6 17       DEC sound_counter
@@ -13398,7 +13398,7 @@ check_character_in_room:
 .C:3893  4C A2 38    JMP next_character
 actor_in_current_room:
 ;Load costume resource
-.C:3896  20 A8 38    JSR load_costume
+.C:3896  20 A8 38    JSR rsrc_ensure_costume_resident
 ;Assign an available actor to the costume and initialize it
 .C:3899  AE 76 56    LDX resource_index
 .C:389c  20 11 39    JSR assign_costume_to_free_actor
@@ -13417,7 +13417,7 @@ temp_1 = $17
 temp_2 = $18
 temp_costume_index = $15
 
-load_costume:
+rsrc_ensure_costume_resident:
 ;Save resource index
 .C:38a8  8E 76 56    STX resource_index
 ;If the costume is already loaded in memory, return
@@ -13557,7 +13557,7 @@ bind_actor_to_costume_and_init:
 .C:396c  A9 00       LDA #$00
 .C:396e  99 9D FE    STA actor_mouth_state,Y
 ;Load costume (again? this seems redundant)
-.C:3971  20 A8 38    JSR load_costume
+.C:3971  20 A8 38    JSR rsrc_ensure_costume_resident
 ;Clear previous resource pointer for the active costume
 .C:3974  AE 30 FC    LDX active_costume
 .C:3977  A9 00       LDA #$00
@@ -13640,7 +13640,7 @@ temp_1 = $19
 temp_2 = $1A
 temp_y = $3bdc
 
-load_sound:
+rsrc_ensure_sound_resident:
 ;Save .Y in a local variable
 .C:39e6  8C DC 3B    STY temp_y
 ;Save resource index in .A
@@ -14991,7 +14991,7 @@ check_scroll_right:
 ;Is the camera's target position = actual position + 1?
 ;Or, equivalently, target - 1 = actual?
 ;If not, continue
-.C:4082  AE 66 06    LDX camera_desired_position
+.C:4082  AE 66 06    LDX cam_target_pos
 .C:4085  CA          DEX
 .C:4086  EC 67 06    CPX camera_current_position
 .C:4089  D0 37       BNE check_scroll_left
@@ -15039,7 +15039,7 @@ check_scroll_left:
 ;Is the camera's target position = actual position - 1?
 ;Or, equivalently, target + 1 = actual?
 ;If not, continue
-.C:40c2  AE 66 06    LDX camera_desired_position
+.C:40c2  AE 66 06    LDX cam_target_pos
 .C:40c5  E8          INX
 .C:40c6  EC 67 06    CPX camera_current_position
 .C:40c9  D0 29       BNE no_scroll
@@ -21142,7 +21142,7 @@ init_heap_free_list:
 ; For each script slot with running state, it will execute operations from it. 
 ; Once the last slot is done, the current script slot is reset back to #01.
 ;===========================================
-execute_running_scripts:
+execute_running_tasks:
 .C:5d71  AE 89 FE    LDX cur_script_slot
 ;Is it running? If not, skip
 .C:5d74  BD D9 70    LDA task_state_tbl,X
@@ -21157,7 +21157,7 @@ next_script:
 .C:5d87  EE 89 FE    INC cur_script_slot
 .C:5d8a  AD 89 FE    LDA cur_script_slot
 .C:5d8d  C9 10       CMP #$10
-.C:5d8f  D0 E0       BNE execute_running_scripts
+.C:5d8f  D0 E0       BNE execute_running_tasks
 ;Reset script index back to #01
 .C:5d91  A9 01       LDA #$01
 .C:5d93  8D 89 FE    STA cur_script_slot
@@ -21191,7 +21191,7 @@ inlined_handler = $5dab
 ; This is useful in case execution is about to be interrupted,
 ; so that we can resume it from the correct place later.
 ;===========================================
-save_script_relative_offset:
+save_task_relative_offset:
 ;Update the script relative offset (as we're halting execution)
 .C:5db0  20 FA 5D    JSR compute_task_relative_offset
 .C:5db3  60          RTS
@@ -22024,7 +22024,7 @@ set_hi:
 ;===========================================
 relative_offset = $d2
 
-script_displace_pointer:
+op_displace_pointer:
 ;Read 16-bit offset
 .C:60d6  20 14 5E    JSR script_read_byte
 .C:60d9  85 D2       STA <relative_offset
@@ -22037,12 +22037,12 @@ script_displace_pointer:
 .C:60e6  8D 15 5E    STA task_pc_lo
 .C:60e9  AD 16 5E    LDA task_pc_hi
 .C:60ec  65 D3       ADC >relative_offset
-.C:60ee  8D 16 5E    STA task_pc_lo
+.C:60ee  8D 16 5E    STA task_pc_hi
 .C:60f1  60          RTS
 ;===========================================
 ;Opcode #00, #A0 - stop object code
 ;===========================================
-stop_object_code:
+op_stop_current_task:
 ;Load current script index
 .C:60f2  AE B8 70    LDX task_cur_idx
 ;If it's zero, stop this script
@@ -22060,12 +22060,12 @@ stop_this_script:
 ;===========================================
 ;Opcode #10 - stop script execution
 ;===========================================
-stop_script_execution:
+op_pause_task:
 ;Stop the _current_ script we're executing by pulling the return address from the stack
 .C:6100  68          PLA
 .C:6101  68          PLA
 ;Update the script relative offset (as we're halting execution)
-.C:6102  4C B0 5D    JMP save_script_relative_offset
+.C:6102  4C B0 5D    JMP save_task_relative_offset
 ;===========================================
 ;Opcode #50, #D0 - do nothing
 ;===========================================
@@ -22093,7 +22093,7 @@ var_index = $D0
 ; 
 ; Opcode #46
 ;===========================================
-script_increment_var:
+op_increment_var:
 ;Read variable index into .X
 .C:6114  20 98 5F    JSR script_load_operand_bit7
 .C:6117  AA          TAX
@@ -22105,7 +22105,7 @@ script_increment_var:
 ; 
 ; Opcode #C6
 ;===========================================
-script_decrement_var:
+op_decrement_var:
 ;Read variable index into .X
 .C:611c  20 98 5F    JSR script_load_operand_bit7
 .C:611f  AA          TAX
@@ -22228,7 +22228,7 @@ operand_value = $D0
 .C:614f  D0 03       BNE is_not_equal_to_zero_then
 is_equal_to_zero:
 ;Add offset as the condition is False
-.C:6151  4C D6 60    JMP script_displace_pointer
+.C:6151  4C D6 60    JMP op_displace_pointer
 is_not_equal_to_zero_then:
 ;Skip offset and execute the <condition-True> code
 .C:6154  20 11 5E    JSR script_skip_offset
@@ -22245,7 +22245,7 @@ is_not_equal_to_zero_then:
 .C:615d  F0 03       BEQ is_equal_to_zero_then
 is_not_equal_to_zero:
 ;Add offset as the condition is False
-.C:615f  4C D6 60    JMP script_displace_pointer
+.C:615f  4C D6 60    JMP op_displace_pointer
 is_equal_to_zero_then:
 ;Skip offset and execute the <condition-True> code
 .C:6162  20 11 5E    JSR script_skip_offset
@@ -22263,7 +22263,7 @@ is_equal_to_zero_then:
 .C:6169  B0 03       BCS is_ge_then
 is_not_ge:
 ;Add offset as the condition is False
-.C:616b  4C D6 60    JMP script_displace_pointer
+.C:616b  4C D6 60    JMP op_displace_pointer
 is_ge_then:
 ;Skip offset and execute the <condition-True> code
 .C:616e  4C 11 5E    JMP script_skip_offset
@@ -22282,7 +22282,7 @@ is_ge_then:
 .C:6176  F0 03       BEQ is_le_then	
 is_not_le:
 ;Add offset as the condition is False
-.C:6178  4C D6 60    JMP script_displace_pointer
+.C:6178  4C D6 60    JMP op_displace_pointer
 is_le_then:
 ;Skip offset and execute the <condition-True> code
 .C:617b  4C 11 5E    JMP script_skip_offset
@@ -22301,7 +22301,7 @@ is_le_then:
 .C:6183  B0 03       BCS is_gt_then		;>= and != is equivalent to >
 is_not_gt:
 ;Add offset as the condition is False
-.C:6185  4C D6 60    JMP script_displace_pointer
+.C:6185  4C D6 60    JMP op_displace_pointer
 is_gt_then:
 ;Skip offset and execute the <condition-True> code
 .C:6188  4C 11 5E    JMP script_skip_offset
@@ -22318,7 +22318,7 @@ is_gt_then:
 .C:618e  90 03       BCC is_lt_then
 is_not_lt:
 ;Add offset as the condition is False
-.C:6190  4C D6 60    JMP script_displace_pointer
+.C:6190  4C D6 60    JMP op_displace_pointer
 is_lt_then:
 ;Skip offset and execute the <condition-True> code
 .C:6193  4C 11 5E    JMP script_skip_offset
@@ -22334,7 +22334,7 @@ is_lt_then:
 ;Is operand 1 != operand 2?
 .C:6199  D0 03       BNE is_ne_then
 ;Add offset as the condition is False
-.C:619b  4C D6 60    JMP script_displace_pointer
+.C:619b  4C D6 60    JMP op_displace_pointer
 is_ne_then:
 ;Skip offset and execute the <condition-True> code
 .C:619e  4C 11 5E    JMP script_skip_offset
@@ -22350,7 +22350,7 @@ is_ne_then:
 ;Is operand 1 == operand 2?
 .C:61a4  F0 03       BEQ is_eq_then
 ;Add offset as the condition is False
-.C:61a6  4C D6 60    JMP script_displace_pointer
+.C:61a6  4C D6 60    JMP op_displace_pointer
 is_eq_then:
 ;Skip offset and execute the <condition-True> code
 .C:61a9  4C 11 5E    JMP script_skip_offset
@@ -22364,7 +22364,7 @@ is_eq_then:
 ;Load operand (script index)
 .C:61ac  20 98 5F    JSR script_load_operand_bit7
 ;Entry point for multiple opcodes (from 6AD9) - coming with .X set to #00
-stop_script_index_check:
+dispatch_stop_by_index:
 .C:61af  C9 00       CMP #$00
 .C:61b1  D0 06       BNE script_nonzero
 script_zero:
@@ -22381,7 +22381,7 @@ script_nonzero:
 .C:61c1  D0 03       BNE stop_script
 ;The current script resource index does not match the script index to stop
 ;So stop the object code
-.C:61c3  4C F2 60    JMP stop_object_code
+.C:61c3  4C F2 60    JMP op_stop_current_task
 stop_script:
 .C:61c6  20 67 5E    JSR deactivate_script_by_resource
 .C:61c9  60          RTS
@@ -22430,7 +22430,7 @@ script_is_object_attr_bit_clear:
 .C:61e0  D0 03       BNE bit_is_set_then
 bit_is_not_set:
 ;Add offset as the condition is False
-.C:61e2  4C D6 60    JMP script_displace_pointer
+.C:61e2  4C D6 60    JMP op_displace_pointer
 bit_is_set_then:
 ;Skip offset and execute the <condition-True> code
 .C:61e5  4C 11 5E    JMP script_skip_offset
@@ -22452,7 +22452,7 @@ script_is_object_attr_bit_set:
 .C:61ef  F0 03       BEQ bit_is_clear_then
 bit_is_not_clear:
 ;Add offset as the condition is False
-.C:61f1  4C D6 60    JMP script_displace_pointer
+.C:61f1  4C D6 60    JMP op_displace_pointer
 bit_is_clear_then:
 ;Skip offset and execute the <condition-True> code
 .C:61f4  4C 11 5E    JMP script_skip_offset
@@ -22483,7 +22483,7 @@ bit_is_clear_then:
 ;
 ; Argument:	.A	bitmask used to clear a specific bit
 ;===========================================
-and_item_attrs:
+script_clear_object_attr_bit:
 clear_bitmask = $d0
 ;Save the clear bitmask
 .C:620f  85 D0       STA clear_bitmask
@@ -22498,7 +22498,7 @@ clear_bitmask = $d0
 ;
 ; Argument:	.A	bitmask used to set a specific bit
 ;===========================================
-or_item_attrs:
+script_set_object_attr_bit:
 set_bitmask = $d0
 ;Save bitmask
 .C:6219  85 D0       STA set_bitmask
@@ -22514,22 +22514,22 @@ set_bitmask = $d0
 ;===========================================
 ;Opcode #97, #D7 - Set bit 7 (OR with #80) of item attributes
 .C:6223  A9 80       LDA #$80
-.C:6225  D0 F2       BNE or_item_attrs
+.C:6225  D0 F2       BNE script_set_object_attr_bit
 ;Opcode #17, #57 - Clear bit 7 of item attributes
 .C:6227  A9 7F       LDA #$7F
-.C:6229  D0 E4       BNE and_item_attrs
+.C:6229  D0 E4       BNE script_clear_object_attr_bit
 ;Opcode #B7, #F7 - Set bit 6 (OR with #40) of item attributes
 .C:622b  A9 40       LDA #$40
-.C:622d  D0 EA       BNE or_item_attrs
+.C:622d  D0 EA       BNE script_set_object_attr_bit
 ;Opcode #37, #77 - Clear bit 6 of item attributes
 .C:622f  A9 BF       LDA #$BF
-.C:6231  D0 DC       BNE and_item_attrs
+.C:6231  D0 DC       BNE script_clear_object_attr_bit
 ;Opcode #8F, #CF - Set bit 5 (OR with #20) of item attributes
 .C:6233  A9 20       LDA #$20
-.C:6235  D0 E2       BNE or_item_attrs
+.C:6235  D0 E2       BNE script_set_object_attr_bit
 ;Opcode #0F, #4F - Clear bit 5 of item attributes
 .C:6237  A9 DF       LDA #$DF
-.C:6239  D0 D4       BNE and_item_attrs
+.C:6239  D0 D4       BNE script_clear_object_attr_bit
 ;===========================================
 ;Opcode #A4 - ifNotEqualActiveObject
 ;===========================================
@@ -22542,10 +22542,10 @@ set_bitmask = $d0
 ;Compare the active indirect object index fully (hi and low)
 .C:623f  A9 00       LDA #$00
 check_active_object:
-.C:6241  20 5D 62    JSR compare_active_indirect_obj_indexes
+.C:6241  20 5D 62    JSR cmp_active_io_vs_script
 .C:6244  F0 03       BEQ condition_is_true
 ;Add offset as the condition is False
-.C:6246  4C D6 60    JMP script_displace_pointer
+.C:6246  4C D6 60    JMP op_displace_pointer
 condition_is_true:
 ;Skip offset and execute the <condition-True> code
 .C:6249  4C 11 5E    JMP script_skip_offset
@@ -22561,10 +22561,10 @@ condition_is_true:
 ;Compare the active indirect object index fully (hi and low)
 .C:6250  A9 00       LDA #$00
 check_active_object:
-.C:6252  20 5D 62    JSR compare_active_indirect_obj_indexes
+.C:6252  20 5D 62    JSR cmp_active_io_vs_script
 .C:6255  D0 03       BNE condition_is_true
 ;Add offset as the condition is False
-.C:6257  4C D6 60    JMP script_displace_pointer
+.C:6257  4C D6 60    JMP op_displace_pointer
 condition_is_true:
 ;Skip offset and execute the <condition-True> code
 .C:625a  4C 11 5E    JMP script_skip_offset
@@ -22582,7 +22582,7 @@ condition_is_true:
 ; If there's no equality (against #00/lo index accordingly), it returns False (#00).
 ; Otherwise, returns True (#01)
 ;===========================================
-compare_active_indirect_obj_indexes:
+cmp_active_io_vs_script:
 ;Branch on mode (#00 or #01)
 .C:625d  F0 0A       BEQ compare_lo_and_hi
 ;--------------------------------------------------
@@ -22809,7 +22809,7 @@ object_state = $16
 .C:6335  F0 06       BEQ entry
 ;Kid is frozen - skip 2 bytes, stop object code, exit
 .C:6337  20 11 5E    JSR script_skip_offset
-.C:633a  4C F2 60    JMP stop_object_code
+.C:633a  4C F2 60    JMP op_stop_current_task
 entry:
 .C:633d  20 9D D6    JSR prepare_video_for_new_room
 ;Read "room entry" object index - this is the object where the player will be put at
@@ -22851,7 +22851,7 @@ object_found:
 .C:6377  BD 57 FE    LDA actor_for_costume,X
 .C:637a  AA          TAX
 .C:637b  BD 41 FD    LDA actor_x_pos,X
-.C:637e  8D 66 06    STA camera_desired_position
+.C:637e  8D 66 06    STA cam_target_pos
 ;Set default camera position
 .C:6381  A9 C8       LDA #$C8
 .C:6383  8D 67 06    STA camera_current_position
@@ -22861,7 +22861,7 @@ object_found:
 .C:6389  A9 00       LDA #$00
 .C:638b  8D 8E FE    STA forced_sentence_trigger
 exit:
-.C:638e  4C F2 60    JMP stop_object_code
+.C:638e  4C F2 60    JMP op_stop_current_task
 ;===========================================
 ; Set actor's bit attribute
 ;Opcode #0B, #2B, #4B, #6B, #8B, #AB, #CB, #EB
@@ -23092,7 +23092,7 @@ owner_determined:
 ;===========================================
 resource_ptr = $15
 
-remove_from_inventory:
+op_remove_from_inventory:
 ;Get the object pointer into .X/.Y
 .C:6453  20 05 0A    JSR resolve_object_resource
 ;Did we find it in the inventory?
@@ -23393,7 +23393,7 @@ set_result:
 .C:65b1  A9 01       LDA #$01
 .C:65b3  9D D9 70    STA task_state_tbl,X
 ;Stop script execution
-.C:65b6  4C 00 61    JMP stop_script_execution
+.C:65b6  4C 00 61    JMP op_pause_task
 ;===========================================
 ; Stop a sound
 ;
@@ -23430,7 +23430,7 @@ sound_code_ptr_hi = $6622
 .C:65da  E9 30       SBC #$30
 ;Load the music matching the disk side number
 .C:65dc  48          PHA
-.C:65dd  20 E6 39    JSR load_sound
+.C:65dd  20 E6 39    JSR rsrc_ensure_sound_resident
 .C:65e0  20 B4 5D    JSR refresh_script_addresses_if_moved
 .C:65e3  68          PLA
 .C:65e4  AA          TAX
@@ -23440,7 +23440,7 @@ play_music:
 ;Load music index from operand
 .C:65eb  20 98 5F    JSR script_load_operand_bit7
 .C:65ee  48          PHA
-.C:65ef  20 E6 39    JSR load_sound
+.C:65ef  20 E6 39    JSR rsrc_ensure_sound_resident
 .C:65f2  AE A3 FE    LDX music_index
 .C:65f5  DE 51 79    DEC sound_mem_attrs,X
 ;Setup music playback pointers
@@ -23489,7 +23489,7 @@ start_sound_entry2:
 .C:663b  84 01       STY cpu_port
 ;Load the sound
 .C:663d  A5 D0       LDA sound_index
-.C:663f  20 E6 39    JSR load_sound
+.C:663f  20 E6 39    JSR rsrc_ensure_sound_resident
 ;Start the sound
 .C:6642  A5 D0       LDA sound_index
 ;map_in_io
@@ -23909,7 +23909,7 @@ desired_destination = $d0
 ;Check the distance between the desired and the current position
 .C:6868  A5 D0       LDA desired_destination
 .C:686a  38          SEC
-.C:686b  ED 66 06    SBC camera_desired_position
+.C:686b  ED 66 06    SBC cam_target_pos
 ;If result is negative, make it positive (take the modulus)
 .C:686e  B0 05       BCS check_threshold
 .C:6870  49 FF       EOR #$FF
@@ -23923,7 +23923,7 @@ check_threshold:
 move_instantly:
 .C:687b  A5 D0       LDA desired_destination
 ;Set the camera position
-.C:687d  8D 66 06    STA camera_desired_position
+.C:687d  8D 66 06    STA cam_target_pos
 ;Set the pan destination as well (to avoid panning to somewhere else)
 .C:6880  8D 6C 06    STA pan_camera_to
 ;The following code could have been removed and the "pan" jump adjusted accordingly
@@ -24322,7 +24322,7 @@ set_variable:
 .C:6a2d  20 98 5F    JSR script_load_operand_bit7
 .C:6a30  AA          TAX
 ;Load costume
-.C:6a31  20 A8 38    JSR load_costume
+.C:6a31  20 A8 38    JSR rsrc_ensure_costume_resident
 .C:6a34  20 B4 5D    JSR refresh_script_addresses_if_moved
 .C:6a37  60          RTS
 ;===========================================
@@ -24352,7 +24352,7 @@ set_variable:
 ;Read sound index into .X
 .C:6a4d  20 98 5F    JSR script_load_operand_bit7
 ;Load sound
-.C:6a50  20 E6 39    JSR load_sound
+.C:6a50  20 E6 39    JSR rsrc_ensure_sound_resident
 .C:6a53  20 B4 5D    JSR refresh_script_addresses_if_moved
 .C:6a56  60          RTS
 ;===========================================
@@ -24468,7 +24468,7 @@ restart_game:
 ;	Stop current script
 ;===========================================
 .C:6ad9  A2 00       LDX #$00
-.C:6adb  4C AF 61    JMP stop_script_index_check
+.C:6adb  4C AF 61    JMP dispatch_stop_by_index
 ;===========================================
 
 ;(loaded on init from track 0 sector 1)
