@@ -69,7 +69,7 @@ Shared behavior
 #import "constants.inc"
 #import "script_engine.asm"
 #import "script_primitives.asm"
-#import "script_operations.asm"
+#import "ops_primitives.asm"
 #import "room_loader.asm"
 
 .label obj_idx_lo = $15      // Low byte of object index (used in room/object lookup routines)

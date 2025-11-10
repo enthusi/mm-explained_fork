@@ -48,7 +48,7 @@ Limitations
 #import "constants.inc"
 #import "script_engine.asm"
 #import "script_primitives.asm"
-#import "script_operations.asm"
+#import "ops_primitives.asm"
 
 * = $6A5B
 op_lock_sound:

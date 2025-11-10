@@ -87,7 +87,7 @@ Renaming objects
 #import "registers.inc"
 #import "script_engine.asm"
 #import "script_primitives.asm"
-#import "script_operations.asm"
+#import "ops_primitives.asm"
 .const IO_CMP_MODE_LO_ONLY     = $01    // Compare only low byte against script byte
 .const IO_CMP_MODE_HI0_AND_LO  = $00    // Require hi == $00, then compare low byte
 
