@@ -73,6 +73,11 @@
 .const COSTUME_DFLT_Y_DEST  		= $3C   // Default Y destination for actor when costume is initialized
 .const COSTUME_HOLDING_ROOM 		= $2C   // Room index used as holding area for inactive or hidden costumes
 
+// Object ID hi
+.const OBJ_HI_MOVABLE           = $00    // Object hi-id type tag: movable (ownership applies)
+.const OBJ_HI_IMMOVABLE         = $01    // Object hi-id type tag: immovable (in a room)
+.const OBJ_HI_COSTUME           = $02    // Object hi-id type tag: costume/character
+
 // Compression
 .const COMP_DICT_MAX_OFS 			= $03	// Max offset of a compression dictionary
 
