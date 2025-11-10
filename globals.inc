@@ -1,5 +1,6 @@
 #importonce
 
+.label ancestor_overlay_req    = $15     // zp: required ancestor bit7 ($00 clear / $80 set)
 .label fill_dest_ptr            = $19   // 16-bit destination pointer (lo at $19, hi at $1A); advanced after each store
 .label fill_byte_cnt            = $1b   // 16-bit remaining byte count (lo at $1B, hi at $1C); decremented to zero
 
@@ -37,16 +38,6 @@ Values observed
 .label screen_scroll_flag = $4e
 
 .label cel_seq_tbl           = $84    // cel sequence table for current actor
-.label vic_memory_layout_shadow = $be
-
-.label actor = $D8
-.label print_msg_ptr	   = $DA	// ZP: 16-bit pointer to message to be printed (print_message_wait_for_button)
-.label irq_entry_count = $d9
-.label debug_error_code = $DC
-.label random_1 = $dd
-.label random_2 = $de
-.label random_3 = $df
-.label irq_entry_lock = $e3
 .label mask_row_ptr                = $86    // ZP: pointer to current 8×8-tile row within foreground mask layer
 .label sprite_shape_data_ptr = $8c
 .label video_update_signal = $8e			// synchronization flag - NOT to be confused with vsync
@@ -54,7 +45,17 @@ Values observed
 .label room_bg1_shadow = $90
 .label needs_sentence_rebuild = $95
 .label raster_irq_init_pending = $96
+.label vic_memory_layout_shadow = $be
+.label actor = $D8
+.label irq_entry_count = $d9
+.label print_msg_ptr	   = $DA	// ZP: 16-bit pointer to message to be printed (print_message_wait_for_button)
+.label debug_error_code = $DC
+.label random_1 = $dd
+.label random_2 = $de
+.label random_3 = $df
+.label irq_entry_lock = $e3
 
+.label remove_obj_from_inv_flag = $0670
 .label video_processed_signal = $166b
 
 /*
@@ -626,4 +627,3 @@ They were definitely intended as debugging aids.
 .label task_pc_lo = $5e15
 .label task_pc_hi = $5e16
 
-.label ancestor_overlay_req    = $15     // zp: required ancestor bit7 ($00 clear / $80 set)
