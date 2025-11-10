@@ -15,6 +15,12 @@
 .const MSK_LOW_NIBBLE              = $0F    // Mask bits 0–3, clear bits 4–7
 .const MSK_HIGH_NIBBLE             = $F0    // Mask bits 4–7, clear bits 0–3
 .const MSK_LOW7BITS                = $7F    // Mask bits 0–6, clear bit7
+.const MASK_BIT7				   	= %1000_0000
+.const MASK_BIT6				   	= %0100_0000
+.const MASK_BIT5				   	= %0010_0000
+.const MASK_CLEAR_BIT7				= %0111_1111
+.const MASK_CLEAR_BIT6				= %1011_1111
+.const MASK_CLEAR_BIT5				= %1101_1111
 
 // Block header layout (4-byte header + payload)
 .const MEM_HDR_SIZE_LO 				= $00   // Low byte of block size (total, including header)
