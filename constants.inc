@@ -178,11 +178,16 @@
 .const PREPOSITION_TO 				= $04
 
 // Control modes
-.const CONTROL_MODE_CUTSCENE       	= $00   // Cutscene active → hide cursor
 .const CUTSCENE_CONTROL_MODE 		= $00
 .const KEYPAD_CONTROL_MODE 			= $01
 .const NO_KID_CHANGE_CONTROL_MODE 	= $02
 .const NORMAL_CONTROL_MODE 			= $03
+.const CONTROL_MODE_CUTSCENE      = $00    // Cutscene / restricted UI mode
+.const CONTROL_MODE_KEYPAD        = $01    // Keypad entry mode
+.const CONTROL_MODE_DISABLE_KID   = $02    // Normal play but kid switching disabled
+.const CONTROL_MODE_NORMAL        = $03    // Normal play mode
+
+
 
 // Lights_status values
 .const LIGHTS_DARKNESS 				= $00
@@ -196,6 +201,7 @@
 // Sentence stack
 .const SENT_STACK_EMPTY_IDX        	= $FF   // Token stack sentinel “empty”
 .const SENT_STACK_MAX_TOKENS       	= $06   // Max tokens in sentence stack
+.const SENT_STACK_LAST_INDEX       	= SENT_STACK_MAX_TOKENS - 1   
 
 // Text printing
 .const SPACE_CHAR              		= $20   // Space character
@@ -270,6 +276,8 @@
 .const TASK_STATE_INACTIVE    		= $00
 .const TASK_STATE_PAUSED    		= $01
 .const TASK_STATE_RUNNING    		= $02    // resume state for script slot
+.const TASK_MASK_SUSPENDED        = MASK_BIT7
+.const TASK_MASK_CLEAR_SUSPENDED  = MASK_CLEAR_BIT7
 
 * = $3BA6
 game_paused_flag_msg:
