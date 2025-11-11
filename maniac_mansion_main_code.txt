@@ -1450,9 +1450,9 @@ actor_mouth_state = $fe9d
 
 music_to_start_ptr = $fea1
 music_index = $fea3
-interrupted_script_offset_lo = $fea4
-interrupted_script_offset_hi = $fea5
-saved_script_index = $fea6
+interrupted_pc_lo = $fea4
+interrupted_pc_hi = $fea5
+saved_task_idx = $fea6
 interrupted_script_index = $fea7
 ;Control mode values
 ;#00 - cutscene
@@ -8240,7 +8240,7 @@ kbd_scan:
 .C:2064  8C 57 20    STY keyb_column_bits
 .C:2067  8C 59 20    STY keyb_row_bits
 ;If FEA6 is zero, skip the delay initialization, go straight to polling
-.C:206a  AD A6 FE    LDA saved_script_index
+.C:206a  AD A6 FE    LDA saved_task_idx
 .C:206d  F0 0A       BEQ poll_input
 ;Set initial delay values
 .C:206f  A9 20       LDA #$20
@@ -10070,16 +10070,16 @@ keyboard_handle_one_key:
 ;F7 - bypass cutscene
 ;---------------------------------
 ;Was there an interrupted script? If so, script offset is nonzero
-.C:28cc  AD A4 FE    LDA interrupted_script_offset_lo
-.C:28cf  0D A5 FE    ORA interrupted_script_offset_hi
+.C:28cc  AD A4 FE    LDA interrupted_pc_lo
+.C:28cf  0D A5 FE    ORA interrupted_pc_hi
 ;Otherwise, exit
 .C:28d2  F0 23       BEQ exit_f7
 ;There was an interrupted script - load the interrupted script index
 .C:28d4  AE A7 FE    LDX interrupted_script_index
 ;Restore the offsets
-.C:28d7  AD A4 FE    LDA interrupted_script_offset_lo
+.C:28d7  AD A4 FE    LDA interrupted_pc_lo
 .C:28da  9D C9 70    STA task_pc_ofs_lo_tbl,X
-.C:28dd  AD A5 FE    LDA interrupted_script_offset_hi
+.C:28dd  AD A5 FE    LDA interrupted_pc_hi
 .C:28e0  9D B9 70    STA task_pc_ofs_hi_tbl,X
 ;Set script state as running (#02)
 .C:28e3  A9 02       LDA #$02
@@ -10089,9 +10089,9 @@ keyboard_handle_one_key:
 .C:28ea  8D 6D FF    STA var_destination_x
 ;Clear interrupted script offset
 .C:28ed  A9 00       LDA #$00
-.C:28ef  8D A4 FE    STA interrupted_script_offset_lo
+.C:28ef  8D A4 FE    STA interrupted_pc_lo
 .C:28f2  A9 00       LDA #$00
-.C:28f4  8D A5 FE    STA interrupted_script_offset_hi
+.C:28f4  8D A5 FE    STA interrupted_pc_hi
 exit_f7:
 .C:28f7  60          RTS
 ;---------------------------------
@@ -22006,10 +22006,10 @@ set_hi:
 .C:60b6  AD 15 5E    LDA task_pc_lo
 .C:60b9  38          SEC
 .C:60ba  ED 8A FE    SBC script_base_lo
-.C:60bd  8D A4 FE    STA interrupted_script_offset_lo
+.C:60bd  8D A4 FE    STA interrupted_pc_lo
 .C:60c0  AD 16 5E    LDA task_pc_hi
 .C:60c3  ED 8B FE    SBC script_base_hi
-.C:60c6  8D A5 FE    STA interrupted_script_offset_hi
+.C:60c6  8D A5 FE    STA interrupted_pc_hi
 ;Save the interrupted script index
 .C:60c9  AD B8 70    LDA task_cur_idx
 .C:60cc  8D A7 FE    STA interrupted_script_index
@@ -23125,7 +23125,7 @@ exit:
 ;===========================================
 src_msg_ptr = $15
 
-actor_says_message:
+print_actor_message_inline:
 ;Set the current script pointer as the message address
 .C:6477  AD 15 5E    LDA task_pc_lo
 .C:647a  85 15       STA <src_msg_ptr
@@ -23148,7 +23148,7 @@ actor_says_message:
 ;===========================================
 offset = $15
 src_msg_ptr = $15
-actor_says_message_with_offset:
+print_actor_message_at_offset:
 ;Read a 16-bit offset
 .C:6495  20 14 5E    JSR script_read_byte
 .C:6498  85 15       STA <offset
@@ -23184,13 +23184,13 @@ decrement_lo:
 ;===========================================
 .C:64ba  20 98 5F    JSR script_load_operand_bit7
 .C:64bd  8D 9A FE    STA talking_costume
-.C:64c0  4C 77 64    JMP actor_says_message
+.C:64c0  4C 77 64    JMP print_actor_message_inline
 ;===========================================
 ;Opcode #2E, #AE - actor says message (offset variant)
 ;===========================================
 .C:64c3  20 98 5F    JSR script_load_operand_bit7
 .C:64c6  8D 9A FE    STA talking_costume
-.C:64c9  4C 95 64    JMP actor_says_message_with_offset
+.C:64c9  4C 95 64    JMP print_actor_message_at_offset
 ;===========================================
 ; Get distance between two actors.
 ;
@@ -23697,7 +23697,7 @@ input_opcode = $d2
 ;===========================================
 ; Freeze all noncurrent scripts 
 ;===========================================
-freeze_noncurrent_scripts:
+suspend_other_tasks:
 ;Use .X as script slot counter, start at #0F, go downwards
 .C:6755  A2 0F       LDX #$0F
 check_script_state:
@@ -23718,7 +23718,7 @@ next_script:
 ;===========================================
 ; Unfreeze all scripts 
 ;===========================================
-unfreeze_all_scripts:
+resume_suspended_tasks:
 ;Use .X as script slot counter, start at #0F, go downwards
 .C:676c  A2 0F       LDX #$0F
 unfreeze_script:
@@ -23739,7 +23739,7 @@ unfreeze_script:
 .C:6780  AD 49 71    LDA current_room
 .C:6783  8D AA FE    STA saved_room
 ;Freeze other scripts
-.C:6786  20 55 67    JSR freeze_noncurrent_scripts	
+.C:6786  20 55 67    JSR suspend_other_tasks	
 ;Setup cutscene mode and clear sentence bar
 .C:6789  20 90 68    JSR setup_cutscene
 ;Save sentence parts
@@ -23756,12 +23756,12 @@ save_sentence_part:
 .C:679c  8D 8E FE    STA forced_sentence_trigger
 ;Save current script
 .C:679f  AD B8 70    LDA task_cur_idx
-.C:67a2  8D A6 FE    STA saved_script_index
+.C:67a2  8D A6 FE    STA saved_task_idx
 ;Reset script offsets
 .C:67a5  A9 00       LDA #$00
-.C:67a7  8D A4 FE    STA interrupted_script_offset_lo
+.C:67a7  8D A4 FE    STA interrupted_pc_lo
 .C:67aa  A9 00       LDA #$00
-.C:67ac  8D A5 FE    STA interrupted_script_offset_hi
+.C:67ac  8D A5 FE    STA interrupted_pc_hi
 .C:67af  60          RTS
 ;===========================================
 ;Opcode #C0 - return from cutscene
@@ -23769,13 +23769,13 @@ save_sentence_part:
 .C:67b0  A9 00       LDA #$00
 .C:67b2  8D 6D FF    STA var_destination_x
 .C:67b5  A9 00       LDA #$00
-.C:67b7  8D A6 FE    STA saved_script_index
+.C:67b7  8D A6 FE    STA saved_task_idx
 .C:67ba  A9 00       LDA #$00
 .C:67bc  8D A7 FE    STA interrupted_script_index
 .C:67bf  A9 00       LDA #$00
-.C:67c1  8D A4 FE    STA interrupted_script_offset_lo
+.C:67c1  8D A4 FE    STA interrupted_pc_lo
 .C:67c4  A9 00       LDA #$00
-.C:67c6  8D A5 FE    STA interrupted_script_offset_hi
+.C:67c6  8D A5 FE    STA interrupted_pc_hi
 ;Check if we were in control mode #01 (keypad mode)
 .C:67c9  AD A9 FE    LDA saved_control_mode
 .C:67cc  C9 01       CMP #$01
@@ -23790,14 +23790,14 @@ save_sentence_part:
 .C:67d6  AE AA FE    LDX saved_room
 .C:67d9  20 66 34    JSR load_room
 ;Unfreeze all scripts
-.C:67dc  20 6C 67    JSR unfreeze_all_scripts
+.C:67dc  20 6C 67    JSR resume_suspended_tasks
 .C:67df  4C 00 68    JMP exit
 ;----------------------------------
 other_control_modes:
 ;Save the control mode in the stack
 .C:67e2  48          PHA
 ;Unfreeze all scripts
-.C:67e3  20 6C 67    JSR unfreeze_all_scripts
+.C:67e3  20 6C 67    JSR resume_suspended_tasks
 ;Fix camera on the current kid
 .C:67e6  AD 67 FF    LDA current_kid_idx
 .C:67e9  20 1C 68    JSR fix_camera_on_actor_2
@@ -23998,7 +23998,7 @@ case_03:
 .C:68c4  A9 03       LDA #$03
 .C:68c6  8D A8 FE    STA control_mode
 ;Unfreeze all scripts
-.C:68c9  20 6C 67    JSR unfreeze_all_scripts
+.C:68c9  20 6C 67    JSR resume_suspended_tasks
 .C:68cc  60          RTS
 ;----------------------------
 check_02:
@@ -24023,7 +24023,7 @@ check_01:
 .C:68e1  A9 01       LDA #$01
 .C:68e3  8D A8 FE    STA control_mode
 ;Freeze all noncurrent running scripts
-.C:68e6  20 55 67    JSR freeze_noncurrent_scripts
+.C:68e6  20 55 67    JSR suspend_other_tasks
 .C:68e9  60          RTS
 default:
 .C:68ea  60          RTS
