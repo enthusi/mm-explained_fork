@@ -57,7 +57,7 @@ Key Relationships:
    - Called by update_actor_motion and step_actor_along_path to ensure animation reflects motion.
 
 7. Animation Reset
-   - Routine: reset_actor_animation_state
+   - Routine: reset_actor_render_flags
    - Function: Resets actor to standing/stopped state; flags redraw.
    - Can be called independently to force reset of motion and animation.
 
@@ -84,7 +84,7 @@ set_actor_destination
                                             ├─> apply_standing_clip
                                             └─> apply_walking_clip
 
-reset_actor_animation_state → may reset actor_motion_state and limb selection independently
+reset_actor_render_flags → may reset actor_motion_state and limb selection independently
 
 ================================================================================
  Digital Differential Analyzer (DDA) - integer stepping for smooth motion
@@ -378,7 +378,6 @@ Notes:
       pathing and DDA system.
 ================================================================================
 */
-
 * = $1C1F
 set_actor_destination:
         ldx     active_costume                 // X := index of the currently active costume
@@ -727,7 +726,7 @@ Returns
 
 Description
 	• If motion == MOTION_STOPPED → return.
-	• If low nibble == MOTION_ABOUT_TO_STOP → reset_actor_animation_state and return.
+	• If low nibble == MOTION_ABOUT_TO_STOP → reset_actor_render_flags and return.
 	• If standing/turning (bit7 set):
 		– resolve_turning_and_facing, set standing limbs;
 		– if still turning → return; else fall into walking pose setup.
@@ -855,7 +854,7 @@ check_if_about_to_stop:
         and     #MSK_LOW_NIBBLE                 // isolate low nibble of motion state
         cmp     #MOTION_ABOUT_TO_STOP           // equals #$01 → transition to standing
         bne     stand_turn_gate                 // not about to stop → handle stand/turn gate
-        jmp     reset_actor_animation_state     // about-to-stop → reset limbs/flags to standing
+        jmp     reset_actor_render_flags     // about-to-stop → reset limbs/flags to standing
 
         // ------------------------------------------------------------
         // Stand/turn gate
@@ -977,7 +976,7 @@ y_not_reached_after_x:
         // X reached, Y still in progress
         cmp     #YAXIS_RESULT_WBOX_CHANGED     // did Y cross a walkbox boundary?
         bne     return_vertical_progress_only  // no → keep current walking state
-        jmp     reset_actor_animation_state    // yes → reenter cleanly with standing reset
+        jmp     reset_actor_render_flags    // yes → reenter cleanly with standing reset
 
 return_vertical_progress_only:
         rts                                     // partial progress this frame (Y only)
@@ -1236,7 +1235,6 @@ clear_actor_turning:
 
 exit_update_motion_state:
         rts                                     // done
-
 /*
 ================================================================================
   apply_standing_clip
@@ -1350,7 +1348,6 @@ Notes
 	- Expects a single-direction mask or 0; any other non-zero maps to DOWN.
 ========================================================================
 */
-
 * = $2BF6
 apply_walking_clip:
         // ------------------------------------------------------------
@@ -1388,23 +1385,23 @@ commit_walking_clip:
         rts
 /*
 ================================================================================
-  reset_actor_animation_state
+  reset_actor_render_flags
 ================================================================================
 
 Summary
-	Reset the current actor’s animation to a standing, stopped state and flag a
-	redraw of animation.
+	Reset the current actor’s motion state to a standing, stopped state 
+	and flag a redraw.
 
 Arguments
 	actor                       Current actor index (global selects X)
 
 Global Inputs
 	actor                       Actor index selector
-	actor_animation_state[*]    Read to preserve existing bits before OR
+	actor_render_flags[*]    	Read to preserve existing bits before OR
 
 Global Outputs
 	actor_motion_state[*]       Set to MOTION_STOPPED_CODE
-	actor_animation_state[*]    OR with ANIM_FLAGS_REFRESH_DRAW to request redraw
+	actor_render_flags[*]    	OR with ACTOR_RENDER_VISIBLE_AND_REFRESH to request redraw
 
 Description
 	- Select standing limbs for the current actor.
@@ -1414,13 +1411,12 @@ Description
 
 Notes
 	- Clobbers: A, X.
-	- A ends holding the updated actor_animation_state[X] value.
+	- A ends holding the updated actor_render_flags[X] value.
 	- Processor flags reflect the final ORA.
 ================================================================================
 */
-
 * = $2C23
-reset_actor_animation_state:
+reset_actor_render_flags:
 		// ------------------------------------------------------------
 		// Select standing pose for current actor
 		// ------------------------------------------------------------
@@ -1429,17 +1425,17 @@ reset_actor_animation_state:
 
 
 		// ------------------------------------------------------------
-		// Set motion state to stopped (#$02)
+		// Set motion state to stopped
 		// ------------------------------------------------------------
 		lda     #MOTION_STOPPED_CODE
 		sta     actor_motion_state,x
 
 		// ------------------------------------------------------------
-		// Mark animation refresh and request redraw (ORA #$21)
+		// Mark animation refresh and request redraw
 		// ------------------------------------------------------------
-		lda     actor_animation_state,x
-		ora     #ANIM_FLAGS_REFRESH_DRAW
-		sta     actor_animation_state,x
+		lda     actor_render_flags,x
+		ora     #ACTOR_RENDER_VISIBLE_AND_REFRESH
+		sta     actor_render_flags,x
 		rts
 /*
 ================================================================================
@@ -1471,7 +1467,7 @@ Global Outputs
 Returns
     .A    unspecified (propagated from called routines)
     Flow  either falls through to RTS on success or tail-jumps to
-          set_state_to_moving / reset_actor_animation_state.
+          set_state_to_moving / reset_actor_render_flags.
 
 Description
     - Snapshot path state for safe probing.
@@ -1570,7 +1566,7 @@ handle_unresolved_box:
         lda     actor_active_wpt_y,x             // target Y
         cmp     position_to_waypoint_y_for_actor,x
         bne     check_vertical_alignment         // not aligned → choose nudge dir
-        jmp     reset_actor_animation_state      // aligned → stop/refresh
+        jmp     reset_actor_render_flags      // aligned → stop/refresh
 
 		// ------------------------------------------------------------
 		// Choose vertical nudge direction toward waypoint
@@ -1602,7 +1598,7 @@ recheck_box_after_vertical_move:
         cmp     #BOX_UNRESOLVED_CODE
         bne     finish_horizontal_traversal       // resolved → done
         jsr     restore_actor_path_snapshot       // unresolved → restore prior state
-        jmp     reset_actor_animation_state       // stop/refresh animation
+        jmp     reset_actor_render_flags       // stop/refresh animation
 
 finish_horizontal_traversal:
         rts
@@ -1694,7 +1690,7 @@ handle_unresolved_box_vert:
 		lda     actor_active_wpt_x,x
 		cmp     position_to_waypoint_x_for_actor,x
 		bne     check_horizontal_dir
-		jmp     reset_actor_animation_state
+		jmp     reset_actor_render_flags
 
 check_horizontal_dir:
         lda     actor_dir_x_bit,x                  // test horizontal direction
@@ -1717,13 +1713,13 @@ recheck_box_after_horizontal_nudge:
         cmp     #BOX_UNRESOLVED_CODE
         bne     finish_vertical_traversal         // resolved → done
         jsr     restore_actor_path_snapshot       // unresolved → rollback
-        jmp     reset_actor_animation_state       // stop animation
+        jmp     reset_actor_render_flags       // stop animation
 
 finish_vertical_traversal:
         rts
 /*
 ================================================================================
-update_actor_walkbox_state
+  update_actor_walkbox_state
 ================================================================================
 
 Summary
@@ -2065,7 +2061,7 @@ exit_update_box_for_actor:
         rts                                    // return with A already set
 /*
 ================================================================================
- select_actor_box_handler
+  select_actor_box_handler
 ================================================================================
 
 Summary
@@ -2320,7 +2316,7 @@ clear_box_handler_idx:
         rts
 /*
 ================================================================================
-# clear_box_handler_idx_b
+  clear_box_handler_idx_b
 ================================================================================
 
 Summary
@@ -2436,7 +2432,6 @@ box_attr_handler_hi:
 		.byte	>clear_box_handler_idx
 		.byte	>clear_box_handler_idx_b
 		.byte	>set_box_masked_by_fg
-
 
 /*
 ================================================================================
