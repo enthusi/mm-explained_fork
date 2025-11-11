@@ -5,7 +5,7 @@
 ================================================================================
 
 	Keeps the scene’s actors in sync with the camera and with limited
-	hardware sprites. It decides who is visible, which actor owns which sprite,
+	hardware sprites. It decides who is onscreen, which actor owns which sprite,
 	how sprites are layered, and when to redraw.
 
 High-level flow per frame
@@ -14,19 +14,19 @@ High-level flow per frame
 1) Motion and limbs:
 	step_actor_motion_and_limbs
 		• For each costume that has an actor and a loaded resource:
-		- apply_waypoint_update_if_needed
-		- update_actor_motion
-		- animate_actor_limbs
+			- apply_waypoint_update_if_needed
+			- update_actor_motion
+			- animate_actor_limbs
 		• No drawing here. It only advances state.
 
 
 2) Visibility + sprite pool:
    refresh_visibility_and_tick_sprites
-     • For each costume → compute_actor_visibility_from_viewport to flag
-       visible vs hidden using horizontal delta vs camera.
+     • For each costume → compute_actor_visibility to flag
+       onscreen vs hidden using horizontal delta vs camera.
      • assign_and_order_sprites reconciles the 4-sprite pool:
 		   A) free sprites from hidden actors and clear both buffers
-		   B) allocate or refresh sprites for visible actors
+		   B) allocate or refresh sprites for onscreen actors
 		   C) clear stale sprite→actor links and order slots
 		   D) rank sprites by Y (topmost first; plant costume forced to the top)
 		   E) finalize per-actor relative draw order
@@ -38,7 +38,7 @@ High-level flow per frame
      • For actors with the “needs refresh” bit:
        - recompute visibility and on-screen coords
        - assign_and_order_sprites to ensure a valid sprite
-       - draw_actor if visible
+       - draw_actor if onscreen
        - if stopped, set “needs draw” for a stable follow-up refresh
      • Flip sprite_bank_sel to present the new frame.
 
@@ -50,21 +50,21 @@ actor_room_to_sprite_coords
 	• Recomputes sprite X/Y from room coords + camera:
 		X := (actor_x − viewport_left + +3) * 8 with carry into X-hi, then −1
 		Y := actor_y * 2 + 2
-	• Calls compute_actor_visibility_from_viewport up front so off-screen
+	• Calls compute_actor_visibility up front so off-screen
 	actors do not cause visual glitches.
 
 Visibility rule
 ---------------
 
-compute_actor_visibility_from_viewport
+compute_actor_visibility
 	• Sub := actor_x − viewport_left_col
-		Sub < 0      → off left  → invisible
-		0..SPAN−1    → inside    → visible (edge entries may seed counter)
-		≥ SPAN       → off right → invisible
+		Sub < 0      → off left  → offscreen
+		0..SPAN−1    → inside    → onscreen (edge entries may seed counter)
+		≥ SPAN       → off right → offscreen
 	• Special cases:
-		- Sub == $FF and previously invisible → entering from left → set
-		actor_anim_counter := 3 and mark visible
-		- Right edge equality also seeds the counter if coming from invisible
+		- Sub == $FF and previously offscreen → entering from left → set
+		actor_anim_counter := 3 and mark onscreen
+		- Right edge equality also seeds the counter if coming from offscreen
 
 Sprite assignment and order
 ---------------------------
@@ -104,7 +104,7 @@ Data flow and invariants
 ------------------------
 	• actor_for_costume[] and costume_for_actor[] are the ground truth links.
 	• actor_visible[] is only camera-derived
-	• actor_sprite_index[] is valid iff the actor is visible and capacity
+	• actor_sprite_index[] is valid iff the actor is onscreen and capacity
 	permits; otherwise it is $FF.
 	• sprites_in_use_count and sprite_in_use_flag[] must match after Pass A/B.
 	• relative_sprite_index[] and relative_sprite_for_actor[] form a dense 0..N−1
@@ -141,13 +141,12 @@ Simplified
 .label actor_index               = $3043  // Loop index over actors (0..3) in animation pass
 .label costume_scan_idx          = $335E  // Loop index over costumes (0..$18) in update pass
 
-.const ANIM_FLAGS_TICK_OR        = $21    // Bits OR’ed into anim_state each tick when counter > 0
+.const ACTOR_RENDER_FLAGS_TICK        = ACTOR_RENDER_VISIBLE_AND_REFRESH    // Actor render flags each tick when counter > 0
 .const MOTION_MASK_7F            = $7F    // Mask to clear bit7 when testing for MOTION_STOPPED_CODE
 .const UNASSIGNED 				 = $FF
-.const ANIM_REFRESH_CLEAR_MASK   = $FE    // Mask to clear “needs refresh” bit in anim_state
 .const ANIM_COUNTER_INIT         = $01    // Initial per-actor animation counter value
-.const VIS_INVISIBLE             = $00    // Visibility flag: not visible in scene
-.const VIS_VISIBLE               = $01    // Visibility flag: visible in scene
+.const ACTOR_OFFSCREEN           = $00    // Visibility flag: not visible in scene
+.const ACTOR_ONSCREEN            = $01    // Visibility flag: visible in scene
 
 // Screen coordinate conversion
 .const X_ALIGN_ADD3              = $03    // +3 before *8 to align actor X from columns to pixels
@@ -155,7 +154,7 @@ Simplified
 
 /*
 ================================================================================
-  Convert actor position to sprite position
+  actor_room_to_sprite_coords
 ================================================================================
 
 Summary
@@ -223,7 +222,7 @@ actor_room_to_sprite_coords:
 		// ------------------------------------------------------------
 		// Refresh visibility state for the current actor/sprite
 		// ------------------------------------------------------------
-		jsr     compute_actor_visibility_from_viewport
+		jsr     compute_actor_visibility
 
 		// ------------------------------------------------------------
 		// Initialize X-high byte (clear carry-in target)
@@ -271,7 +270,7 @@ actor_room_to_sprite_coords:
 		rts
 /*
 ================================================================================
-  Advance characters animation
+  refresh_visibility_and_tick_sprites
 ================================================================================
 
 Summary
@@ -287,26 +286,26 @@ Global Inputs
 	actor_sprite_index[]              actor → sprite index (NO_SPRITE if none)
 	actor_anim_counter[]              per-actor countdown to next sprite move
 	actor_motion_state[]              per-actor motion bits (MOTION_MASK_7F)
-	actor_animation_state[]           per-actor animation flags
+	actor_render_flags[]           	  per-actor render flags
 
 Global Outputs
 	active_costume                    used as pass-1 loop index (0..COSTUME_MAX_INDEX)
 	actor_index                       used as pass-2 loop index (0..ACTOR_COUNT_TOTAL-1)
-	actor_animation_state[]           |="ANIM_FLAGS_TICK_OR" when ticking; unchanged on move
+	actor_render_flags[]           	  |="ACTOR_RENDER_FLAGS_TICK" when ticking; unchanged on move
 	actor_anim_counter[]              decremented when >0; left at 0 when move occurs
 	actor_sprite_x_lo/hi[]            updated when a stopped actor’s counter hits 0
 
 Description
 	- Pass 1:
-		• For each costume with an assigned actor, call compute_actor_visibility_from_viewport.
+		• For each costume with an assigned actor, call compute_actor_visibility.
 		• Reconcile sprite ownership with visibility via assign_and_order_sprites.
 	- Pass 2:
 		• For each actor that has a sprite:
-	– If actor_anim_counter == 0 and (actor_motion_state & MOTION_MASK_7F)
-	equals MOTION_STOPPED_CODE, call actor_room_to_sprite_coords and
-	copy the computed X lo/hi to the assigned sprite.
-	– Otherwise decrement actor_anim_counter and OR ANIM_FLAGS_TICK_OR into
-	actor_animation_state to request a redraw.
+			– If actor_anim_counter == 0 and (actor_motion_state & MOTION_MASK_7F)
+			equals MOTION_STOPPED_CODE, call actor_room_to_sprite_coords and
+			copy the computed X lo/hi to the assigned sprite.
+			– Otherwise decrement actor_anim_counter and OR ACTOR_RENDER_FLAGS_TICK into
+			actor_render_flags to request a redraw.
 
 Notes
 	- Sprite Y is produced inside actor_room_to_sprite_coords; this routine
@@ -330,7 +329,7 @@ scan_costume_for_visibility:
 		lda     actor_for_costume,x           // A := actor index mapped to this costume
 		bmi     next_costume_or_done          // if FF (no actor) → skip
 		sta     actor                         // actor := current actor index
-		jsr     compute_actor_visibility_from_viewport  // update visibility flag for this actor
+		jsr     compute_actor_visibility  // update visibility flag for this actor
 
 next_costume_or_done:
 		inc     active_costume                // active_costume++
@@ -376,9 +375,9 @@ scan_actor_loop:
 		beq     apply_sprite_move_if_stopped  // if 0, jump to move logic  
 
 		dec     actor_anim_counter,x          // otherwise decrement counter  
-		lda     actor_animation_state,x       // load animation flags  
-		ora     #ANIM_FLAGS_TICK_OR           // set “tick” bits (e.g., refresh)  
-		sta     actor_animation_state,x       // write updated flags  
+		lda     actor_render_flags,x       	  // load animation flags  
+		ora     #ACTOR_RENDER_FLAGS_TICK      // make visible and refresh
+		sta     actor_render_flags,x       	  // write updated flags  
 		jmp     next_actor_or_done            // skip to next actor  
 
 
@@ -396,7 +395,7 @@ apply_sprite_move_if_stopped:
 		// Convert actor’s room coordinates → sprite coordinates  
 		// and update hardware sprite X registers.  
 		// ------------------------------------------------------------  
-		jsr     actor_room_to_sprite_coords  // recalc sprite X/Y for actor  
+		jsr     actor_room_to_sprite_coords  	 // recalc sprite X/Y for actor  
 		lda     actor_tgt_sprite_x_lo,x          // load computed sprite X low  
 		ldy     actor_sprite_index,x             // Y := sprite slot  
 		sta     actor_sprite_x_lo,y              // update hardware sprite X low  
@@ -415,7 +414,7 @@ next_actor_or_done:
 		rts                                   // done with update pass
 /*
 ================================================================================
-  Update characters’ positions and limbs 
+  step_actor_motion_and_limbs
 ================================================================================
 
 Summary
@@ -493,10 +492,9 @@ next_costume_or_exit:
 		cmp     #COSTUME_MAX_INDEX + 1            // done with all costumes?
 		bne     scan_costume_for_updates          // no → continue loop
 		rts                                       // yes → return to caller
-
 /*
 ================================================================================
-  Redraw actors that need refresh
+  redraw_flagged_actors
 ================================================================================
 
 Summary
@@ -508,13 +506,13 @@ Summary
 
 Global Inputs
 	costume_for_actor[]           actor → assigned costume index (or $FF)
-	actor_animation_state[]       animation state flags
+	actor_render_flags[]       	  animation state flags
 	actor_motion_state[]          low nibble encodes motion code
 	actor_visible[]               current scene visibility state
 	sprite_bank_sel               sprite buffer toggle flag
 
 Global Outputs
-	actor_animation_state[]       bit0 cleared when refreshed, bit5 set if stopped
+	actor_render_flags[]       bit0 cleared when refreshed, bit5 set if stopped
 	sprite_bank_sel               toggled at end of pass
 
 Description
@@ -526,7 +524,7 @@ Description
 		sprite coordinates, and reassign sprites.
 		• If actor is visible, draw it.
 		• If actor is stopped (motion code = MOTION_STOPPED_CODE), set the
-		“needs draw” bit to mark for further refresh.
+		“refresh” bit to mark for further refresh.
 	- After scanning all actors, toggle the sprite buffer to display the newly
 	drawn frame.
 
@@ -554,18 +552,18 @@ scan_actor_for_refresh:
 
 
 		// ------------------------------------------------------------
-		// Refresh gate: proceed only if “needs refresh” flag is set
+		// Refresh gate: proceed only if refresh flag is set
 		// ------------------------------------------------------------
-		lda     actor_animation_state,x       // read animation flags
-		and     #$01                          // test “needs refresh” bit
+		lda     actor_render_flags,x       	  // read animation flags
+		and     #ACTOR_RENDER_REFRESH         // test refresh bit
 		beq     next_actor_or_exit            // 0 → nothing to do
 
 		// ------------------------------------------------------------
-		// Clear the “needs refresh” bit before we update/draw
+		// Clear the refresh bit before we update/draw
 		// ------------------------------------------------------------
-		lda     actor_animation_state,x       // reload flags
-		and     #ANIM_REFRESH_CLEAR_MASK      // clear bit0
-		sta     actor_animation_state,x       // write back
+		lda     actor_render_flags,x       		// reload flags
+		and     #ACTOR_RENDER_CLEAR_REFRESH     // clear refresh flag
+		sta     actor_render_flags,x       		// write back
 
 		// ------------------------------------------------------------
 		// Bring actor’s screen state up to date
@@ -573,7 +571,7 @@ scan_actor_for_refresh:
 		//   - convert room coords → sprite coords
 		//   - reconcile sprite ownership vs. visibility
 		// ------------------------------------------------------------
-		jsr     compute_actor_visibility_from_viewport   // sets actor_visible
+		jsr     compute_actor_visibility   // sets actor_visible
 		jsr     actor_room_to_sprite_coords    // updates sprite X/Y targets
 		jsr     assign_and_order_sprites           // ensures sprite is bound
 
@@ -586,17 +584,17 @@ scan_actor_for_refresh:
 		jsr     draw_actor                    // render actor this frame
 
 		// ------------------------------------------------------------
-		// If actor is stopped, set “needs draw” to request a follow-up
+		// If actor is stopped, set refresh to request a follow-up
 		//   (low nibble == MOTION_STOPPED_CODE)
 		// ------------------------------------------------------------
 		ldx     actor                         // restore actor index
 		lda     actor_motion_state,x          // read motion state
-		and     #$0F                          // isolate low nibble
+		and     #MSK_LOW_NIBBLE               // isolate low nibble
 		cmp     #MOTION_STOPPED_CODE          // stopped?
 		bne     next_actor_or_exit            // moving → no extra flag
-		lda     #ANIM_FLAG_NEEDS_DRAW         // bit mask: needs draw
-		ora     actor_animation_state,x       // set bit
-		sta     actor_animation_state,x       // commit
+		lda     #ACTOR_RENDER_REFRESH         // bit mask: refresh
+		ora     actor_render_flags,x       // set bit
+		sta     actor_render_flags,x       // commit
 
 
 next_actor_or_exit:
@@ -618,7 +616,7 @@ next_actor_or_exit:
 		rts                                   // return
 /*
 ================================================================================
-  Unassign actor for costume
+  detach_actor_from_costume
 ================================================================================
 
 Summary
@@ -659,7 +657,6 @@ Notes
 	reuse or teleportation.
 ================================================================================
 */
-
 * = $38E4
 detach_actor_from_costume:
 		// ------------------------------------------------------------
@@ -723,7 +720,7 @@ detach_actor_from_costume:
 
 /*
 ================================================================================
-  Assign available actor
+  assign_costume_to_free_actor
 ================================================================================
 
 Summary
@@ -810,7 +807,7 @@ advance_actor_scan_or_exit:
 		// ------------------------------------------------------------  
 /*
 ================================================================================
- Initialize actor for costume
+  bind_actor_to_costume_and_init
 ================================================================================
 
 Summary
@@ -862,7 +859,6 @@ Description
 	- Apply the initial clip with a one-shot loop to establish pose.
 ================================================================================
 */
-
 * = $3927
 bind_actor_to_costume_and_init:
 		// ------------------------------------------------------------
@@ -1029,7 +1025,7 @@ init_each_limb_base_cel:
 		rts                                     // done initializing actor
 /*
 ================================================================================
-  Clear actors’ visibility in scene
+  hide_all_actors_and_release_sprites
 ================================================================================
 
 Summary
@@ -1080,7 +1076,7 @@ clear_visibility:
 		rts                                   // done
 /*
 ================================================================================
-  Convert actor direction to animation set
+  map_dir_mask_to_standing_clip
 ================================================================================
 
 Summary
@@ -1139,7 +1135,7 @@ return_clip_set:
 Summary
 	Reconciles sprite ownership with actor visibility, then establishes
 	a stable back-to-front draw order. Runs in five passes:
-		A) Free sprites from invisible actors and clear both sprite buffers
+		A) Free sprites from offscreen actors and clear both sprite buffers
 		B) Ensure each visible actor owns a sprite (allocate or refresh link)
 		C) Clear stale sprite→actor links and uninitialized order slots
 		D) Build draw order by selecting topmost (smallest Y) candidates,
@@ -1165,7 +1161,7 @@ Global Outputs
 	sprite_bank_sel                  toggled during buffer clears
 
 Description
-	• Pass A: For each invisible actor with a sprite, decrement usage count,
+	• Pass A: For each offscreen actor with a sprite, decrement usage count,
 	mark the sprite free, clear its graphics in both banks (set_actor_sprite_base,
 	clear_sprite_visible_rows, blit_sprite_vthird), and unlink from actor.
 	• Pass B: For each visible actor, if no sprite and capacity permits,
@@ -1186,9 +1182,9 @@ Notes
 * = $3ED3
 assign_and_order_sprites:
         // ============================================================
-        // Pass A: release sprites assigned to invisible actors
+        // Pass A: release sprites assigned to offscreen actors
         //
-        // Any actor marked invisible releases its sprite slot.
+        // Any actor marked offscreen releases its sprite slot.
         // The sprite is cleared in both sprite buffers and unlinked.
         // ============================================================
         ldx     #$00                              // X := actor index = 0
@@ -1196,11 +1192,11 @@ assign_and_order_sprites:
 		// ------------------------------------------------------------
         // Check if actor’s sprite should be released
         //
-        // If the actor is invisible and currently has a sprite assigned,
+        // If the actor is offscreen and currently has a sprite assigned,
         // prepare to free that sprite and clear its graphics buffers.
         // Otherwise, skip to the next actor.
         // ------------------------------------------------------------
-free_sprites_for_invisible_actors:
+free_sprites_for_offscreen_actors:
         lda     actor_visible,x                   // load visibility flag for actor X
         bne     next_actor_freepass_or_done       // skip release if actor still visible
 		
@@ -1268,7 +1264,7 @@ free_sprites_for_invisible_actors:
 next_actor_freepass_or_done:
         inx                                       // increment actor index
         cpx     #ACTOR_COUNT_TOTAL                // done all 4 actors?
-        bne     free_sprites_for_invisible_actors // if not, continue scanning
+        bne     free_sprites_for_offscreen_actors // if not, continue scanning
 
 
         // ============================================================
@@ -1288,7 +1284,7 @@ next_actor_freepass_or_done:
         // ------------------------------------------------------------
 assign_or_refresh_visible_actor_sprite:
         lda     actor_visible,x                   // load visibility flag for actor X
-        beq     next_actor_assignpass_or_done     // skip if invisible
+        beq     next_actor_assignpass_or_done     // skip if offscreen
         lda     actor_sprite_index,x              // load sprite index for this actor
         cmp     #NO_SPRITE                        // check if already has sprite
         bne     refresh_sprite_owner_link         // yes → just refresh ownership
@@ -1515,7 +1511,7 @@ next_actor_relidx_or_done:
         rts                                       // return to caller
 /*
 ================================================================================
-  compute_actor_visibility_from_viewport
+  compute_actor_visibility
 ================================================================================
 
 Summary
@@ -1533,25 +1529,25 @@ Global Inputs
 	actor_visible[]          (prior visibility state)
 
 Global Outputs
-	actor_visible[]          (updated to visible/invisible)
+	actor_visible[]          (updated to visible/offscreen)
 	actor_anim_counter[]     (seeded to $03 on edge entry)
 
 Description
-	• If no actor is mapped to the active costume, mark invisible and return.
+	• If no actor is mapped to the active costume, mark offscreen and return.
 	• Compute Sub := actor_x − viewport_left_col.
-	• Sub < 0            → offscreen left → invisible.
+	• Sub < 0            → offscreen left → offscreen.
 	• 0..VIEW_FULL_SPAN_MINUS1
 		→ inside view; right-edge equality may seed reveal.
 	• Sub ≥ VIEW_FULL_SPAN_MINUS1+1
-		→ offscreen right → invisible.
-	• Special case Sub == $FF with prior invisible
+		→ offscreen right → offscreen.
+	• Special case Sub == $FF with prior offscreen
 		→ entering from left edge → seed counter and show.
-	• On right-edge equality with prior invisible
+	• On right-edge equality with prior offscreen
 		→ seed counter and show.
 ================================================================================
 */
 * = $3FF7
-compute_actor_visibility_from_viewport:
+compute_actor_visibility:
 		// ------------------------------------------------------------
 		// Update visibility from horizontal position vs viewport.
 		// Inputs: active_costume, actor_x_pos[X], viewport_left_col.
@@ -1560,7 +1556,7 @@ compute_actor_visibility_from_viewport:
 		ldx     active_costume                // X := costume index
 		lda     actor_for_costume,x           // A := actor index for this costume
 		bpl     compute_viewport_delta        // if A >= 0 → actor exists
-		lda     #VIS_INVISIBLE                // no actor mapped → invisible
+		lda     #ACTOR_OFFSCREEN              // no actor mapped → offscreen
 		jmp     write_visibility_and_rts      // commit and return
 
 compute_viewport_delta:
@@ -1586,14 +1582,14 @@ compute_viewport_delta:
 		bcc     test_offscreen_left           // Sub <= $FD → left/inside path
 
 		// ------------------------------------------------------------
-		// Sub == $FF and previously invisible → entering from left edge.
+		// Sub == $FF and previously offscreen → entering from left edge.
 		// Seed a short animation counter and mark visible.
 		// ------------------------------------------------------------
 		lda     actor_visible,x               // prior visibility
 		bne     test_offscreen_left           // already visible → normal path
 		lda     #$03                          // small reveal counter
 		sta     actor_anim_counter,x          // start edge-entry ticks
-		lda     #VIS_VISIBLE                  // set visible now
+		lda     #ACTOR_ONSCREEN               // set visible now
 		sta     actor_visible,x               // commit immediate show
 		rts                                   // done
 
@@ -1602,11 +1598,11 @@ test_offscreen_left:
 		// Fully-left test: Sub < 0 → offscreen left.
 		// ------------------------------------------------------------
 		cmp     #$00                          // Sub ? 0
-		bcc     set_invisible_and_return      // Sub negative → invisible
+		bcc     set_offscreen_and_return      // Sub negative → offscreen
 
 		// ------------------------------------------------------------
 		// Right-edge equality: Sub == VIEW_FULL_SPAN_MINUS1 → at right edge.
-		// Handle possible edge-entry seeding if coming from invisible.
+		// Handle possible edge-entry seeding if coming from offscreen.
 		// ------------------------------------------------------------
 		cmp     #VIEW_FULL_SPAN_MINUS1        // Sub ? right-edge delta
 		beq     mark_visible_in_view          // equal → handle edge entry
@@ -1615,7 +1611,7 @@ test_offscreen_right:
 		// ------------------------------------------------------------
 		// Fully-right test: Sub ≥ VIEW_FULL_SPAN_MINUS1+1 → offscreen right.
 		// ------------------------------------------------------------
-		bcs     set_invisible_and_return_b    // beyond right edge → invisible
+		bcs     set_offscreen_and_return_b    // beyond right edge → offscreen
 
 mark_visible_in_view:
 		// ------------------------------------------------------------
@@ -1625,28 +1621,28 @@ mark_visible_in_view:
 
 
 		// ------------------------------------------------------------
-		// Equal to right edge: if previously invisible, seed reveal counter.
+		// Equal to right edge: if previously offscreen, seed reveal counter.
 		// ------------------------------------------------------------
 		lda     actor_visible,x               // prior visibility
 		bne     write_visibility_after_edge_enter // already visible → skip seed
 		lda     #$03                          // small reveal counter
 		sta     actor_anim_counter,x          // store
-		lda     #VIS_VISIBLE                  // prepare visible
+		lda     #ACTOR_ONSCREEN                  // prepare visible
 
 
 write_visibility_after_edge_enter:
 		jmp     write_visibility_and_rts      // commit and return
 
 set_visible_and_return:
-		lda     #VIS_VISIBLE                  // A := visible
+		lda     #ACTOR_ONSCREEN               // A := visible
 		jmp     write_visibility_and_rts      // commit and return
 
-set_invisible_and_return_b:
-		lda     #VIS_INVISIBLE                // A := invisible (right side)
+set_offscreen_and_return_b:
+		lda     #ACTOR_OFFSCREEN              // A := offscreen (right side)
 		jmp     write_visibility_and_rts      // commit and return
 
-set_invisible_and_return:
-		lda     #VIS_INVISIBLE                // A := invisible (left side)
+set_offscreen_and_return:
+		lda     #ACTOR_OFFSCREEN              // A := offscreen (left side)
 
 write_visibility_and_rts:
 		sta     actor_visible,x               // actor_visible[X] := A
