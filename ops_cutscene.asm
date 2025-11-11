@@ -63,8 +63,8 @@ Notes:
 #import "script_engine.asm"
 #import "script_primitives.asm"
 #import "room_loader.asm"
+#import "ops_camera.asm"
 
-.label  fix_camera_on_actor_2 		= $0	     	// Center camera on actor whose index is in A (reframes view)
 .label  saved_control_mode    		= $FEA9    		// Previous control mode saved on entering cutscene
 .label  saved_room_id         		= $FEAA    		// Room ID saved for keypad-mode return
 
@@ -240,7 +240,7 @@ other_control_modes:
 		// Fix camera on current kid
 		// ------------------------------------------------------------
 		lda     current_kid_idx
-		jsr     fix_camera_on_actor_2
+		jsr     script_cam_follow_costume
 
 		// ------------------------------------------------------------
 		// Restore previous sentence parts
