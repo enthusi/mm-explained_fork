@@ -1344,7 +1344,7 @@ relative_sprite_for_actor = $fd7c
 ;	-the actor is stopped
 ;	-the animation counter has not expired
 ;
-actor_animation_state = $FD97
+actor_render_flags = $FD97
 
 ;===========================================================
 ; Actor walkbox and pathing variables
@@ -2119,8 +2119,8 @@ check_layer_for_actor:
 .C:05a8  F0 08       BEQ next_actor
 ;Actor behind foreground layer - refresh animation
 .C:05aa  A9 01       LDA #$01
-.C:05ac  1D 97 FD    ORA actor_animation_state,X
-.C:05af  9D 97 FD    STA actor_animation_state,X
+.C:05ac  1D 97 FD    ORA actor_render_flags,X
+.C:05af  9D 97 FD    STA actor_render_flags,X
 next_actor:
 .C:05b2  CA          DEX
 .C:05b3  10 EB       BPL check_layer_for_actor
@@ -2226,14 +2226,14 @@ check_if_costume_gets_drawn:
 .C:062c  8E 30 FC    STX active_costume
 .C:062f  A6 D8       LDX actor
 ;Does the actor need to be drawn on screen?
-.C:0631  BD 97 FD    LDA actor_animation_state,X
+.C:0631  BD 97 FD    LDA actor_render_flags,X
 .C:0634  29 20       AND #$20
 ;If not, continue with next character
 .C:0636  F0 15       BEQ next_costume
 ;Clear the "need to be drawn" state
-.C:0638  BD 97 FD    LDA actor_animation_state,X
+.C:0638  BD 97 FD    LDA actor_render_flags,X
 .C:063b  29 DF       AND #$DF
-.C:063d  9D 97 FD    STA actor_animation_state,X
+.C:063d  9D 97 FD    STA actor_render_flags,X
 ;Does the actor have a sprite index assigned? If not, skip it
 .C:0640  BD 32 FC    LDA actor_sprite_index,X
 .C:0643  C9 FF       CMP #$FF
@@ -9290,9 +9290,9 @@ move_animation_state_if_needed:
 .C:2581  F0 0A       BEQ exit
 ;Otherwise, refresh animation
 .C:2583  A6 D8       LDX actor
-.C:2585  BD 97 FD    LDA actor_animation_state,X
+.C:2585  BD 97 FD    LDA actor_render_flags,X
 .C:2588  09 01       ORA #$01
-.C:258a  9D 97 FD    STA actor_animation_state,X
+.C:258a  9D 97 FD    STA actor_render_flags,X
 exit:
 .C:258d  60          RTS
 ;===========================================
@@ -9335,9 +9335,9 @@ assign_new_base_cell:
 .C:25b5  9D 42 FC    STA actor_limb_animation_frame,X
 ;Refresh animation
 .C:25b8  A6 D8       LDX actor
-.C:25ba  BD 97 FD    LDA actor_animation_state,X
+.C:25ba  BD 97 FD    LDA actor_render_flags,X
 .C:25bd  09 01       ORA #$01
-.C:25bf  9D 97 FD    STA actor_animation_state,X
+.C:25bf  9D 97 FD    STA actor_render_flags,X
 .C:25c2  60          RTS
 ;===========================================
 ; Arguments:	.X		actor_limb index
@@ -10262,7 +10262,7 @@ change_to_new_kid:
 .C:29c0  8D B8 70    STA task_cur_idx
 ;Fix camera on the new kid actor
 .C:29c3  AD 67 FF    LDA current_kid_idx
-.C:29c6  20 23 68    JSR fix_camera_on_actor
+.C:29c6  20 23 68    JSR cam_follow_costume
 ;Refresh inventory displayed
 .C:29c9  20 2B 5F    JSR refresh_inventory_io_guarded
 ;===========================================
@@ -10443,7 +10443,7 @@ check_if_about_to_stop:
 .C:2aa6  C9 01       CMP #$01
 .C:2aa8  D0 03       BNE is_actor_walking
 ;It's about to stop, reset animation
-.C:2aaa  4C 23 2C    JMP reset_actor_animation_state
+.C:2aaa  4C 23 2C    JMP reset_actor_render_flags
 ;--------------------------------------------
 is_actor_walking:
 ;Is actor not turning? 
@@ -10526,7 +10526,7 @@ y_position_not_reached:
 .C:2b04  C9 04       CMP #$04
 .C:2b06  D0 03       BNE exit_2
 ;If so, reset the animation state
-.C:2b08  4C 23 2C    JMP reset_actor_animation_state
+.C:2b08  4C 23 2C    JMP reset_actor_render_flags
 exit_2:
 ;We're not traversing into a new walkbox, we're simply moving vertically, exit
 .C:2b0b  60          RTS
@@ -10763,16 +10763,16 @@ do_nothing:
 ; The motion state gets reset to stopped.
 ; The animation state gets set to "refresh needed" and "actor needs to be drawn".
 ;===========================================
-reset_actor_animation_state:
+reset_actor_render_flags:
 .C:2c23  A6 D8       LDX actor
 .C:2c25  20 CA 2B    JSR apply_standing_clip
 ;Set motion state to stopped (#02)
 .C:2c28  A9 02       LDA #$02
 .C:2c2a  9D 68 FD    STA actor_motion_state,X
 ;Refresh animation and set the "actor needs to be drawn" state
-.C:2c2d  BD 97 FD    LDA actor_animation_state,X
+.C:2c2d  BD 97 FD    LDA actor_render_flags,X
 .C:2c30  09 21       ORA #$21
-.C:2c32  9D 97 FD    STA actor_animation_state,X
+.C:2c32  9D 97 FD    STA actor_render_flags,X
 .C:2c35  60          RTS
 ;===========================================
 ; Traverse an intermediate walkbox horizontally
@@ -10820,7 +10820,7 @@ current_box_not_determined:
 .C:2c72  DD 49 FD    CMP position_to_waypoint_y_for_actor,X
 .C:2c75  D0 03       BNE check_y_direction
 ;Y coordinate of waypoint reached - reset animation
-.C:2c77  4C 23 2C    JMP reset_actor_animation_state
+.C:2c77  4C 23 2C    JMP reset_actor_render_flags
 check_y_direction:
 .C:2c7a  BD 0B FE    LDA actor_dir_y_bit,X
 .C:2c7d  D0 06       BNE move_down
@@ -10841,12 +10841,12 @@ update_current_box_2:
 .C:2c90  D0 06       BNE exit
 ;Box not determined - reset animation
 .C:2c92  20 48 2F    JSR restore_actor_path_snapshot
-.C:2c95  4C 23 2C    JMP reset_actor_animation_state
+.C:2c95  4C 23 2C    JMP reset_actor_render_flags
 ;Completely redundant section of code
 ;.C:2c98  C9 FF       CMP #$FF
 ;.C:2c9a  D0 06       BNE $2CA2
 ;.C:2c9c  20 48 2F    JSR restore_actor_path_snapshot
-;.C:2c9f  4C 23 2C    JMP reset_actor_animation_state
+;.C:2c9f  4C 23 2C    JMP reset_actor_render_flags
 exit:
 .C:2ca2  60          RTS
 ;===========================================
@@ -10885,7 +10885,7 @@ current_box_not_determined:
 .C:2ccd  DD 45 FD    CMP position_to_waypoint_x_for_actor,X
 .C:2cd0  D0 03       BNE check_x_direction
 ;X coordinate of waypoint reached - reset animation
-.C:2cd2  4C 23 2C    JMP reset_actor_animation_state
+.C:2cd2  4C 23 2C    JMP reset_actor_render_flags
 ;----------------------------------------------------
 ;Waypoint X coordinate not reached yet - move position
 check_x_direction:
@@ -10907,7 +10907,7 @@ update_current_box_2:
 .C:2ceb  D0 06       BNE exit
 ;Box not determined - reset animation
 .C:2ced  20 48 2F    JSR restore_actor_path_snapshot
-.C:2cf0  4C 23 2C    JMP reset_actor_animation_state
+.C:2cf0  4C 23 2C    JMP reset_actor_render_flags
 exit:
 .C:2cf3  60          RTS
 ;===========================================
@@ -11641,7 +11641,7 @@ set_delta_dominant:
 ; Converts an actor's position to a sprite position
 ;===========================================
 actor_room_to_sprite_coords:
-.C:3015  20 F7 3F    JSR compute_actor_visibility_from_viewport
+.C:3015  20 F7 3F    JSR compute_actor_visibility
 ;Clear the actor's sprite's hi byte for the X coordinate
 .C:3018  A6 D8       LDX actor
 .C:301a  A9 00       LDA #$00
@@ -11701,7 +11701,7 @@ check_character:
 .C:304f  30 05       BMI next_character
 .C:3051  85 D8       STA actor
 ;Update the actor's visiblity in the room scene
-.C:3053  20 F7 3F    JSR compute_actor_visibility_from_viewport
+.C:3053  20 F7 3F    JSR compute_actor_visibility
 next_character:
 ;If more characters are pending, continue
 .C:3056  EE 30 FC    INC active_costume
@@ -11730,9 +11730,9 @@ do_actor:
 ;Decrement it
 .C:3079  DE 93 FD    DEC animation_counter_for_actor,X
 ;Refresh animation and set the "actor needs to be drawn" state
-.C:307c  BD 97 FD    LDA actor_animation_state,X
+.C:307c  BD 97 FD    LDA actor_render_flags,X
 .C:307f  09 21       ORA #$21
-.C:3081  9D 97 FD    STA actor_animation_state,X
+.C:3081  9D 97 FD    STA actor_render_flags,X
 ;Continue with next actor
 .C:3084  4C A2 30    JMP next_actor
 ;------------------------------------------------
@@ -12422,15 +12422,15 @@ check_actor:
 .C:3395  30 38       BMI next_actor
 .C:3397  8D 30 FC    STA active_costume
 ;Animation needs a refresh? If not, skip it
-.C:339a  BD 97 FD    LDA actor_animation_state,X
+.C:339a  BD 97 FD    LDA actor_render_flags,X
 .C:339d  29 01       AND #$01
 .C:339f  F0 2E       BEQ next_actor
 ;Clear "animation refresh" state
-.C:33a1  BD 97 FD    LDA actor_animation_state,X
+.C:33a1  BD 97 FD    LDA actor_render_flags,X
 .C:33a4  29 FE       AND #$FE
-.C:33a6  9D 97 FD    STA actor_animation_state,X
+.C:33a6  9D 97 FD    STA actor_render_flags,X
 ;Update the actor's visibility in the scene
-.C:33a9  20 F7 3F    JSR compute_actor_visibility_from_viewport
+.C:33a9  20 F7 3F    JSR compute_actor_visibility
 ;Convert the actor's position in the room to sprite's positions in the screen
 .C:33ac  20 15 30    JSR actor_room_to_sprite_coords
 ;Assign sprites to all actors
@@ -12450,8 +12450,8 @@ check_actor:
 .C:33c5  D0 08       BNE next_actor
 ;Actor stopped, set "actor needs to be drawn" state
 .C:33c7  A9 20       LDA #$20
-.C:33c9  1D 97 FD    ORA actor_animation_state,X
-.C:33cc  9D 97 FD    STA actor_animation_state,X
+.C:33c9  1D 97 FD    ORA actor_render_flags,X
+.C:33cc  9D 97 FD    STA actor_render_flags,X
 ;----------------------------------------------------
 next_actor:
 ;Move to the next actor
@@ -14874,7 +14874,7 @@ next_sprite_3:
 ; Arguments:	active_costume
 ; Returns:	actor_visible	#00 if not visible, #01 if visible
 ;===========================================
-compute_actor_visibility_from_viewport:
+compute_actor_visibility:
 ;Is there an assigned actor for the active costume?
 .C:3ff7  AE 30 FC    LDX active_costume
 .C:3ffa  BD 57 FE    LDA actor_for_costume,X
@@ -23800,7 +23800,7 @@ other_control_modes:
 .C:67e3  20 6C 67    JSR resume_suspended_tasks
 ;Fix camera on the current kid
 .C:67e6  AD 67 FF    LDA current_kid_idx
-.C:67e9  20 1C 68    JSR fix_camera_on_actor_2
+.C:67e9  20 1C 68    JSR script_cam_follow_costume
 ;Restore sentence parts
 .C:67ec  A2 05       LDX #$05
 restore_sentence_part:
@@ -23826,7 +23826,7 @@ exit:
 ;Read camera position
 .C:6806  20 98 5F    JSR script_load_operand_bit7
 ;Set camera position
-.C:6809  20 66 68    JSR set_camera_at
+.C:6809  20 66 68    JSR cam_seek_to
 .C:680c  60          RTS
 ;===========================================
 ;Opcode #12, #92 - pan camera to position
@@ -23844,9 +23844,9 @@ exit:
 ;===========================================
 ;Read actor
 .C:6819  20 98 5F    JSR script_load_operand_bit7
-fix_camera_on_actor_2:
+script_cam_follow_costume:
 ;Fix camera on actor
-.C:681c  20 23 68    JSR fix_camera_on_actor
+.C:681c  20 23 68    JSR cam_follow_costume
 .C:681f  20 B4 5D    JSR refresh_script_addresses_if_moved
 .C:6822  60          RTS
 ;===========================================
@@ -23854,7 +23854,7 @@ fix_camera_on_actor_2:
 ;
 ; Arguments:	.A		actor to follow
 ;===========================================
-fix_camera_on_actor:
+cam_follow_costume:
 ;Save the actor to follow
 .C:6823  8D 6B 06    STA camera_costume_to_follow
 ;Set camera mode to #02 (follow actor)
@@ -23880,29 +23880,29 @@ in_current_room:
 .C:6845  BC 57 FE    LDY actor_for_costume,X
 .C:6848  B9 41 FD    LDA actor_x_pos,Y
 ;Set camera at that position
-.C:684b  20 66 68    JSR set_camera_at
+.C:684b  20 66 68    JSR cam_seek_to
 ;Set default camera position
 .C:684e  A9 C8       LDA #$C8
 .C:6850  8D 67 06    STA camera_current_position
 ;Set all actors animation states bit 0
 .C:6853  A2 03       LDX #$03
-set_actor_animation_state:
+set_actor_render_flags:
 .C:6855  BD 53 FE    LDA costume_for_actor,X
 .C:6858  30 08       BMI next_actor
 ;Refresh animation
-.C:685a  BD 97 FD    LDA actor_animation_state,X
+.C:685a  BD 97 FD    LDA actor_render_flags,X
 .C:685d  09 01       ORA #$01
-.C:685f  9D 97 FD    STA actor_animation_state,X
+.C:685f  9D 97 FD    STA actor_render_flags,X
 next_actor:
 .C:6862  CA          DEX
-.C:6863  10 F0       BPL set_actor_animation_state
+.C:6863  10 F0       BPL set_actor_render_flags
 .C:6865  60          RTS
 ;===========================================
 ; Set camera at position
 ;
 ; Arguments:	.A desired position
 ;===========================================
-set_camera_at:
+cam_seek_to:
 desired_destination = $d0
 ;Save desired position
 .C:6866  85 D0       STA desired_destination
@@ -24188,7 +24188,7 @@ check_ff:
 .C:699a  BD 57 FE    LDA actor_for_costume,X
 .C:699d  30 05       BMI exit_3
 .C:699f  85 D8       STA actor
-.C:69a1  20 23 2C    JSR reset_actor_animation_state
+.C:69a1  20 23 2C    JSR reset_actor_render_flags
 exit_3:
 .C:69a4  4C AA 69    JMP exit
 ;---------------------------------------
