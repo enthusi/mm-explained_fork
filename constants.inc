@@ -84,6 +84,8 @@
 // Camera 
 .const CAM_DEFAULT_POS        		= $C8   // Default horizontal camera position at room entry
 .const CAM_PAN_THRESHOLD      		= $14   // Threshold before triggering camera panning
+.const CAM_MODE_FOLLOW_ACTOR 		= $02
+.const CAM_MODE_PAN 				= $03
 
 // Screen clamp
 .const SCREEN_Y_MAX                	= $91   // Last visible Y coordinate in pixels (bottom of viewport)
@@ -99,10 +101,20 @@
 .const MOTION_STOPPED_CODE          = $02   // motion state value: actor stopped
 .const ACTOR_STATE_STOPPED        	= $02   // Actor not moving
 
-// Animation flags
-.const ANIM_FLAG_REFRESH            = $20   // animation flag: refresh required
-.const ANIM_FLAG_NEEDS_DRAW         = $01   // animation flag: actor must be drawn
-.const ANIM_FLAGS_REFRESH_DRAW      = $21   // combined flags (#$20 | #$01)
+/*
+Actor render flags
+===========================================================
+Only 2 bits are used, bit 5 (#20) and bit 0 (#01).
+
+	Bit 5 		set - VISIBLE, draw the actor in the main loop
+				clear - NOT VISIBLE, ignore actor in main loop
+	Bit 0 		set - REFRESH, refresh actor's cels
+*/
+.const ACTOR_RENDER_VISIBLE			= $20   
+.const ACTOR_RENDER_REFRESH         = $01   
+.const ACTOR_RENDER_VISIBLE_AND_REFRESH = ACTOR_RENDER_VISIBLE | ACTOR_RENDER_REFRESH   
+.const ACTOR_RENDER_CLEAR_REFRESH   = $FE    
+
 
 // Actor mouth states
 .const MOUTH_STATE_CLOSED          	= $00   // idle: mouth closed (default)
@@ -312,3 +324,4 @@ screen_row_offsets_lo:
 .byte $18, $40, $68, $90, $B8, $E0, $08
 .byte $30, $58, $80, $A8, $D0, $F8, $20
 .byte $48, $70, $98, $C0
+
