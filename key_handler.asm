@@ -17,7 +17,7 @@ Summary
 	save/load (F2 under guard), and kid switching (F1/F3/F5 in normal control).
 
 Global Inputs
-	 interrupted_script_offset_lo/hi    saved PC for interrupted script
+	 interrupted_pc_lo/hi    saved PC for interrupted script
 	 interrupted_script_index           target script slot index
 	 script_2_mem_attr                  residency flag for global script #2
 	 control_mode                       engine control mode
@@ -27,7 +27,7 @@ Global Inputs
 Global Outputs
 	 task_pc_ofs_lo_tbl/hi[X]            restored PC for resumed script
 	 task_state_tbl[X]    set to running when resuming
-	 interrupted_script_offset_lo/hi    cleared after resume attempt
+	 interrupted_pc_lo/hi    cleared after resume attempt
 	 task_cur_idx                set to #$FF before restart/save-load
 	 sentence_bar_needs_refresh         flagged TRUE after unpause
 	 text_delay_factor                  clamped within [MIN..MAX]
@@ -100,15 +100,15 @@ keyboard_handle_one_key:
         cmp     #KEY_F7                       // F7 pressed?
         bne     space_key_check               // no → continue dispatch
 		
-        lda     interrupted_script_offset_lo  // test saved offset lo
-        ora     interrupted_script_offset_hi  // merge with hi; Z=1 if both zero
+        lda     interrupted_pc_lo  // test saved offset lo
+        ora     interrupted_pc_hi  // merge with hi; Z=1 if both zero
         beq     bypass_cutscene_return        // none saved → nothing to resume
 
 		//There was an interrupted script, resume it
         ldx     interrupted_script_index      // X := target script index
-        lda     interrupted_script_offset_lo  // restore script PC low
+        lda     interrupted_pc_lo  // restore script PC low
         sta     task_pc_ofs_lo_tbl,x
-        lda     interrupted_script_offset_hi  // restore script PC high
+        lda     interrupted_pc_hi  // restore script PC high
         sta     task_pc_ofs_hi_tbl,x
 		
 		// Set script state to running
@@ -119,9 +119,9 @@ keyboard_handle_one_key:
         sta     var_destination_x
 		// Clear saved script PC lo/hi
         lda     #$00                          
-        sta     interrupted_script_offset_lo
+        sta     interrupted_pc_lo
         lda     #$00                          
-        sta     interrupted_script_offset_hi
+        sta     interrupted_pc_hi
 		
 bypass_cutscene_return:
         rts                                   
