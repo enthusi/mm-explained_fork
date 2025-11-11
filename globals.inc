@@ -281,7 +281,7 @@ Values observed
 
 .label reload_sound_ptrs_flag     = $FE70    // flag: non-zero => refresh sound resource pointers after relocation
 .label rsrc_released_flag = $FE4A
-.label saved_script_index  = $FEA6    	// external flag controlling delay init
+.label saved_task_idx  = $FEA6    	
 
 /*Lights_status values
 #00	environment lights off, flashlights off
@@ -525,7 +525,6 @@ They were definitely intended as debugging aids.
 //#02 - normal play, disable kid change via Function keys
 //#03 - normal play, enable kid change via Function keys
 .label control_mode = $fea8
-.label saved_control_mode = $fea9
 
 //Sound
 .label new_sound_instructions_allowed = $fe71	//00 = not allowed, nonzero = allowed
@@ -579,9 +578,10 @@ They were definitely intended as debugging aids.
 //#02 - Can be a recipient with a "Give" instruction
 .label indirect_object_idx_lo = $fe23
 .label indirect_object_idx_hi = $fe24
-.label interrupted_script_offset_lo = $fea4
-.label interrupted_script_offset_hi = $fea5
+.label interrupted_pc_lo = $fea4
+.label interrupted_pc_hi = $fea5
 .label interrupted_script_index = $fea7
+.label sentence_parts = $fe1f
 
 .label sid_master_volume_saved = $476A
 
