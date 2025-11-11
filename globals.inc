@@ -288,6 +288,7 @@ Values observed
 #01	environment lights off, flashlight on
 #02	environment lights on*/
 .label global_lights_state = $FEAB
+.label engine_vars = $FEAC
 
 .label room_for_character = $FEFC
 
