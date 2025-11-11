@@ -173,14 +173,15 @@ set_new_frame:
         sta     limb_frame_idx,x
 
 move_animation_state_if_needed:
-        // If frame changed, flag animation refresh (set bit0)
+        // If frame changed, flag animation refresh
         lda     prev_limb_frame
         cmp     limb_frame_idx,x
         beq     exit_3
+		
         ldx     actor
-        lda     actor_animation_state,x
-        ora     #$01
-        sta     actor_animation_state,x
+        lda     actor_render_flags,x
+        ora     #ACTOR_RENDER_REFRESH
+        sta     actor_render_flags,x
 
 exit_3:
         rts
@@ -198,7 +199,7 @@ Description:
     - If desired equals current, do nothing.
     - Otherwise: copy desired base cel and argument to “current”, recompute
       current cel, reset the limb’s animation frame to 0, and mark animation
-      as needing refresh (set bit0 in actor_animation_state).
+      as needing refresh (set bit0 in actor_render_flags).
 ================================================================================
 */
 * = $258E
@@ -243,10 +244,11 @@ assign_new_base_cel:
         // ------------------------------------------------------------
         lda     #$00
         sta     limb_frame_idx,x
+		
         ldx     actor
-        lda     actor_animation_state,x
-        ora     #$01
-        sta     actor_animation_state,x
+        lda     actor_render_flags,x
+        ora     #ACTOR_RENDER_REFRESH
+        sta     actor_render_flags,x
         rts
 
 /*
