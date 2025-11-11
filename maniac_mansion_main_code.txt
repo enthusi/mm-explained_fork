@@ -1481,7 +1481,7 @@ actor_vars = $fee3
 costume_room_idx = $fefc		;The CURRENT room for a costume (not to be confused with costume_room_idx_tbl, which stores the parent room resource for a costume)
 costume_dest_y = $ff15
 costume_dest_x = $ff2e
-costume_clip_id = $ff47		;The animation set for a costume, limited to the standing range of sets (#04-#07)
+costume_clip_set = $ff47		;The animation set for a costume, limited to the standing range of sets (#04-#07)
 										;This is used by scripts to determine the direction a costume is facing 
 										;See the details for "animation sets"
 
@@ -9729,7 +9729,7 @@ actor_unassigned:
 standing_animation_set:
 ;It's a standing animation set, save it for the actor
 .C:2777  AE 30 FC    LDX active_costume
-.C:277a  9D 47 FF    STA costume_clip_id,X
+.C:277a  9D 47 FF    STA costume_clip_set,X
 exit:
 .C:277d  60          RTS
 ;===========================================
@@ -13482,7 +13482,7 @@ detach_actor_from_costume:	;Should be renamed to "assign_actor", unassign, relea
 ;Convert actor's direction to an animation set and save it
 .C:3904  B9 EB FD    LDA path_direction_for_actor,Y
 .C:3907  20 DF 3B    JSR map_dir_mask_to_standing_clip
-.C:390a  9D 47 FF    STA costume_clip_id,X
+.C:390a  9D 47 FF    STA costume_clip_set,X
 ;Assign sprites to all actors
 .C:390d  20 D3 3E    JSR assign_and_order_sprites
 .C:3910  60          RTS
@@ -13623,7 +13623,7 @@ init_limb_cell:
 .C:39d1  20 0A 2D    JSR actor_not_inside_current_box
 ;Copy the animation set for this costume
 .C:39d4  AE 30 FC    LDX active_costume
-.C:39d7  BD 47 FF    LDA costume_clip_id,X
+.C:39d7  BD 47 FF    LDA costume_clip_set,X
 .C:39da  8D E9 FD    STA target_clip_id
 ;Initialize animation argument
 .C:39dd  A9 01       LDA #$01
@@ -22876,7 +22876,7 @@ max_var_index = $d2
 ;Set max var value to #19 (max actor index)
 .C:6399  A9 19       LDA #$19
 .C:639b  85 D2       STA max_var_index
-.C:639d  20 C8 63    JSR set_or_clear_bit_on_var
+.C:639d  20 C8 63    JSR apply_bitmask_to_var
 .C:63a0  4C 2B 5F    JMP refresh_inventory_io_guarded
 ;===========================================
 ; Get actor's bit attribute
@@ -22903,7 +22903,7 @@ pointer = $d0
 ;Set max var value to #19 (max var index)
 .C:63b6  A9 37       LDA #$37
 .C:63b8  85 D2       STA max_var_index
-.C:63ba  4C C8 63    JMP set_or_clear_bit_on_var
+.C:63ba  4C C8 63    JMP apply_bitmask_to_var
 ;===========================================
 ; Get bit of variable
 ;Opcode #31, #71, #B1, #F1 - get operation
@@ -22938,7 +22938,7 @@ max_var_index = $d2
 pointer = $d0
 bitmask = $d2
 
-set_or_clear_bit_on_var:
+apply_bitmask_to_var:
 ;Read variable index
 .C:63c8  20 98 5F    JSR script_load_operand_bit7
 ;Check that it doesn't exceed the max var index
@@ -24113,7 +24113,7 @@ destination_variable = $d0
 .C:694e  4C 54 69    JMP set_value_in_var
 actor_moving:
 ;Get the animation set for this costume
-.C:6951  BD 47 FF    LDA costume_clip_id,X
+.C:6951  BD 47 FF    LDA costume_clip_set,X
 set_value_in_var:
 ;Set result in variable
 .C:6954  A6 D0       LDX destination_variable
@@ -25401,7 +25401,7 @@ init_game_engine:
 loop:
 ;Set default animation set to "standing looking down"
 .C:85b7  A9 06       LDA #$06
-.C:85b9  9D 47 FF    STA costume_clip_id,X
+.C:85b9  9D 47 FF    STA costume_clip_set,X
 ;Unassign actor for costume
 .C:85bc  A9 FF       LDA #$FF
 .C:85be  9D 57 FE    STA actor_for_costume,X
