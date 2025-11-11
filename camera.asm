@@ -37,9 +37,6 @@
 #import "room_loader.asm"
 
 .label cam_request_pos = $d0
-.const CAM_MODE_FOLLOW_ACTOR = $02
-.const CAM_MODE_PAN = $03
-
 
 left_follow_threshold: .byte $0A
 right_follow_threshold: .byte $1E
@@ -266,7 +263,7 @@ update_visible_span:
  *   Flags                 Updated per last loads/stores/branches (no contract).
  *   Globals updated       cam_follow_costume_id, cam_mode, cam_current_pos;
  *                         cam_pan_goal (via cam_seek_to); may change current_room (via load_room);
- *                         actor_animation_state[0..3] bit0 set for assigned actors.
+ *                         actor_render_flags[0..3] bit0 set for assigned actors.
  *
  * Description:
  *   1) Save the costume id and set camera mode to FOLLOW.
@@ -276,7 +273,7 @@ update_visible_span:
  *      feed its X coordinate (actor_x_pos[y]) into cam_seek_to to pan/snap.
  *   4) Initialize cam_current_pos to a default baseline (prevents initial jitter).
  *   5) For actor slots 3..0: if assigned (costume_for_actor[x] bit7=0), set
- *      actor_animation_state[x].bit0 = 1 
+ *      actor_render_flags[x].bit0 = 1 
  *   Notes:
  *     - actor_for_costume/costume_for_actor use bit7=1 as “unassigned” sentinel.
  *     - cam_seek_to performs the thresholded pan/snap decision (≤ CAM_PAN_THRESHOLD pans).
@@ -286,8 +283,8 @@ cam_follow_costume:
         // Record target costume/character for follow logic (caller passed ID in A)
         sta     cam_follow_costume_id
 
-        // Switch camera into FOLLOW mode (CAM_MODE_FOLLOW_ACTOR = $02) so updates track that costume
-        lda     #$02
+        // Switch camera into FOLLOW mode so updates track that costume
+        lda     #CAM_MODE_FOLLOW_ACTOR
         sta     cam_mode
 
         /*---------------------------------------
@@ -298,6 +295,8 @@ cam_follow_costume:
          *--------------------------------------*/
         ldx     cam_follow_costume_id
         lda     costume_room_idx,x
+		
+		// If not in current room → prepare video and load that room
         cmp     current_room
         bne     switch_to_costume_room
         jmp     room_is_current
@@ -319,34 +318,39 @@ room_is_current:
          *  - Y := actor slot currently bound to that costume
          *  - A := actor’s X coordinate → feed to cam_seek_to (pan or snap logic inside)
          *--------------------------------------*/
+		 
+		// Fetch actor’s X position from costume→actor map
         ldx     cam_follow_costume_id
         ldy     actor_for_costume,x
         lda     actor_x_pos,y
+		
+		// Center camera at that position
         jsr     cam_seek_to
 
-        // Seed the live camera position with a sane default so the first frame is stable
+		// Seed default camera current position
         lda     #CAM_DEFAULT_POS
         sta     cam_current_pos
 
 
         /*---------------------------------------
          * Nudge animation state for visible actors (slots 3..0)
+		 
          *  - Skip unassigned slots: costume_for_actor[x] < 0 (bit7=1) → no actor bound
          *  - Set animation_state bit0 = 1 to force an immediate update/refresh on next tick
          *    (bit0 is used as a “dirty/advance” flag by the animator)
          *--------------------------------------*/
         ldx     #$03
-set_actor_animation_state:
+set_actor_render_flags:
         lda     costume_for_actor,x
-        bmi     next_actor_slot                 // unassigned slot → skip
+        bmi     next_actor_slot          // unassigned slot → skip
 
-        lda     actor_animation_state,x     // set “advance/refresh” flag
-        ora     #$01                            // bit0 := 1
-        sta     actor_animation_state,x
+        lda     actor_render_flags,x     // set actor render refresh
+        ora     #ACTOR_RENDER_REFRESH
+        sta     actor_render_flags,x
 
 next_actor_slot:
         dex
-        bpl     set_actor_animation_state
+        bpl     set_actor_render_flags
 
         rts
 /*===========================================
@@ -394,6 +398,8 @@ cam_seek_to:
         lda     cam_request_pos
         sec                                 // prime for subtraction: treat as exact difference
         sbc     cam_target_pos              // A ← desired - current (wraps modulo 256)
+
+		// If negative, take absolute value (two’s complement)
         bcs     delta_within_threshold      // C=1 (no borrow) ⇒ non-negative; skip abs fixup
         eor     #$ff                        // two’s complement: invert…
         clc
