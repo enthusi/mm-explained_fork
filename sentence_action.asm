@@ -334,6 +334,7 @@ Typical traces
 #import "ui_interaction.asm"
 #import "misc.asm"
 #import "script_engine.asm"
+#import "camera.asm"
 
 // Queued sentence parts (parallel LIFO stacks, max depth = 6)
 .label stacked_verb_ids        = $fe25    // Stack of verb IDs (index 0..5; top tracked separately)
@@ -2075,7 +2076,7 @@ commit_kid_change:
 
         // Recenter camera and refresh inventory
         lda     current_kid_idx                 // A := new active kid for camera routine
-        jsr     fix_camera_on_actor             // center viewport on new kid
+        jsr     cam_follow_costume             // center viewport on new kid
         jsr     refresh_inventory_io_guarded         // rebuild inventory UI for new kid
 		//Fall through to init_sentence_ui_and_stack
 /*
