@@ -101,6 +101,8 @@
 .const MOTION_STOPPED_CODE          = $02   // motion state value: actor stopped
 .const ACTOR_STATE_STOPPED        	= $02   // Actor not moving
 
+// Room index
+.const ROOM_IDX_START 				= $00	// Kid Select screen
 /*
 Actor render flags
 ===========================================================
@@ -207,6 +209,7 @@ Only 2 bits are used, bit 5 (#20) and bit 0 (#01).
 .const LIGHTS_ENVIRONMENT_ON 		= $02
 
 // Game Disk Identifiers
+.const GAME_DISK_ID_SAVEGAME   		= $30   // Disk ID for saved games
 .const GAME_DISK_ID_SIDE1   		= $31   // Valid game tag: side 1
 .const GAME_DISK_ID_SIDE2   		= $32   // Valid game tag: side 2
 
