@@ -400,7 +400,7 @@ Only 2 bits are used, bit 5 (#20) and bit 0 (#01).
 	-the actor is stopped
 	-the animation counter has not expired
 */
-.label actor_animation_state = $FD97
+.label actor_render_flags = $FD97
 
 /*
 ===========================================================
@@ -545,7 +545,6 @@ They were definitely intended as debugging aids.
 .label init_sprites_sound = $0
 .label prepare_video_for_new_room = $0
 .label restart_game = $0
-.label fix_camera_on_actor = $0
 
 //===========================================================
 // UI 
