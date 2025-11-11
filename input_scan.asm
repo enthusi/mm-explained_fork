@@ -220,7 +220,7 @@ kbd_keymap:
  *   single key (with Shift handling and de-dup), and publishes it.
  *
  * Arguments:
- *   saved_script_index		Optional gate: if zero, skip (re)priming the poll delay.
+ *   saved_task_idx		Optional gate: if zero, skip (re)priming the poll delay.
  *
  * Variables / State:
  *   kbd_delay_lo            Low byte of the 16-bit countdown that throttles
@@ -286,11 +286,11 @@ kbd_scan:
         * ----------------------------------------
         * Optional: skip (re)initializing the poll delay on entry.
         *
-        * If saved_script_index == 0 we proceed to input polling immediately,
+        * If saved_task_idx == 0 we proceed to input polling immediately,
         * otherwise we (re)prime the 16-bit delay counter.
         * ----------------------------------------
         */
-       lda saved_script_index
+       lda saved_task_idx
        beq poll_input
 
        /*
@@ -784,7 +784,7 @@ keycode_is_ready:
  *   │
  *   ├─ Clear cached snapshots → kbd_cols=$FF, kbd_rows=$FF
  *   │
- *   ├─ (Optional) Prime delay if saved_script_index ≠ 0
+ *   ├─ (Optional) Prime delay if saved_task_idx ≠ 0
  *   │
  *   ├─ JSR joy_latch  →  Z=0 (active) / Z=1 (idle)
  *   │
