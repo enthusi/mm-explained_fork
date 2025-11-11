@@ -180,6 +180,14 @@ processor flags from the preceding comparison.
 .label var_index = $d0
 .label operand_value = $d0
 .label relative_offset = $d2
+.label max_var_index = $d2          // Exclusive upper bound for valid var IDs
+.label pointer       = $d0          // ZP base pointer to variable array
+.label bitmask       = $d2          // Working mask byte (shares addr with max)
+.label result_variable_index = $d2           // Destination game-var index
+.const BITOP_MODE_SET      = $00    // Mode byte value: set bits (use OR)
+.const BITOP_INVERT_MASK   = $FF    // Inversion mask used for clear path (~mask)
+.const MAX_VAR_INDEX = $37
+
 /*
 ================================================================================
   op_displace_pointer - Opcode #$18
@@ -849,3 +857,215 @@ exit_op_start_script:
 * = $61D8
 op_do_nothing_2:
 		rts
+/*
+================================================================================
+  op_apply_bitmask_to_var - Opcodes #$1D, #$3D, #$5D, #$7D, #$9D, #$BD, #$DD, #$FD
+================================================================================
+Summary
+        Configure the variable base pointer and bounds, then tail-call the
+        generic bitmask applier to a variable.
+
+Arguments
+        (script) op+bit7  → variable_index
+        (script) op+bit6  → bitmask
+        (script) op+bit5  → mode (#$00=set, otherwise=clear) — caller here
+                            intends the set path.
+
+Returns
+        None (updates *(pointer+variable_index))
+
+Description
+        - pointer := $FEAC (engine variables array).
+        - max_var_index := #$37 (exclusive upper bound).
+        - Jump to apply_bitmask_to_var to perform the operation.
+================================================================================
+*/
+* = $63AE
+op_apply_bitmask_to_var:
+        // ------------------------------------------------------------
+        // Set up base pointer → $FEAC (engine variables)
+        // ------------------------------------------------------------
+        lda     #<engine_vars
+        sta     pointer
+        lda     #>engine_vars
+        sta     pointer+1
+
+        // ------------------------------------------------------------
+        // Set maximum valid variable index (exclusive) → #$37
+        // ------------------------------------------------------------
+        lda     #MAX_VAR_INDEX
+        sta     max_var_index
+
+        // ------------------------------------------------------------
+        // Tail-call shared bitmask routine (set/clear handled there)
+        // ------------------------------------------------------------
+        jmp     apply_bitmask_to_var
+		
+/*
+================================================================================
+  op_test_var_bitmask - Opcodes #$31, #$71, #$B1, #$F1
+================================================================================
+Summary
+        Configure the variable base pointer to the engine variables array
+        ($FEAC) and tail-call the generic bitmask tester that ANDs a source
+        variable with a bitmask and stores a boolean result (#$00/#$01).
+
+Arguments
+        (forwarded to callee test_var_bitmask)
+        (script) byte0  → result_variable_index
+        (script) bit7   → source_variable_index
+        (script) bit6   → bitmask
+
+Returns
+        None (callee writes boolean to game_vars[result_variable_index])
+
+Description
+        - pointer := $FEAC (engine variables).
+        - Jump to test_var_bitmask to perform the AND+boolean store.
+================================================================================
+*/
+* = $63BD		
+op_test_var_bitmask:
+        // ------------------------------------------------------------
+        // Set up base pointer → $FEAC (engine variables)
+        // ------------------------------------------------------------
+        lda     #<engine_vars
+        sta     <pointer
+        lda     #>engine_vars
+        sta     >pointer
+
+        // ------------------------------------------------------------
+        // Tail-call shared tester (AND with mask → boolean result)
+        // ------------------------------------------------------------
+        jmp     test_var_bitmask
+/*
+================================================================================
+  apply_bitmask_to_var
+================================================================================
+
+Summary
+        Modify one byte-sized variable selected by index using a bitmask. The
+        mode selects OR-set or AND-clear. If the supplied variable index is
+        out of range (≥ max_var_index), skip the next two operand bytes and
+        return without changes.
+
+Arguments
+        (script) op+bit7  → variable_index
+        (script) op+bit6  → bitmask
+        (script) op+bit5  → mode (#$00=set, otherwise=clear)
+
+Vars/State
+        max_var_index   maximum valid variable index (exclusive upper bound)
+        pointer         base pointer to the variable array
+        bitmask         working byte for mask
+
+Returns
+        None (updates *(pointer+variable_index))
+
+Description
+        - Load variable_index. If variable_index ≥ max_var_index, branch to
+          script_skip_offset to discard the next two operand bytes, then return.
+        - Y := variable_index for indexed indirect access via (pointer),Y.
+        - Load bitmask from operand (bit6).
+        - Load mode from operand (bit5).
+        - If mode == #$00 → set bits:   new := (old OR bitmask).
+        - Else            → clear bits: new := (old AND (bitmask XOR #$FF)).
+        - Store new back to (pointer),Y.
+================================================================================
+*/
+* = $63C8
+apply_bitmask_to_var:
+        // Resolve variable index
+        jsr     script_load_operand_bit7      
+
+        // Bounds check against max_var_index; if invalid, skip two bytes
+        cmp     max_var_index                 // A >= max? (carry set on ≥)
+        bcc     index_ok          			  // valid → proceed
+        jmp     script_skip_offset            // invalid → skip bitmask+mode
+
+index_ok:
+        // Use Y as the index into the variable array
+        tay                                   
+
+        // Resolve bitmask from operand; store as working mask
+        jsr     script_load_operand_bit6      
+        sta     bitmask
+
+        // Resolve mode: #BITOP_MODE_SET=set, otherwise=clear
+        jsr     script_load_operand_bit5      
+        cmp     #BITOP_MODE_SET
+        bne     set_bits_path                 // ≠0 → clear path selected
+
+        // Clear path: invert mask then AND with current value
+        lda     bitmask
+        eor     #$ff
+        and     (pointer),y                   // new := old AND ~mask
+        jmp     commit_value
+
+set_bits_path:
+        // Set path: OR mask with current value
+        lda     (pointer),y                   // old
+        ora     bitmask                       // new := old OR mask
+
+commit_value:
+        // Commit the updated value
+        sta     (pointer),y
+        rts
+/*
+================================================================================
+  test_var_bitmask
+================================================================================
+Summary
+        Compute ( (pointer[source_index]) AND bitmask ) and write a boolean
+        result into a destination game variable: #$00 if zero, else #$01.
+
+Arguments
+        (script) byte0  → result_variable_index  (destination game-var index)
+        (script) bit7   → source_variable_index  (lo from script, hi from bit7)
+        (script) bit6   → bitmask                (AND operand)
+
+Returns
+        None (writes #$00 or #$01 into game_vars[result_variable_index])
+
+Description
+        - Reads destination variable index.
+        - Reads source variable index into Y.
+        - Reads bitmask, ANDs it with *(pointer+Y).
+        - Compares result to #$00 and selects #$00 or #$01 accordingly.
+        - Stores the boolean into game_vars at the destination index.
+================================================================================
+*/
+* = $63EF
+test_var_bitmask:
+        // ----------------------------
+        // Resolve result variable index
+        // ----------------------------
+        jsr     script_read_byte              
+        sta     result_variable_index         
+
+        // ----------------------------
+        // Resolve source variable index into Y
+        // ----------------------------
+        jsr     script_load_operand_bit7      
+        tay                                   
+
+        // ----------------------------
+        // Resolve bitmask and AND with source variable
+        // ----------------------------
+        jsr     script_load_operand_bit6      // A := bitmask
+        and     (pointer),y                   // A := *(pointer+Y) AND bitmask
+
+        // ----------------------------
+        // Convert to boolean
+        // ----------------------------
+        ldy     result_variable_index         // Y := dest var index
+        cmp     #FALSE
+        beq     commit_boolean_result         // yes → A already #$00
+        lda     #TRUE                         // no  → A := #TRUE
+
+commit_boolean_result:
+        // ----------------------------
+        // Store boolean into destination variable
+        // ----------------------------
+        sta     game_vars,y
+        rts
