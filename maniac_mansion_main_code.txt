@@ -25896,7 +25896,7 @@ open_shutter:
 .C:d6cf  8D 6C 16    STA hide_cursor_flag
 .C:d6d2  60          RTS
 ;===========================================
-setup_buffer_and_color_for_shutter_effect:
+configure_shutter_buffers_and_colors:
 .C:d6d3  A5 B7       LDA shutter_direction_flag	;$B7
 .C:d6d5  D0 1C       BNE prepare_shutter_open	;$D6F3
 .C:d6d7  A5 23       LDA frame_buffer
@@ -25962,7 +25962,7 @@ no_vic_color_ram_changes:
 ; Possible "shutter opening" effect routine
 do_shutter_effect:
 .C:d734  85 B7       STA shutter_direction_flag;$B7
-.C:d736  20 D3 D6    JSR setup_buffer_and_color_for_shutter_effect;$D6D3
+.C:d736  20 D3 D6    JSR configure_shutter_buffers_and_colors;$D6D3
 .C:d739  A0 00       LDY #$00
 loop1:
 .C:d73b  BD 8B D6    LDA shutter_delta_table,X; $D68B,X
@@ -25974,7 +25974,7 @@ loop1:
 .C:d743  C0 09       CPY #$09
 .C:d745  D0 F4       BNE loop1
 big_loop:
-.C:d747  20 BA D7    JSR init_raster_irq_env_check; $D7BA
+.C:d747  20 BA D7    JSR ensure_raster_irq_ready; $D7BA
 .C:d74a  A6 AE       LDX $AE ;at x=0 for shutter close
 .C:d74c  A4 AF       LDY $AF ;at y=0 for shutter close
 .C:d74e  20 8E D7    JSR plot_one_tile_of_shutter_effect;$D78E
@@ -26051,12 +26051,12 @@ exit_shutter:
 .C:d7b9  60          RTS
 ;===========================================
 ;Do raster setup until it's no longer needed
-init_raster_irq_env_check:
+ensure_raster_irq_ready:
 .C:d7ba  A2 00       LDX #$00
 .C:d7bc  A5 96       LDA raster_irq_init_pending
 .C:d7be  F0 06       BEQ set_irq_handler1_signal
 .C:d7c0  20 1C 34    JSR init_raster_irq_env
-.C:d7c3  4C BC D7    JMP init_raster_irq_env_check
+.C:d7c3  4C BC D7    JMP ensure_raster_irq_ready
 set_irq_handler1_signal:
 .C:d7c6  A9 01       LDA #$01
 .C:d7c8  8D 6B 16    STA video_processed_signal
