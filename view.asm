@@ -110,9 +110,6 @@ Notes:
 
 /*================================ Constants ==================================*/
 
-.const VIEW_FRAME_BUF_0        = $C828  // framebuffer 0 base (tile layer matrix)
-.const VIEW_FRAME_BUF_1        = $CC28  // framebuffer 1 base (tile layer matrix)
-.const VIEW_FRAME_BUF_SIZE     = $02A8  // framebuffer span in bytes
 .const FILL_VALUE               = $00    // mem_fill_x pattern used to clear framebuffers
 
 .const COLS_PER_ROW             = VIEW_COLS - 1  // copy width used by scroll cores (39 when VIEW_COLS=40)
