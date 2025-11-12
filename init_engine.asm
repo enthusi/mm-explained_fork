@@ -5,6 +5,7 @@
 #import "ui_messages.asm"
 #import "irq_handlers.asm"
 #import "cursor.asm"
+#import "drive_setup.asm"
 
 .label copy_counter_lo = $15    // ZP: copy byte count, low
 .label copy_counter_hi = $16    // ZP: copy byte count, high
@@ -84,7 +85,6 @@
 .const INTERACTION_REGION_DEFAULT  = $00      // Initial region id
 .const HIDE_CURSOR_FLAG_ON         = $01      // Hide cursor flag value
 
-.const CPU_PORT_DDR_INIT           = $07      // 6510 DDR: banking bits as outputs
 .const SCREEN_OFF_MASK             = $EF      // $D011 mask to blank screen (clear bit4)
 .const NMI_STUB_ADDR               = $18EA    // NMI handler address (RTS stub)
 
@@ -102,7 +102,6 @@
 .const INIT_COPY_DST_START         = $F040    // Copy dst start
 .const INIT_COPY_SIZE_BYTES        = $0080    // Copy size in bytes
 
-.label setup_vectors_and_drive_code = $0
 .label init_sound_voices = $0
 
 /*

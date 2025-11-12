@@ -39,6 +39,7 @@
  ------------------------------------------------------------------------------
 */
 #importonce
+#import "constants.inc"
 #import "registers.inc"
 
 .label  group_counter           = $fa      // Countdown of 32-byte blocks remaining to send
@@ -58,7 +59,6 @@
 .label  CLRCHN                  = $ffcc    // KERNAL: restore default I/O channels
 .label  CLOSE                   = $ffc3    // KERNAL: close logical file in A
 
-.const  CPU_PORT_DDR_INIT                 = $07    // cpu_port_ddr init: bits 2..0=out, 7..3=in
 .const  CPU_PORT_MAP_IO_KERNAL_RAM_NBASIC = $06    // cpu_port: I/O+KERNAL on, BASIC off→RAM
 
 .const  KERNAL_IRQ_VECTOR_ADDR            = $ea31  // Target handler for IRQ/BRK

@@ -338,3 +338,5 @@ screen_row_offsets_lo:
 .byte $30, $58, $80, $A8, $D0, $F8, $20
 .byte $48, $70, $98, $C0
 
+
+.const CPU_PORT_DDR_INIT           = $07      // 6510 DDR: banking bits as outputs
