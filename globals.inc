@@ -540,8 +540,6 @@ They were definitely intended as debugging aids.
 .label irq_handler = $fffe
 
 //Placeholders for routines not modularized yet
-.label execute_room_exit_script = $0
-.label execute_room_entry_script = $0
 .label open_shutter_flag = $0
 .label init_sprites_sound = $0
 .label prepare_video_for_new_room = $0
