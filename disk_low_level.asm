@@ -50,7 +50,6 @@
  *     (post-inversion “released” on IEC).
  * ===========================================
  */
-
 #importonce
 #import "registers.inc"
 #import "globals.inc"
@@ -133,7 +132,7 @@
  * 	On exit, no registers are guaranteed; bus lines reflect the final send routine’s last mask.
  * ===========================================
  */
-* = $46c2
+* = $46C2
 iec_send_cmd:
 		// Save the operation code (A) so we can transmit it last.
 		pha
@@ -190,6 +189,7 @@ iec_send_cmd:
  *   - Post-delay: additional guard time for the device to latch ATN.
  * ===========================================
  */
+* = $46DC
 iec_sync:
 		// Pre-sync settle time: allow bus lines to reach idle before polling.
 		ldy #IEC_PRE_SYNC_DELAY
@@ -250,6 +250,7 @@ sync_wait_2:
  *   into A with LDA and returns.
  * ===========================================
  */
+* = $46F3
 iec_recv_byte:
 		jsr iec_recv_pair
 		jsr iec_recv_pair
@@ -294,6 +295,7 @@ iec_recv_byte:
  *         usually corresponds to a released (high) bus line.
  * ===========================================
  */
+* = $4703
 iec_recv_pair:
 		// Odd phase (clock high): sample DATA IN and shift into iec_shiftreg.
 		ldy #IEC_RECV_ODD       // Output mask: ATN released, CLOCK high (phase 1)
@@ -350,6 +352,7 @@ iec_recv_pair:
  *   required handshaked bit timing on the bus.
  * ===========================================
  */
+* = $4723
 iec_send_byte:
 		sta iec_shiftreg
 		jsr iec_send_pair
@@ -393,6 +396,7 @@ iec_send_byte:
  *   were the former bit7 and bit6 (MSB-first stream).
  * ===========================================
  */
+* = $4733
 iec_send_pair:
 		/*
 		 * Emit two bits using two phases: ODD (clock high) then EVEN (clock low).
@@ -423,6 +427,3 @@ iec_set_phase_even:
 		txa
 		tay
 		rts
-
-
-
