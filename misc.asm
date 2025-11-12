@@ -286,6 +286,114 @@ copy_color_column:
         rts
 /*
 ================================================================================
+  execute_room_entry_script
+================================================================================
+Summary
+	If room_entry_script_ptr is nonzero, classify task 0 as a room script,
+	seed its PC offset from the entry pointer, and invoke it via
+	invoke_task_then_resume_parent. Otherwise return immediately.
+
+Returns
+	If no entry script: returns immediately.
+	If present: returns after invoke_task_then_resume_parent completes.
+
+Global Inputs
+	room_entry_script_ptr   entry script pointer for the current room
+
+Global Outputs
+	task_type_tbl           slot 0 set to SCRIPT_TYPE_ROOM
+	task_pc_ofs_lo_tbl      slot 0 low byte set from room_entry_script_ptr
+	task_pc_ofs_hi_tbl      slot 0 high byte set from room_entry_script_ptr
+
+Description
+	- Test room_entry_script_ptr for nonzero.
+	- On zero: no entry script; exit.
+	- On nonzero:
+		• Write SCRIPT_TYPE_ROOM into task_type_tbl[0].
+		• Copy room_entry_script_ptr into task_pc_ofs_{lo,hi}_tbl[0].
+		• Set X=0 and call invoke_task_then_resume_parent to run the script.
+================================================================================
+*/
+* = $3A7D
+execute_room_entry_script:
+        // Entry script pointer nonzero?
+        lda     <room_entry_script_ptr
+        ora     >room_entry_script_ptr
+        bne     entry_script_present
+        rts                                     // none → exit
+
+entry_script_present:
+        // Set script type = room
+        lda     #SCRIPT_TYPE_ROOM
+        sta     task_type_tbl
+
+        // Load script PC offset into task 0
+        lda     <room_entry_script_ptr
+        sta     task_pc_ofs_lo_tbl
+        lda     >room_entry_script_ptr
+        sta     task_pc_ofs_hi_tbl
+
+        // Launch script in task 0, then resume parent
+        ldx     #$00
+        jsr     invoke_task_then_resume_parent
+        rts
+/*
+================================================================================
+  execute_room_exit_script
+================================================================================
+Summary
+	If room_exit_script_ptr is nonzero, assign task 0 as a room script,
+	set its PC offset from the exit pointer, and invoke it using
+	invoke_task_then_resume_parent. Otherwise return immediately.
+
+Returns
+	If no exit script: returns immediately.
+	If present: returns after the invoked script finishes.
+
+Global Inputs
+	room_exit_script_ptr    exit script pointer for the current room
+
+Global Outputs
+	task_type_tbl           slot 0 set to SCRIPT_TYPE_ROOM
+	task_pc_ofs_lo_tbl      slot 0 low byte set from room_exit_script_ptr
+	task_pc_ofs_hi_tbl      slot 0 high byte set from room_exit_script_ptr
+
+Description
+	- Check if room_exit_script_ptr is nonzero.
+	- If zero, exit immediately.
+	- If nonzero:
+		• Store SCRIPT_TYPE_ROOM into task_type_tbl[0].
+		• Copy room_exit_script_ptr into task_pc_ofs_{lo,hi}_tbl[0].
+		• Set X=0 and call invoke_task_then_resume_parent to execute the
+		script for the room’s exit transition.
+================================================================================
+*/		
+* = $3A9D		
+execute_room_exit_script:
+        // Check if an exit script pointer is nonzero
+        lda     <room_exit_script_ptr
+        ora     >room_exit_script_ptr
+        bne     exit_script_present
+        rts                                     // none → return
+
+exit_script_present:
+        // Set script type to room script
+        lda     #SCRIPT_TYPE_ROOM
+        sta     task_type_tbl
+
+        // Load script PC offset into task 0
+        lda     <room_exit_script_ptr
+        sta     task_pc_ofs_lo_tbl
+        lda     >room_exit_script_ptr
+        sta     task_pc_ofs_hi_tbl
+
+        // Launch the script in task 0, then resume parent
+        ldx     #$00
+        jsr     invoke_task_then_resume_parent
+        rts
+		
+/*
+================================================================================
   disk_id_check
 ================================================================================
 Summary
