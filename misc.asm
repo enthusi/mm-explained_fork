@@ -284,7 +284,111 @@ copy_color_column:
         lda     #TRUE
         sta     vic_color_ram_copy_done
         rts
+/*
+================================================================================
+  disk_id_check
+================================================================================
+Summary
+	Read the first byte of track 1, sector 0 into disk_id_in_sector and
+	compare it to active_side_id. On match, enter a debug infinite loop.
+	On mismatch, ensure the correct side is active and return.
 
+Returns
+	If IDs mismatch: returns to caller after restoring start_track/sector.
+	If IDs match: does not return; loops writing VIC border color.
+
+Global Inputs
+	start_track   caller’s intended track to restore
+	start_sector  caller’s intended sector to restore
+	active_side_id  expected disk side identifier
+
+Global Outputs
+	disk_id_in_sector  set to the Disk ID byte read from T1,S0, offset 0
+
+Description
+	- Save caller CHS (start_sector, start_track) on the stack.
+	- Initialize chain for T1 with offset 0; seek to S0, offset 0; read.
+	- Copy 1 byte into disk_id_in_sector.
+	- Compare against active_side_id.
+	- If equal: set debug_error_code, map in I/O, spin writing border.
+	- If not equal: disk_ensure_side(active_side_id), restore CHS, return.
+================================================================================
+*/
+.label  disk_id_in_sector = $567A          // Buffer for disk ID byte (T1 S0 offset 0)
+* = $5627
+disk_id_check:
+        // ------------------------------------------------------------
+        // Preserve caller’s starting track and sector
+		//
+        // Save start_sector then start_track on the stack so this routine
+        // can probe T1,S0 for the Disk ID and later restore the caller’s
+        // requested position. Pop order will be track, then sector.
+        // ------------------------------------------------------------
+        lda     start_sector
+        pha
+        lda     start_track
+        pha
+
+		// ------------------------------------------------------------
+		// Read T1,S0 at offset 0
+		//
+		// Initialize the disk read chain for track #$01 with byte offset #$00,
+		// then position to sector #$00 at offset #$00 and start the read.
+		// Assumes: X = offset, Y = track for disk_init_chain; X = offset,
+		// Y = sector for disk_seek_read. Clobbers X,Y,A as per callee specs.
+		// ------------------------------------------------------------
+        ldx     #$00
+        ldy     #$01
+        jsr     disk_init_chain
+        ldx     #$00
+        ldy     #$00
+        jsr     disk_seek_read
+
+        // Copy 1 byte (disk ID) to disk_id_in_sector
+        ldx     #<disk_id_in_sector
+        ldy     #>disk_id_in_sector
+        lda     #$01
+        sta     disk_copy_count_lo
+        lda     #$00
+        sta     disk_copy_count_hi
+        jsr     disk_stream_copy
+
+		// ------------------------------------------------------------
+		// Validate Disk ID against expected side
+		//
+		// Load expected ID (active_side_id) and compare to the byte read
+		// from T1,S0 at offset 0 (disk_id_in_sector). CMP sets Z=1 on
+		// match; BNE branches to disk_id_mismatch when Z=0 (IDs differ).
+		// ------------------------------------------------------------
+        lda     active_side_id               // A := expected Disk ID for the current side
+        cmp     disk_id_in_sector            // Set Z if A == disk_id_in_sector; Z=0 on mismatch
+        bne     disk_id_mismatch             // Z=0 → IDs differ → branch to mismatch handler
+
+        // Debug path if IDs match
+        lda     #$2F
+        sta     debug_error_code
+
+        // Map in I/O
+        ldy     #MAP_IO_IN
+        sty     cpu_port
+
+infinite_loop:
+        sta     vic_border_color_reg
+        jmp     infinite_loop
+
+        // Disk ID doesn't match
+disk_id_mismatch:
+        lda     active_side_id               // A := target side ID we expect to be active
+        jsr     disk_ensure_side             // Switch/verify drive is on that side; updates media state
+
+		// ------------------------------------------------------------
+		// Restore caller’s track and sector
+		// ------------------------------------------------------------
+		pla
+		sta     start_track
+		pla
+		sta     start_sector
+		rts
 /*
 ================================================================================
 mem_fill_x  write X to memory fill_byte_cnt times starting at dest
