@@ -220,7 +220,6 @@ max_sector_index_by_track:
  * ===========================================
  */
 * = $44D3
-
 disk_init_chain:
         /*
          * Initialize chain start from caller registers
@@ -273,6 +272,7 @@ disk_init_chain:
  *      That routine advances in physical order, sets disk_buf_off, and loads the sector.
  * ===========================================
  */
+* = $44EE
 disk_init_chain_and_read:
         /*
          * Initialize chain defaults (e.g., start_track/start_sector,
@@ -293,7 +293,6 @@ disk_init_chain_and_read:
          *   next label is disk_seek_read
          *   which expects X=offset and Y=index (no RTS/JMP here by design)
          */
-
 /*
  * ===========================================
  * disk_seek_read — position to Nth sector (physical) and load it
@@ -333,6 +332,7 @@ disk_init_chain_and_read:
  *     • Caller must handle end-of-disk policy (disk_next_sector_phys does not clamp globally).
  * ===========================================
  */
+* = $44F7
 disk_seek_read:
         /*
          * Capture caller inputs:
@@ -414,6 +414,7 @@ sector_chain_index_reached:
  *     this loop would underflow and not terminate.
  * ===========================================
  */
+* = $451F
 disk_stream_copy:
         /*
          * Patch the absolute STA operand with destination address:
@@ -512,6 +513,7 @@ decrement_counter_lo:
  *     • Preconditions: if both counter bytes are 0, no sectors should be written
  * ===========================================
  */
+* = $4547
 disk_write_linear:
         // Initialize source base pointer for this batch (256-byte pages)
         stx disk_src_ptr                         // disk_src_ptr.lo  ← X
@@ -612,6 +614,7 @@ write_succeeded:
  *   Note: This routine can block at page boundaries while the next sector is read.
  * ===========================================
  */
+* = $458E
 disk_stream_next_byte:
         // Save caller's Y (used as index and clobbered by callees)
         sty disk_y_saved_2
@@ -689,6 +692,7 @@ disk_y_saved_2:
  *   passes the last valid track for the medium).
  * ===========================================
  */
+* = $45AE
 disk_next_sector_phys:
         // Advance to the next sector index (0-based)
         inc current_sector
@@ -858,7 +862,6 @@ read_succeeded:
  * ===========================================
  */
 * = $4641
-
 disk_write_sector:
         // Stash target location for the drive to write to
         stx iec_cmd_track                    // track  ← X
@@ -922,6 +925,7 @@ send_next_byte:
  *   drive state as needed after invoking this routine.
  * ===========================================
  */
+* = $4668
 disk_reset:
         /*
          * Load the protocol opcode for a drive reset.
@@ -992,6 +996,7 @@ disk_reset:
  *      01 xx pattern enters hang_loop after painting the border green.
  * ===========================================
  */
+* = $466E
 disk_read_sector:
         // Set command parameters for low-level I/O
         stx iec_cmd_track                  // track ← X
@@ -1108,7 +1113,7 @@ disk_ensure_side:
         // Patch the prompt with the requested digit and remember it for compare.
         sta SIDE_ID_MSG + SIDE_ID_DIGIT_OFF   // display the desired side in the message
         sta active_side_id                   // keep for CMP below
-
+		
         // Suspend gameplay while waiting for user to insert the correct side.
         jsr pause_game
 
