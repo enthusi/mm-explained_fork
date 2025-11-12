@@ -107,3 +107,7 @@ preposition_pointers_lo:
 .byte $77,$69,$74,$68,$00 // "with"
 .byte $6F,$6E,$00 // "on"
 .byte $74,$6F,$00 // "to"
+
+* = $F241
+empty_msg:
+.byte $20, $00
