@@ -103,6 +103,10 @@
 
 // Room index
 .const ROOM_IDX_START 				= $00	// Kid Select screen
+
+// Costume index
+.const COSTUME_INDEX_DAVE            = $03    
+
 /*
 Actor render flags
 ===========================================================
@@ -260,6 +264,7 @@ Only 2 bits are used, bit 5 (#20) and bit 0 (#01).
 // Frame buffers base addresses
 .const FRAMEBUF1_BASE     			= $C800    
 .const FRAMEBUF2_BASE      			= $CC00   
+.const FRAMEBUFFER_INIT            = $01      // Initial framebuffer index
 
 // VIC sprites bitmasks
 .const SPRITES_ENABLE_ALL          	= $FF   // $D015: enable sprites 0–7
@@ -272,6 +277,11 @@ Only 2 bits are used, bit 5 (#20) and bit 0 (#01).
 .const VID_SETUP_C800           	= $01   // Char @ $D800, screen @ $C800, sprites @ $CBF8 → copy color RAM
 .const VID_SETUP_CC00           	= $02   // Char @ $D800, screen @ $CC00, sprites @ $CFF8 → copy color RAM
 .const VID_SETUP_COPY_COLORS    	= $03   // Copy color RAM only, no layout change
+
+//Frame buffers for room viewport
+.const VIEW_FRAME_BUF_0        = $C828  // framebuffer 0 base (tile layer matrix)
+.const VIEW_FRAME_BUF_1        = $CC28  // framebuffer 1 base (tile layer matrix)
+.const VIEW_FRAME_BUF_SIZE     = $02A8  // framebuffer span in bytes
 
 // Sprite shape base addresses for each layout
 .label SPRITE_SHAPE_SET1_ADDR   	= $CBF8 // Sprite shape data base for layout C800
