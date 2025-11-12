@@ -6,6 +6,7 @@
 #import "pause.asm"
 #import "ui_messages.asm"
 #import "sentence_action.asm"
+#import "ops_misc.asm"
 
 /*
 ================================================================================
@@ -201,7 +202,7 @@ f8_key_check:
         lda     #$FF                          // sentinel "no current script"
         sta     task_cur_idx
 		
-        jmp     restart_game                  // tail-call restart
+        jmp     op_restart_game                  // tail-call restart
 
 plus_key_check:
         // ------------------------------------------------------------

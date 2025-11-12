@@ -543,7 +543,6 @@ They were definitely intended as debugging aids.
 .label open_shutter_flag = $0
 .label init_sprites_sound = $0
 .label prepare_video_for_new_room = $0
-.label restart_game = $0
 .label reset_game_engine = $0
 
 //===========================================================
