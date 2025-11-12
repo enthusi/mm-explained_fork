@@ -283,6 +283,10 @@ Only 2 bits are used, bit 5 (#20) and bit 0 (#01).
 .const VIEW_FRAME_BUF_1        = $CC28  // framebuffer 1 base (tile layer matrix)
 .const VIEW_FRAME_BUF_SIZE     = $02A8  // framebuffer span in bytes
 
+// Shutter modes
+.const SHUTTER_CLOSE          = $00     // Mode selector value for closing shutter
+.const SHUTTER_OPEN           = $01     // Mode selector value for opening shutter
+
 // Sprite shape base addresses for each layout
 .label SPRITE_SHAPE_SET1_ADDR   	= $CBF8 // Sprite shape data base for layout C800
 .label SPRITE_SHAPE_SET2_ADDR   	= $CFF8 // Sprite shape data base for layout CC00
