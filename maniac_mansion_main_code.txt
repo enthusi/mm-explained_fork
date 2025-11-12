@@ -1864,7 +1864,7 @@ counter_lo_decrement:
 ; After this, execution will fall through to the main loop
 ;===========================================
 start_game:
-.C:044f  20 1A 5D    JSR clear_engine_state
+.C:044f  20 1A 5D    JSR clear_inventory_memory
 ;Ensure disk side 1 is in the drive
 .C:0452  A9 31       LDA #$31		
 .C:0454  20 EB 3A    JSR disk_ensure_side
@@ -21067,7 +21067,7 @@ valid_disk_id:
 ;
 ; It's the region in $7031-7B7B, just before the heap
 ;===========================================
-clear_engine_state:
+clear_inventory_memory:
 .C:5d1a  A9 31       LDA #$31
 .C:5d1c  85 19       STA $19
 .C:5d1e  A9 70       LDA #$70
