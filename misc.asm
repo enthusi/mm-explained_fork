@@ -3,7 +3,82 @@
 #import "globals.inc"
 #import "constants.inc"
 #import "sentence_action.asm"
+#import "shutter.asm"
+#import "view.asm"
 
+/*
+================================================================================
+  alternate_frame_buffer
+================================================================================
+Summary
+	Toggle the active frame buffer and video mode when environment lights
+	are ON. If lights are not ON, exit without changes.
+
+Global Inputs
+	global_lights_state    current environment lights state (checked for ON)
+	frame_buffer           current buffer selector (#$01 or other)
+
+Global Outputs
+	frame_buffer_base      updated to VIEW_FRAME_BUF_0 ($C828) or VIEW_FRAME_BUF_1 ($CC28)
+	video_setup_mode       updated to VID_SETUP_CC00 or VID_SETUP_C800
+	frame_buffer           updated to #$02 when switching to buffer 2, or #$01 when switching to buffer 1
+
+Description
+	- If global_lights_state != ON, return immediately.
+	- If frame_buffer == #$01, switch to buffer 2:
+		• frame_buffer_base := VIEW_FRAME_BUF_0 ($C828)
+		• video_setup_mode  := VID_SETUP_CC00
+		• frame_buffer      := #$02
+	- Else switch to buffer 1:
+		• frame_buffer_base := VIEW_FRAME_BUF_1 ($CC28)
+		• video_setup_mode  := VID_SETUP_C800
+		• frame_buffer      := #$01
+================================================================================
+*/
+* = $074E
+alternate_frame_buffer:
+        // ------------------------------------------------------------
+        // If environment lights are not ON (#$02), do nothing.
+        // ------------------------------------------------------------
+        lda     global_lights_state
+        cmp     #LIGHTS_ENVIRONMENT_ON
+        bne     exit
+
+        // ------------------------------------------------------------
+        // Toggle frame buffer and video mode based on current selector.
+        // If frame_buffer == #$01 → switch to buffer 2 (CC00 base).
+        // Else → switch to buffer 1 (C800 base).
+        // ------------------------------------------------------------
+        lda     frame_buffer
+        cmp     #$01
+        bne     switch_to_frame_buffer_1
+
+* = $075B
+switch_to_frame_buffer_2:
+        // frame_buffer_base := $C828; video_setup_mode := #$02; frame_buffer := #$02
+        lda     #<VIEW_FRAME_BUF_0
+        sta     <frame_buffer_base
+        lda     #>VIEW_FRAME_BUF_0
+        sta     >frame_buffer_base
+
+        lda     #VID_SETUP_CC00
+        sta     video_setup_mode
+        sta     frame_buffer
+        jmp     exit
+
+switch_to_frame_buffer_1:
+        // frame_buffer_base := $CC28; video_setup_mode := #$01; frame_buffer := #$01
+        lda     #<VIEW_FRAME_BUF_1
+        sta     <frame_buffer_base
+        lda     #>VIEW_FRAME_BUF_1
+        sta     >frame_buffer_base
+
+        lda     #VID_SETUP_C800
+        sta     video_setup_mode
+        sta     frame_buffer
+
+exit:
+        rts
 /*
 ================================================================================
   handle_entity_approach_and_trigger
@@ -163,6 +238,39 @@ clear_contact_flag_far_x:
 return_from_entity_contact:
         rts
 
+/*
+================================================================================
+  copy_vic_color_ram_wrapper
+================================================================================
+Summary
+	Temporarily map in I/O, invoke the color RAM copy routine, then restore
+	the prior memory configuration.
+
+Global Inputs
+	(via callee) prepared color source buffer  bytes to be written to $D800
+
+Global Outputs
+	VIC color RAM ($D800)  updated by copy_vic_color_ram
+
+Description
+	- Write $25 to cpu_port to map in I/O, enabling access to VIC/Color RAM.
+	- Call copy_vic_color_ram to transfer prepared color bytes to $D800.
+	- Write $24 to cpu_port to remap RAM and exit.
+================================================================================
+*/
+* = $1854
+copy_vic_color_ram_wrapper:
+        // Map in I/O (enable VIC/Color RAM access)
+        ldy     #MAP_IO_IN
+        sty     cpu_port
+
+        // Copy color RAM from prepared buffer
+        jsr     copy_vic_color_ram
+
+        // Map out I/O (restore RAM config)
+        ldy     #MAP_IO_OUT
+        sty     cpu_port
+        rts
 /*
 ================================================================================
   copy_vic_color_ram
@@ -390,177 +498,7 @@ exit_script_present:
         // Launch the script in task 0, then resume parent
         ldx     #$00
         jsr     invoke_task_then_resume_parent
-        rts
-		
-/*
-================================================================================
-  disk_id_check
-================================================================================
-Summary
-	Read the first byte of track 1, sector 0 into disk_id_in_sector and
-	compare it to active_side_id. On match, enter a debug infinite loop.
-	On mismatch, ensure the correct side is active and return.
-
-Returns
-	If IDs mismatch: returns to caller after restoring start_track/sector.
-	If IDs match: does not return; loops writing VIC border color.
-
-Global Inputs
-	start_track   caller’s intended track to restore
-	start_sector  caller’s intended sector to restore
-	active_side_id  expected disk side identifier
-
-Global Outputs
-	disk_id_in_sector  set to the Disk ID byte read from T1,S0, offset 0
-
-Description
-	- Save caller CHS (start_sector, start_track) on the stack.
-	- Initialize chain for T1 with offset 0; seek to S0, offset 0; read.
-	- Copy 1 byte into disk_id_in_sector.
-	- Compare against active_side_id.
-	- If equal: set debug_error_code, map in I/O, spin writing border.
-	- If not equal: disk_ensure_side(active_side_id), restore CHS, return.
-================================================================================
-*/
-.label  disk_id_in_sector = $567A          // Buffer for disk ID byte (T1 S0 offset 0)
-* = $5627
-disk_id_check:
-        // ------------------------------------------------------------
-        // Preserve caller’s starting track and sector
-		//
-        // Save start_sector then start_track on the stack so this routine
-        // can probe T1,S0 for the Disk ID and later restore the caller’s
-        // requested position. Pop order will be track, then sector.
-        // ------------------------------------------------------------
-        lda     start_sector
-        pha
-        lda     start_track
-        pha
-
-		// ------------------------------------------------------------
-		// Read T1,S0 at offset 0
-		//
-		// Initialize the disk read chain for track #$01 with byte offset #$00,
-		// then position to sector #$00 at offset #$00 and start the read.
-		// Assumes: X = offset, Y = track for disk_init_chain; X = offset,
-		// Y = sector for disk_seek_read. Clobbers X,Y,A as per callee specs.
-		// ------------------------------------------------------------
-        ldx     #$00
-        ldy     #$01
-        jsr     disk_init_chain
-        ldx     #$00
-        ldy     #$00
-        jsr     disk_seek_read
-
-        // Copy 1 byte (disk ID) to disk_id_in_sector
-        ldx     #<disk_id_in_sector
-        ldy     #>disk_id_in_sector
-        lda     #$01
-        sta     disk_copy_count_lo
-        lda     #$00
-        sta     disk_copy_count_hi
-        jsr     disk_stream_copy
-
-		// ------------------------------------------------------------
-		// Validate Disk ID against expected side
-		//
-		// Load expected ID (active_side_id) and compare to the byte read
-		// from T1,S0 at offset 0 (disk_id_in_sector). CMP sets Z=1 on
-		// match; BNE branches to disk_id_mismatch when Z=0 (IDs differ).
-		// ------------------------------------------------------------
-        lda     active_side_id               // A := expected Disk ID for the current side
-        cmp     disk_id_in_sector            // Set Z if A == disk_id_in_sector; Z=0 on mismatch
-        bne     disk_id_mismatch             // Z=0 → IDs differ → branch to mismatch handler
-
-        // Debug path if IDs match
-        lda     #$2F
-        sta     debug_error_code
-
-        // Map in I/O
-        ldy     #MAP_IO_IN
-        sty     cpu_port
-
-infinite_loop:
-        sta     vic_border_color_reg
-        jmp     infinite_loop
-
-        // Disk ID doesn't match
-disk_id_mismatch:
-        lda     active_side_id               // A := target side ID we expect to be active
-        jsr     disk_ensure_side             // Switch/verify drive is on that side; updates media state
-
-		// ------------------------------------------------------------
-		// Restore caller’s track and sector
-		// ------------------------------------------------------------
-		pla
-		sta     start_track
-		pla
-		sta     start_sector
-		rts
-/*
-================================================================================
-mem_fill_x  write X to memory fill_byte_cnt times starting at dest
-
-  Arguments:
-    X      Fill byte to write to each destination address.
-
-  Global Inputs:
-    fill_dest_ptr      16-bit base address to start filling (advanced across pages).
-    fill_byte_cnt      16-bit number of bytes to write; must be nonzero on entry.
-
-  Global Outputs:
-    fill_dest_ptr      Advanced to the first address past the last written byte.
-    fill_byte_cnt      Decremented to zero when the routine returns.
-
-  Returns:
-    A,Y,flags
-      Clobbered; X preserved. Z=1 on return_from_entity_contact (counter reached zero).
-
-  Description:
-    - Writes the value from X to *(fill_dest_ptr) and increments fill_dest_ptr
-      after each store (handles page crossings via INC low/INC high).
-    - Decrements a 16-bit counter and loops until both counter bytes are zero.
-    - Y remains 0 the entire time; the base pointer moves instead of Y.
-
-  Notes:
-    - Caller must ensure fill_byte_cnt > 0; a zero-length request is invalid.
-================================================================================
-*/
-* = $5D32
-mem_fill_x:
-        // ------------------------------------------------------------
-        // Initialize Y to 0 (use base-pointer incrementing, not Y stepping)
-        // ------------------------------------------------------------
-        ldy     #$00               // Y stays 0 for (fill_dest_ptr),Y addressing
-
-fill_loop:
-        // ------------------------------------------------------------
-        // Store fill byte and advance destination pointer (handles page cross)
-        // ------------------------------------------------------------
-        txa                        // A := fill byte (preserve X)
-        sta     (fill_dest_ptr),y  // write A to *fill_dest_ptr
-        inc     <fill_dest_ptr     // dest.lo++
-        bne     dec_count          // no wrap → skip high-byte increment
-        inc     >fill_dest_ptr     // wrapped → dest.hi++
-
-dec_count:
-        // ------------------------------------------------------------
-        // Decrement 16-bit remaining count (borrow when low byte is 0)
-        // ------------------------------------------------------------
-        lda     <fill_byte_cnt     // low byte
-        bne     dec_count_lo       // if low != 0, no borrow
-        dec     >fill_byte_cnt     // borrow: dec high byte
-dec_count_lo:
-        dec     <fill_byte_cnt     // dec low byte
-
-        // ------------------------------------------------------------
-        // Loop until both counter bytes are zero
-        // ------------------------------------------------------------
-        lda     <fill_byte_cnt     // low
-        ora     >fill_byte_cnt     // combine with high; Z=1 iff both zero
-        bne     fill_loop          // not done → continue
-        rts                        // done (Z=1, Y=0, X preserved)
-
+        rts		
 /*
 ==============================================================================
 Summary
@@ -879,7 +817,7 @@ Description
 */
 .label cursor_y  = $15                        // ZP: cursor row (pixels→rows scaled)
 .label cursor_x  = $17                        // ZP: cursor column (pixels→cols scaled)
-
+* = $3CE8
 check_cursor_object_bounds:
         // ------------------------------------------------------------
         // Compute cursor coordinates for hit testing
@@ -952,4 +890,282 @@ check_cursor_y_overlap:
 		// -----------------------------------------------------------------
 skip_to_next_object:
         jmp     move_to_next_object             // advance outer scan
+/*
+================================================================================
+  disk_id_check
+================================================================================
+Summary
+	Read the first byte of track 1, sector 0 into disk_id_in_sector and
+	compare it to active_side_id. On match, enter a debug infinite loop.
+	On mismatch, ensure the correct side is active and return.
 
+Returns
+	If IDs mismatch: returns to caller after restoring start_track/sector.
+	If IDs match: does not return; loops writing VIC border color.
+
+Global Inputs
+	start_track   caller’s intended track to restore
+	start_sector  caller’s intended sector to restore
+	active_side_id  expected disk side identifier
+
+Global Outputs
+	disk_id_in_sector  set to the Disk ID byte read from T1,S0, offset 0
+
+Description
+	- Save caller CHS (start_sector, start_track) on the stack.
+	- Initialize chain for T1 with offset 0; seek to S0, offset 0; read.
+	- Copy 1 byte into disk_id_in_sector.
+	- Compare against active_side_id.
+	- If equal: set debug_error_code, map in I/O, spin writing border.
+	- If not equal: disk_ensure_side(active_side_id), restore CHS, return.
+================================================================================
+*/
+.label  disk_id_in_sector = $567A          // Buffer for disk ID byte (T1 S0 offset 0)
+* = $5627
+disk_id_check:
+        // ------------------------------------------------------------
+        // Preserve caller’s starting track and sector
+		//
+        // Save start_sector then start_track on the stack so this routine
+        // can probe T1,S0 for the Disk ID and later restore the caller’s
+        // requested position. Pop order will be track, then sector.
+        // ------------------------------------------------------------
+        lda     start_sector
+        pha
+        lda     start_track
+        pha
+
+		// ------------------------------------------------------------
+		// Read T1,S0 at offset 0
+		//
+		// Initialize the disk read chain for track #$01 with byte offset #$00,
+		// then position to sector #$00 at offset #$00 and start the read.
+		// Assumes: X = offset, Y = track for disk_init_chain; X = offset,
+		// Y = sector for disk_seek_read. Clobbers X,Y,A as per callee specs.
+		// ------------------------------------------------------------
+        ldx     #$00
+        ldy     #$01
+        jsr     disk_init_chain
+        ldx     #$00
+        ldy     #$00
+        jsr     disk_seek_read
+
+        // Copy 1 byte (disk ID) to disk_id_in_sector
+        ldx     #<disk_id_in_sector
+        ldy     #>disk_id_in_sector
+        lda     #$01
+        sta     disk_copy_count_lo
+        lda     #$00
+        sta     disk_copy_count_hi
+        jsr     disk_stream_copy
+
+		// ------------------------------------------------------------
+		// Validate Disk ID against expected side
+		//
+		// Load expected ID (active_side_id) and compare to the byte read
+		// from T1,S0 at offset 0 (disk_id_in_sector). CMP sets Z=1 on
+		// match; BNE branches to disk_id_mismatch when Z=0 (IDs differ).
+		// ------------------------------------------------------------
+        lda     active_side_id               // A := expected Disk ID for the current side
+        cmp     disk_id_in_sector            // Set Z if A == disk_id_in_sector; Z=0 on mismatch
+        bne     disk_id_mismatch             // Z=0 → IDs differ → branch to mismatch handler
+
+        // Debug path if IDs match
+        lda     #$2F
+        sta     debug_error_code
+
+        // Map in I/O
+        ldy     #MAP_IO_IN
+        sty     cpu_port
+
+infinite_loop:
+        sta     vic_border_color_reg
+        jmp     infinite_loop
+
+        // Disk ID doesn't match
+disk_id_mismatch:
+        lda     active_side_id               // A := target side ID we expect to be active
+        jsr     disk_ensure_side             // Switch/verify drive is on that side; updates media state
+
+		// ------------------------------------------------------------
+		// Restore caller’s track and sector
+		// ------------------------------------------------------------
+		pla
+		sta     start_track
+		pla
+		sta     start_sector
+		rts
+/*
+================================================================================
+mem_fill_x  write X to memory fill_byte_cnt times starting at dest
+
+  Arguments:
+    X      Fill byte to write to each destination address.
+
+  Global Inputs:
+    fill_dest_ptr      16-bit base address to start filling (advanced across pages).
+    fill_byte_cnt      16-bit number of bytes to write; must be nonzero on entry.
+
+  Global Outputs:
+    fill_dest_ptr      Advanced to the first address past the last written byte.
+    fill_byte_cnt      Decremented to zero when the routine returns.
+
+  Returns:
+    A,Y,flags
+      Clobbered; X preserved. Z=1 on return_from_entity_contact (counter reached zero).
+
+  Description:
+    - Writes the value from X to *(fill_dest_ptr) and increments fill_dest_ptr
+      after each store (handles page crossings via INC low/INC high).
+    - Decrements a 16-bit counter and loops until both counter bytes are zero.
+    - Y remains 0 the entire time; the base pointer moves instead of Y.
+
+  Notes:
+    - Caller must ensure fill_byte_cnt > 0; a zero-length request is invalid.
+================================================================================
+*/
+* = $5D32
+mem_fill_x:
+        // ------------------------------------------------------------
+        // Initialize Y to 0 (use base-pointer incrementing, not Y stepping)
+        // ------------------------------------------------------------
+        ldy     #$00               // Y stays 0 for (fill_dest_ptr),Y addressing
+
+fill_loop:
+        // ------------------------------------------------------------
+        // Store fill byte and advance destination pointer (handles page cross)
+        // ------------------------------------------------------------
+        txa                        // A := fill byte (preserve X)
+        sta     (fill_dest_ptr),y  // write A to *fill_dest_ptr
+        inc     <fill_dest_ptr     // dest.lo++
+        bne     dec_count          // no wrap → skip high-byte increment
+        inc     >fill_dest_ptr     // wrapped → dest.hi++
+
+dec_count:
+        // ------------------------------------------------------------
+        // Decrement 16-bit remaining count (borrow when low byte is 0)
+        // ------------------------------------------------------------
+        lda     <fill_byte_cnt     // low byte
+        bne     dec_count_lo       // if low != 0, no borrow
+        dec     >fill_byte_cnt     // borrow: dec high byte
+dec_count_lo:
+        dec     <fill_byte_cnt     // dec low byte
+
+        // ------------------------------------------------------------
+        // Loop until both counter bytes are zero
+        // ------------------------------------------------------------
+        lda     <fill_byte_cnt     // low
+        ora     >fill_byte_cnt     // combine with high; Z=1 iff both zero
+        bne     fill_loop          // not done → continue
+        rts                        // done (Z=1, Y=0, X preserved)
+/*
+================================================================================
+  prepare_video_for_new_room
+================================================================================
+Summary
+	Prepare the video system for entering a new room. Hides UI cursor and
+	actors, clears top-bar text, performs a closing shutter animation,
+	clears both view buffers, switches to frame buffer 2, then synchronizes
+	with the raster IRQ by signaling and waiting for acknowledgment.
+
+Global Outputs
+	hide_cursor_flag         set TRUE to hide cursor
+	src_msg_ptr              set to empty_msg for shutdown_topbar_talking
+	video_update_signal      set to SIGNAL_SET, then waited until IRQ clears
+	(via subroutines) view buffers cleared and buffer 2 made active
+
+Description
+	- Hide cursor and all actors; release any sprite resources.
+	- Point src_msg_ptr at empty_msg and clear the top-bar/talking UI.
+	- Run the shutter effect in closing mode using delta table entry 0.
+	- Clear both view frame buffers and switch to frame buffer 2.
+	- Set video_update_signal and busy-wait until the IRQ handler clears it.
+================================================================================
+*/
+* = $D69D
+prepare_video_for_new_room:
+        // Hide cursor
+        lda     #TRUE
+        sta     hide_cursor_flag
+
+        // Hide all actors and free their sprites
+        jsr     hide_all_actors_and_release_sprites
+
+        // Set src_msg_ptr := empty_msg for shutdown_topbar_talking
+        lda     #<empty_msg
+        sta     src_msg_ptr
+        lda     #>empty_msg
+        sta     src_msg_ptr + 1
+
+        // Clear top bar text / talking UI
+        jsr     shutdown_topbar_talking
+
+        // Run shutter effect in closing mode using first delta-table entry
+        lda     #SHUTTER_CLOSE                          
+        ldx     #$00                          	// X := delta table offset 0
+        jsr     do_shutter_effect
+
+        // Clear both view frame buffers
+        jsr     clear_view_buffers
+
+        // Switch to frame buffer 2
+        jsr     switch_to_frame_buffer_2
+
+        // Signal video update and wait for IRQ to clear it
+        lda     #SIGNAL_SET
+        sta     video_update_signal
+wait_for_video_update_ack:
+        lda     video_update_signal
+        bne     wait_for_video_update_ack
+        rts
+/*
+================================================================================
+ ensure_raster_irq_ready
+================================================================================
+Summary
+	Ensure the raster IRQ environment is initialized. If initialization is
+	pending, run the init routine until cleared. Then issue a one-shot
+	signal to the IRQ handler and wait for its acknowledgment.
+
+Vars/State
+	Clobbers A, X, and processor flags. Y unchanged.
+
+Global Inputs
+	raster_irq_init_pending   nonzero indicates init work remains
+
+Global Outputs
+	video_processed_signal    set to #$01 to request IRQ work, waits for #$00
+	(via callee) raster IRQ configuration  established by init_raster_irq_env
+
+Description
+	- Poll raster_irq_init_pending; while nonzero, call init_raster_irq_env
+	and recheck.
+	- After init completes, set video_processed_signal := #$01 to hand a unit
+	of work to the IRQ handler, then spin until the handler clears it.
+	- Execute a final DEX for a minimal delay and exit.
+================================================================================
+*/
+* = $D7BA
+ensure_raster_irq_ready:
+        // work to the IRQ handler via video_processed_signal.
+        ldx     #$00                           // single-pass spacer/counter
+
+check_raster_pending_init:
+        lda     raster_irq_init_pending        // pending init work?
+        beq     signal_irq_handler_once        // no → proceed to signal-and-wait
+
+        jsr     init_raster_irq_env            // perform pending raster init work
+        jmp     check_raster_pending_init      // recheck until cleared
+
+signal_irq_handler_once:
+        lda     #SIGNAL_SET
+        sta     video_processed_signal         // request IRQ handler to run a unit of work
+
+wait_irq_handler_ack_clear:
+        lda     video_processed_signal         // wait until IRQ handler clears it to #SIGNAL_CLEAR
+        bne     wait_irq_handler_ack_clear
+
+        dex                                    // one extra breath; X: 00→FF, sets N=1
+        bpl     signal_irq_handler_once        // not taken (negative), so exit
+
+        rts
