@@ -89,7 +89,6 @@
 .const NMI_STUB_ADDR               = $18EA    // NMI handler address (RTS stub)
 
 .const VIC_MEM_LAYOUT_INIT         = $26      // $D018: screen=$0400, charset=$2000
-.const FRAMEBUFFER_INIT            = $01      // Initial framebuffer index
 .const VIC_CTRL2_INIT              = $18      // $D016: MCM text, 40 cols, hscroll=0
 .const VIC_IRQ_BITS_RASTER         = $81      // $D019/$D01A: raster bit mask
 
