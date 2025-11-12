@@ -55,6 +55,7 @@ Values observed
 .label random_3 = $df
 .label irq_entry_lock = $e3
 
+.label open_shutter_flag = $066E
 .label remove_obj_from_inv_flag = $0670
 .label video_processed_signal = $166b
 
@@ -540,9 +541,7 @@ They were definitely intended as debugging aids.
 .label irq_handler = $fffe
 
 //Placeholders for routines not modularized yet
-.label open_shutter_flag = $0
 .label init_sprites_sound = $0
-.label prepare_video_for_new_room = $0
 .label reset_game_engine = $0
 
 //===========================================================
