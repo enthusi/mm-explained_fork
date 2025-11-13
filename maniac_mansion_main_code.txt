@@ -727,7 +727,7 @@ voice_instruction_offset_lo = $47fe
 voice_instruction_offset_hi = $4805
 voices_executing_instruction = $480c	;Bitmask that holds which voices are currently executing sound instructions
 
-x_lower_than_3 = $4811	;#00 if X < 3, #FF otherwise
+voice_in_sid_range_flag = $4811	;#00 if X < 3, #FF otherwise
 
 music_playback_in_progress = $4816
 music_voices_in_use = $4817
@@ -16802,8 +16802,8 @@ check_voice_execution:
 ;If not, skip to the next voice
 .C:4848  F0 06       BEQ next_voice
 ;Apply duration and glissando to the active voice
-.C:484a  20 1B 4A    JSR apply_duration_and_glissando
-;.X was saved by apply_duration_and_glissando into x_saved
+.C:484a  20 1B 4A    JSR update_duration_and_glissando
+;.X was saved by update_duration_and_glissando into x_saved
 .C:484d  AE 0D 48    LDX x_saved
 next_voice:
 .C:4850  CA          DEX
@@ -16812,7 +16812,7 @@ next_voice:
 ;Are we doing voice arpeggio?
 .C:4853  AD 62 51    LDA arpeggio_active_1
 ;If not, skip this part
-.C:4856  F0 35       BEQ set_voice_control_to_voices
+.C:4856  F0 35       BEQ update_voice_control_to_voices
 ;Voice arpeggio enabled
 ;Swap current setting 0 with alternate setting 0
 .C:4858  A2 00       LDX #$00
@@ -16823,7 +16823,7 @@ next_voice:
 .C:4861  8D 60 51    STA arpeggio_ongoing
 ;Apply duration/glissando to voice 0
 .C:4864  A2 00       LDX #$00
-.C:4866  20 1B 4A    JSR apply_duration_and_glissando
+.C:4866  20 1B 4A    JSR update_duration_and_glissando
 ;Swap current setting 0 with alternate setting 0
 .C:4869  A2 00       LDX #$00
 .C:486b  A0 00       LDY #$00
@@ -16837,7 +16837,7 @@ next_voice:
 .C:4879  20 A5 51    JSR swap_voice_settings
 ;Apply duration/glissando to voice 4
 .C:487c  A2 04       LDX #$04
-.C:487e  20 1B 4A    JSR apply_duration_and_glissando
+.C:487e  20 1B 4A    JSR update_duration_and_glissando
 ;Swap current setting 4 with alternate setting 1
 .C:4881  A2 04       LDX #$04
 .C:4883  A0 01       LDY #$01
@@ -16847,14 +16847,14 @@ enable_freq_and_envelope_change:
 .C:4888  A9 00       LDA #$00
 .C:488a  8D 60 51    STA arpeggio_ongoing
 ;----------------------------------------------------
-set_voice_control_to_voices:
+update_voice_control_to_voices:
 .C:488d  A2 06       LDX #$06
 check_voice_execution:
 .C:488f  8E 0D 48    STX x_saved
 .C:4892  AD 0C 48    LDA voices_executing_instruction
 .C:4895  3D 5C 47    AND set_bitmasks,X
 .C:4898  F0 03       BEQ next_voice_2
-.C:489a  20 0D 4C    JSR set_voice_control
+.C:489a  20 0D 4C    JSR update_voice_control
 next_voice_2:
 .C:489d  AE 0D 48    LDX x_saved
 .C:48a0  CA          DEX
@@ -16957,14 +16957,14 @@ start_sound_for_voice:
 .C:4945  A9 00       LDA #$00
 .C:4947  9D AA 47    STA instruction_repeat_counter,X
 ;-----------------------------------
-;Check if .X < 3 - if so, set x_lower_than_3 to #FF (true)
-;Otherwise, set x_lower_than_3 to #00 (false)
+;Check if .X < 3 - if so, set voice_in_sid_range_flag to #FF (true)
+;Otherwise, set voice_in_sid_range_flag to #00 (false)
 .C:494a  A9 FF       LDA #$FF
 .C:494c  E0 03       CPX #$03
-.C:494e  30 02       BMI set_x_lower_than_3_flag
+.C:494e  30 02       BMI set_voice_in_sid_range_flag_flag
 .C:4950  A9 00       LDA #$00
-set_x_lower_than_3_flag:
-.C:4952  8D 11 48    STA x_lower_than_3
+set_voice_in_sid_range_flag_flag:
+.C:4952  8D 11 48    STA voice_in_sid_range_flag
 ;-----------------------------------
 ;Save active voice index
 .C:4955  8E 0D 48    STX active_voice
@@ -17024,13 +17024,13 @@ set_hi_bytes:
 .C:49a2  D0 06       BNE check_voice_control_change
 ;X == #03 - set filter and volume control
 ;Voice index #03 is a special voice reserved for setting filters and volume
-.C:49a4  20 E7 49    JSR set_filter_and_volume_control
+.C:49a4  20 E7 49    JSR update_filter_and_volume
 .C:49a7  4C D7 49    JMP move_pointers
 check_voice_control_change:
 ;Is this voice in use by music? If not, set voice control
 .C:49aa  AD 17 48    LDA music_voices_in_use
 .C:49ad  3D 5C 47    AND set_bitmasks,X
-.C:49b0  F0 04       BEQ set_voice_control
+.C:49b0  F0 04       BEQ update_voice_control
 ;It is - don't set voice control, skip next byte
 .C:49b2  C8          INY
 .C:49b3  4C D7 49    JMP move_pointers
@@ -17042,7 +17042,7 @@ check_voice_control_change:
 ;		If low nibble is #00, disable filter for this voice
 ;		Otherwise, enable filter for this voice
 ;---------------------------------------------
-set_voice_control:
+update_voice_control:
 .C:49b6  B1 BA       LDA (voice_read_ptr),Y
 .C:49b8  9D B1 47    STA voice_controls,X
 ;Read byte from next position
@@ -17076,7 +17076,7 @@ move_pointers:
 ; Set filter and volume control, by reading 2 bytes
 ; from the read pointer.
 ;===========================================
-set_filter_and_volume_control:
+update_filter_and_volume:
 .C:49e7  B1 BA       LDA (voice_read_ptr),Y
 .C:49e9  0D 6B 47    ORA filter_control_reg_copy
 .C:49ec  8D 6B 47    STA filter_control_reg_copy
@@ -17125,16 +17125,16 @@ exit:
 ;===========================================
 x_saved = $480d
 
-apply_duration_and_glissando:
+update_duration_and_glissando:
 ;-----------------------------------
-;Check if .X < 3 - if so, set x_lower_than_3 to #FF (true)
-;Otherwise, set x_lower_than_3 to #00 (false)
+;Check if .X < 3 - if so, set voice_in_sid_range_flag to #FF (true)
+;Otherwise, set voice_in_sid_range_flag to #00 (false)
 .C:4a1b  A9 FF       LDA #$FF
 .C:4a1d  E0 03       CPX #$03
 .C:4a1f  30 02       BMI set_result
 .C:4a21  A9 00       LDA #$00
 set_result:
-.C:4a23  8D 11 48    STA x_lower_than_3
+.C:4a23  8D 11 48    STA voice_in_sid_range_flag
 ;-----------------------------------
 ;Save .X so caller can restore it
 .C:4a26  8E 0D 48    STX x_saved
@@ -17153,7 +17153,7 @@ set_result:
 .C:4a3c  B0 07       BCS do_glissando
 ;Duration countdown expired - process next sound instruction
 .C:4a3e  20 6B 4A    JSR process_voice_instructions
-.C:4a41  20 E6 4B    JSR set_voice_frequency_and_envelope
+.C:4a41  20 E6 4B    JSR update_voice_freq_and_env
 .C:4a44  60          RTS
 ;-----------------------------------
 do_glissando:
@@ -17166,14 +17166,14 @@ do_glissando:
 .C:4a52  7D E9 47    ADC glissando_hi,X
 .C:4a55  9D CD 47    STA voice_frequencies_hi,X
 ;Update voice frequency
-.C:4a58  20 E6 4B    JSR set_voice_frequency_and_envelope
+.C:4a58  20 E6 4B    JSR update_voice_freq_and_env
 .C:4a5b  60          RTS
 ;===========================================
 ; Clear sound duration and glissando for a logical voice
 ;
 ; Arguments: .X voice index
 ;===========================================
-clear_duration_and_glissando:
+clear_voice_duration_and_glissando:
 .C:4a5c  A9 00       LDA #$00
 .C:4a5e  9D D4 47    STA sound_duration_lo,X
 .C:4a61  9D DB 47    STA sound_duration_hi,X
@@ -17273,7 +17273,7 @@ instruction_present:
 .C:4a97  9D A3 47    STA instruction_for_voice,X
 .C:4a9a  8D 0E 48    STA instruction_shifter
 .C:4a9d  8D 10 48    STA instruction_original
-; As x_lower_than_3 is treated as a "boolean", its possible values will be either #00 or #FF.
+; As voice_in_sid_range_flag is treated as a "boolean", its possible values will be either #00 or #FF.
 ; So either its bits will all be 0 or all 1.
 ; Running the BIT instruction will set the N and V flags according to the operand.
 ; Specifically, if the operand has bit 7 set, N will be set and viceversa.
@@ -17284,11 +17284,11 @@ instruction_present:
 ; The BIT operation will simply set/clear flags N and V.
 ; But the LSR operation might overwrite the N flag, so the only unaffected flag when 
 ; executing BIT followed by LSR will be V. This will be relevant when we test the boolean later.
-.C:4aa0  2C 11 48    BIT x_lower_than_3
+.C:4aa0  2C 11 48    BIT voice_in_sid_range_flag
 ;Shift right once - bit 0 will go into carry (N might change)
 .C:4aa3  4E 0E 48    LSR instruction_shifter
 ;Now we test for the V flag that was set/cleared before (in the BIT instruction)
-;If x_lower_than_3 is #00 (true), .X < 3, then the trigger/release logic will apply
+;If voice_in_sid_range_flag is #00 (true), .X < 3, then the trigger/release logic will apply
 .C:4aa6  50 0F       BVC test_bit1
 ;--------------------------------------------
 ; Voice index < 3 - Trigger/release voice
@@ -17356,15 +17356,15 @@ test_bit2:
 .C:4af5  4C 01 4B    JMP test_bit3
 ;Bit 6 set, clear duration/glissando
 no_duration_or_glissando:
-.C:4af8  20 5C 4A    JSR clear_duration_and_glissando
+.C:4af8  20 5C 4A    JSR clear_voice_duration_and_glissando
 .C:4afb  4C 01 4B    JMP test_bit3
 ;Bit 2 clear - clear duration/glissando
 no_duration_or_glissando_2:
-.C:4afe  20 5C 4A    JSR clear_duration_and_glissando
+.C:4afe  20 5C 4A    JSR clear_voice_duration_and_glissando
 ;--------------------------------------------
 test_bit3:
 ;Check if .X < 3
-.C:4b01  2C 11 48    BIT x_lower_than_3
+.C:4b01  2C 11 48    BIT voice_in_sid_range_flag
 .C:4b04  4E 0E 48    LSR instruction_shifter
 ;If .X < 3, the ADSR part doesn't apply
 .C:4b07  50 2D       BVC test_bit4
@@ -17384,7 +17384,7 @@ test_bit3:
 .C:4b0e  BD B1 47    LDA voice_controls,X
 .C:4b11  29 FE       AND #$FE
 .C:4b13  9D B1 47    STA voice_controls,X
-.C:4b16  20 0D 4C    JSR set_voice_control
+.C:4b16  20 0D 4C    JSR update_voice_control
 ;Restore .Y from stack
 .C:4b19  AC 13 48    LDY temp_y
 ;Read voice index
@@ -17415,7 +17415,7 @@ test_bit4:
 .C:4b3c  B1 BA       LDA (voice_read_ptr),Y
 .C:4b3e  8D 0F 48    STA instruction_operand
 ;Check if .X < 3
-.C:4b41  2C 11 48    BIT x_lower_than_3
+.C:4b41  2C 11 48    BIT voice_in_sid_range_flag
 test_operand_bit0:
 .C:4b44  4E 0F 48    LSR instruction_operand
 ;If .X < 3, the PWM part doesn't apply
@@ -17443,7 +17443,7 @@ test_operand_bit1:
 ; Operand bit 1 set - set filter cutoff settings
 ;--------------------------------------------
 .C:4b63  C8          INY
-.C:4b64  20 E7 49    JSR set_filter_and_volume_control
+.C:4b64  20 E7 49    JSR update_filter_and_volume
 .C:4b67  C8          INY
 .C:4b68  B1 BA       LDA (voice_read_ptr),Y
 .C:4b6a  8D 15 D4    STA filter_cutoff_freq_lo_reg
@@ -17456,7 +17456,7 @@ test_operand_bit2:
 ;--------------------------------------------
 ; Operand bit 2 set - set duration
 ;--------------------------------------------
-.C:4b78  20 5C 4A    JSR clear_duration_and_glissando
+.C:4b78  20 5C 4A    JSR clear_voice_duration_and_glissando
 .C:4b7b  C8          INY
 .C:4b7c  B1 BA       LDA (voice_read_ptr),Y
 .C:4b7e  9D D4 47    STA sound_duration_lo,X
@@ -17548,7 +17548,7 @@ exit:
 ; Arguments:	.X	logical voice index
 ; Note: if the voice physical index is 3, the filter cutoff frequency is copied
 ;===========================================
-set_voice_frequency_and_envelope:
+update_voice_freq_and_env:
 ;If there's voice arpeggio ongoing, exit - arpeggio takes care of changing frequencies
 .C:4be6  AD 60 51    LDA arpeggio_ongoing
 .C:4be9  F0 01       BEQ change_enabled
@@ -17578,7 +17578,7 @@ exit:
 ;
 ; Arguments:	.X	voice index
 ;===========================================
-set_voice_control:
+update_voice_control:
 ;If .X >= 3, exit
 .C:4c0d  E0 03       CPX #$03
 .C:4c0f  10 0A       BPL exit
@@ -18420,7 +18420,7 @@ set_voice_in_use:
 .C:4fb3  BD B1 47    LDA voice_controls,X
 .C:4fb6  09 01       ORA #$01
 .C:4fb8  9D B1 47    STA voice_controls,X
-.C:4fbb  20 0D 4C    JSR set_voice_control
+.C:4fbb  20 0D 4C    JSR update_voice_control
 ;Restore resource index for voice from stack
 .C:4fbe  68          PLA
 .C:4fbf  AA          TAX
@@ -18760,7 +18760,7 @@ clear_waveform_and_stop_note:
 .C:511c  29 0E       AND #$0E
 ;Apply changes
 .C:511e  9D B1 47    STA voice_controls,X
-.C:5121  20 0D 4C    JSR set_voice_control
+.C:5121  20 0D 4C    JSR update_voice_control
 exit:
 ;Restore voice control value from stack
 .C:5124  68          PLA
@@ -19103,7 +19103,7 @@ voice_index_validated:
 .C:534f  A0 00       LDY #$00
 .C:5351  20 A5 51    JSR swap_voice_settings
 ;Set frequency and envelope
-.C:5354  20 E6 4B    JSR set_voice_frequency_and_envelope
+.C:5354  20 E6 4B    JSR update_voice_freq_and_env
 ;Do we need to multiplex?
 .C:5357  AD 61 51    LDA arpeggio_active_2
 .C:535a  F0 0C       BEQ check_filter_change
@@ -19117,7 +19117,7 @@ voice_index_validated:
 .C:5360  A0 01       LDY #$01
 .C:5362  20 A5 51    JSR swap_voice_settings
 ;Set frequency and envelope
-.C:5365  20 E6 4B    JSR set_voice_frequency_and_envelope
+.C:5365  20 E6 4B    JSR update_voice_freq_and_env
 check_filter_change:
 ;Do we have to filter the voice?
 .C:5368  AD 64 51    LDA filter_enable_flag
