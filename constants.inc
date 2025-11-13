@@ -344,3 +344,7 @@ screen_row_offsets_lo:
 
 
 .const CPU_PORT_DDR_INIT           = $07      // 6510 DDR: banking bits as outputs
+
+
+.const  LOGICAL_VOICE_LIMIT       = $03      // Logical voices 0–2 map to real SID voices; X >= 3 is special/filter
+.const  BOOL_TRUE_FF              = $FF      // Canonical “true” byte value for engine boolean flags
