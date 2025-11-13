@@ -1,8 +1,13 @@
 #importonce
 
 // Generic booleans
-.const FALSE                       = $00    // Logical false (0)
-.const TRUE                        = $01    // Logical true (1)
+// There are two boolean conventions used in this codebase:
+//   • $01 represents “true” for standard logic flags
+//   • $FF represents “true” for 'other' logic flags
+// To make this distinction explicit, all $FF-true flags are given a “_b” suffix.
+.const FALSE                       = $00    // Logical false value for _all_ boolean flags
+.const TRUE                        = $01    // Logical true value for unsuffixed boolean flags
+.const BTRUE       		           = $FF    // Logical true value for "_b"-suffixed boolean flags
 
 // Generic signal set/clear
 .const SIGNAL_SET                  = $01    // Generic “signal asserted” value
@@ -347,4 +352,13 @@ screen_row_offsets_lo:
 
 
 .const  LOGICAL_VOICE_LIMIT       = $03      // Logical voices 0–2 map to real SID voices; X >= 3 is special/filter
-.const  BOOL_TRUE_FF              = $FF      // Canonical “true” byte value for engine boolean flags
+.const SOUND_REFCOUNT_BIT        = %0000_0001   // Bit 0 indicates non-zero refcount for a sound
+.const MAX_SND_PRIORITY = $7F
+.const SOUND_IDX_NONE = $FF
+.const MIN_SOUND_PRIORITY = $01
+.const STOP_SOUND_MODE_VOICES_ONLY   = $01  // Soft stop: stop voices only, no refcount/arpeggio/alt-state cleanup
+.const STOP_SOUND_MODE_FULL_CLEANUP  = $FF  // Hard stop: when stopping the starting sound, also do full cleanup
+
+.const START_SOUND_ERR_NOT_LOADED          = $01  // Sound resource not resident in memory
+.const START_SOUND_ERR_MUSIC_ALL_VOICES    = $FE  // Music uses all three real voices; cannot allocate any
+.const START_SOUND_ERR_INSUFFICIENT_VOICES = $FF  // Cannot obtain enough voices (availability/priority/voice-3 conflict)
