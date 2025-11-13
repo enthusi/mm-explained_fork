@@ -126,6 +126,12 @@
 .label vic_sprite6_color_reg           = $D02D
 .label vic_sprite7_color_reg           = $D02E
 
+.label voice1_freq_reg_lo        = $D400    // Base SID register: voice 1 frequency low byte
+.label voice1_freq_reg_hi        = $D401    // Base SID register: voice 1 frequency high byte
+.label voice1_control_register   = $D404    // Base SID register: voice 1 control (gate/waveform/test/ring/sync)
+.label voice1_attack_delay_reg   = $D405    // Base SID register: voice 1 attack/decay envelope
+.label voice1_sustain_release_reg = $D406   // Base SID register: voice 1 sustain/release envelope
+.label filter_control_register   = $D417    // SID filter control hardware register (writes affect filter)
 .label sid_master_volume			   = $D418
 // ============================================================================
 // CIA ports
