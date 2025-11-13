@@ -645,7 +645,7 @@ They were definitely intended as debugging aids.
 .label voice_priority_4 = $4799
 .label voice_priority_5 = $479A
 .label voice_priority_6 = $479B
-.label rsrc_for_voice_0 = $479c
+.label voice_sound_id_tbl = $479c
 .label rsrc_for_voice_1 = $479d
 .label rsrc_for_voice_2 = $479e
 .label rsrc_for_voice_3 = $479f
@@ -655,8 +655,8 @@ They were definitely intended as debugging aids.
 .label instruction_for_voice = $47a3
 .label instruction_repeat_counter = $47aa
 .label voice_controls = $47b1
-.label voice_instruction_ptr_lo = $47b8
-.label voice_instruction_ptr_hi = $47bf
+.label voice_instr_ptr_lo = $47b8
+.label voice_instr_ptr_hi = $47bf
 .label voice_frequencies_lo = $47c6
 .label filter_cutoff_freq_lo = $47c9
 .label voice_frequencies_hi = $47cd
@@ -667,8 +667,8 @@ They were definitely intended as debugging aids.
 .label glissando_hi = $47e9
 .label voice_base_addr_lo = $47f0
 .label voice_base_addr_hi = $47f7
-.label voice_instruction_offset_lo = $47fe
-.label voice_instruction_offset_hi = $4805
+.label voice_instr_offset_lo = $47fe
+.label voice_instr_offset_hi = $4805
 .label voices_executing_instruction = $480c	//Bitmask that holds which voices are currently executing sound instructions
 
 .label voice_in_sid_range_flag = $4811	//#00 if X < 3, #FF otherwise
@@ -677,12 +677,12 @@ They were definitely intended as debugging aids.
 .label music_voices_in_use = $4817
 .label music_voices_in_use_2 = $4818		//A bitmask used to represent which voices are being used by music
 
-.label sound_processing_disabled = $4819	//#00 = false, #FF = true
-.label stop_sound_mode = $481A				//#01 = stop, dereference sound, stop arpeggio, #FF = just stop
-.label sound_starting = $4cf1
-.label starting_sound_with_priority_1 = $4cf2 //#01 = True, #00 = false
+.label sound_processing_disabled_flag = $4819	//#00 = false, #FF = true
+.label stop_sound_cleanup_mode = $481A				//#01 = stop, dereference sound, stop arpeggio, #FF = just stop
+.label tracked_lowest_priority_sound = $4cf1
+.label lowest_priority_sound_starting_flag = $4cf2 //#01 = True, #00 = false
 .label voice3_in_use = $4CF5				//#00 = false, #FF = true
-.label default_filter_control_value = $4cfa
+.label filter_control_snapshot = $4cfa
 .label total_real_voices_available = $4cff
 //Values observed: #01, #02, #07, #0A, #64, #6E, #73, #78
 // 00000001		#01		14 times	Sink water, Shower water, Radio untuned, Dial tone, tentacle noise, 
@@ -703,14 +703,14 @@ They were definitely intended as debugging aids.
 // 01111000		#78		1 time		Zom-b-matic shutdown
 
 .label sound_priority = $4d01		
-.label sound_to_start = $4d05
+.label pending_sound_idx = $4d05
 .label voices_allocated = $4d07	//Bitmask that holds which voices are currently allocated (not necessarily actively executing sound instructions)
 .label sound_to_stop = $4d08
 
 //Combine multiple notes in one voice by arpeggio
 .label arpeggio_ongoing = $5160	// #00 = disabled, #FF = enabled
-.label arpeggio_active_2 = $5161		// #00 = disabled, #FF = enabled
-.label arpeggio_active_1 = $5162		// #00 = disabled, #FF = enabled
+.label arpeggio2_active_flag = $5161		// #00 = disabled, #FF = enabled
+.label arpeggio1_active_flag = $5162		// #00 = disabled, #FF = enabled
 .label filter_enable_flag = $5164			// #00 = filter voice, #FF = stop filtering voice
 .label filter_pass_select = $5166
 .label all_alt_settings_cleared = $5167	// #00 = false, #FF = true
