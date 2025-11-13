@@ -1,6 +1,6 @@
 /*
 sound_irq_handler:
-.C:481b  AD 19 48    LDA sound_processing_disabled
+.C:481b  AD 19 48    LDA sound_processing_disabled_flag
 
 jump_to_music_code:
 .C:48d4  20 00 00    JSR $0000		;Inlined address
@@ -17,81 +17,12 @@ update_instruction_ptr_and_offset:
 process_voice_instructions:
 .C:4a6b  AE 0D 48    LDX voice_index
 
-update_voice_base_and_instruction_ptr:
-.C:4c1c  BC 9C 47    LDY rsrc_for_voice_0,X
-
 setup_music_pointers:
 .C:4c76  8A          TXA
 
 stop_music:
 ;Stop playback
 .C:4caa  A9 00       LDA #$00
-
-decrease_sound_memory_attribute:
-.C:4cda  BD 51 79    LDA sound_mem_attrs,X
-
-start_sound:
-.C:4d0a  8D 05 4D    STA sound_to_start
-
-set_voice_data_base_and_offset:
-.C:4e99  48          PHA
-
-allocate_available_real_voice:
-.C:4eb8  48          PHA
-
-allocate_special_voice_3:
-.C:4ed0  48          PHA
-
-count_evictable_voices:
-.C:4ed8  A9 7F       LDA #$7F
-
-count_available_real_voices:
-.C:4f26  48          PHA
-
-release_voice:
-.C:4f45  48          PHA
-
-deallocate_voice:
-.C:4fc5  A9 00       LDA #$00
-
-decrease_sound_memory_attr:
-.C:4fea  AD 16 48    LDA music_playback_in_progress
-
-increment_sound_memory_attr:
-.C:4ff4  AD 16 48    LDA music_playback_in_progress
-
-allocate_voice:
-.C:4ffe  48          PHA
-
-stop_sound_playback:
-.C:5031  8D 08 4D    STA sound_to_stop
-
-stop_voice_for_sound:
-.C:5070  A2 03       LDX #$03
-
-stop_sound_full:
-.C:5088  48          PHA
-
-stop_sound:
-.C:5093  A2 06       LDX #$06
-
-stop_sound_simple:
-.C:50a4  48          PHA
-
-stop_voice:
-.C:50c7  48          PHA
-
-clear_waveform_and_stop_note:
-.C:510a  BD B1 47    LDA voice_controls,X
-
-set_voice_to_unused:
-.C:5126  A9 00       LDA #$00
-
-clear_refcount_of_sounds_1_and_2:
-.C:513e  AD 52 79    LDA sound_1_memory_attr
-
-set_refcount_of_sounds_1_and_2:
-.C:514f  AD 52 79    LDA sound_1_memory_attr
 
 swap_voice_settings:
 .C:51a5  E0 03       CPX #$03
@@ -230,7 +161,7 @@ update_duration_and_glissando:
 		// Flag whether logical voice X is within the primary SID-voice range
 		// (0..LOGICAL_VOICE_LIMIT-1) and cache that as $FF/00 in voice_in_sid_range_flag
 		// ------------------------------------------------------------
-		lda     #BOOL_TRUE_FF                 // Provisional “true” for X < 3
+		lda     #BTRUE                 // Provisional “true” for X < 3
 		cpx     #LOGICAL_VOICE_LIMIT          // Compare logical voice index against 3
 		bmi     store_voice_index_flag        // If X < 3 → keep true
 		
