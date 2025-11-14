@@ -588,7 +588,7 @@ Arguments
     print_msg_ptr    pointer to zero-terminated message string
 
 Global Inputs
-    raster_irq_init_pending      nonzero means raster init path is active
+    raster_irq_init_pending_flag      nonzero means raster init path is active
 
 Description
     - Map in I/O to access screen and color RAM.
@@ -615,7 +615,7 @@ print_message_wait_for_button:
         // If raster IRQ init pending, ensure screen is on and set
         // VIC memory layout and text mode
         // ------------------------------------------------------------
-        lda     raster_irq_init_pending      // pending raster init?
+        lda     raster_irq_init_pending_flag      // pending raster init?
         beq     entry_clear_topbar           // no → keep current video config
 
         lda     vic_screen_control_reg_1     
@@ -660,7 +660,7 @@ wait_for_fire_press:
         // ------------------------------------------------------------
         // If raster init pending, re-blank the screen
         // ------------------------------------------------------------
-        lda     raster_irq_init_pending      // was special raster setup active?
+        lda     raster_irq_init_pending_flag      // was special raster setup active?
         beq     exit_pmwfb                   // no → keep screen state as-is
 
         lda     vic_screen_control_reg_1     
