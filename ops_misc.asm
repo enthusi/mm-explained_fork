@@ -269,7 +269,7 @@ Returns
         None (status stored to game_vars[dest])
 
 Description
-        - init_sprites_sound
+        - init_raster_and_sound_state
         - active_side_id := #GAME_DISK_ID_SAVEGAME
         - dest := script_read_byte
         - op := script_load_operand_bit7
@@ -285,7 +285,7 @@ op_save_load_game:
         // ------------------------------------------------------------
         // Prep hardware and select disk side
         // ------------------------------------------------------------
-        jsr     init_sprites_sound
+        jsr     init_raster_and_sound_state
 
         lda     #GAME_DISK_ID_SAVEGAME
         sta     active_side_id
@@ -368,7 +368,7 @@ Summary
 */
 * = $6AD1
 op_setup_sprites_and_sound:
-        jsr     init_sprites_sound
+        jsr     init_raster_and_sound_state
         rts
 /*
 ================================================================================
