@@ -276,7 +276,7 @@ Values observed
 // ===========================================================
 .label room_mem_attrs = $77BC
 .label costume_mem_attrs = $77A3
-.label sound_mem_attrs       = $7951    // table: per-sound usage attributes, indexed by resource_index
+.label sound_attr_tbl       = $7951    // table: per-sound usage attributes, indexed by resource_index
 .label script_mem_attrs = $7AD7
 // ===========================================================
 
@@ -531,7 +531,7 @@ They were definitely intended as debugging aids.
 //Sound
 .label new_sound_instructions_allowed = $fe71	//00 = not allowed, nonzero = allowed
 .label music_to_start_ptr = $fea1
-.label music_index = $fea3
+.label selected_music_idx = $fea3
 
 //===========================================================
 // Interrupt handlers

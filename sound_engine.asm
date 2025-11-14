@@ -461,7 +461,7 @@ next_voice_for_control:
         lda     music_playback_in_progress
         beq     sound_irq_exit
 
-        ldx     music_index
+        ldx     selected_music_idx
         lda     sound_ptr_hi_tbl,x
         sta     <music_to_start_ptr
         lda     sound_ptr_lo_tbl,x

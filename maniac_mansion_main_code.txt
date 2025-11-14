@@ -972,7 +972,7 @@ costume_ptr_hi_tbl = $7861	;Total costumes: 25
 costume_ptr_lo_tbl = $787A
 sound_ptr_hi_tbl = $78C5		;Total sounds: 70
 sound_ptr_lo_tbl = $790B
-sound_mem_attrs = $7951
+sound_attr_tbl = $7951
 sound_1_memory_attr = $7952
 sound_2_memory_attr = $7953
 script_ptr_hi_tbl = $7997		;Total scripts: 160
@@ -1449,7 +1449,7 @@ active_side_id = $fe9c ;This represents the desired Disk ID (the ID that identif
 actor_mouth_state = $fe9d	
 
 music_to_start_ptr = $fea1
-music_index = $fea3
+selected_music_idx = $fea3
 interrupted_pc_lo = $fea4
 interrupted_pc_hi = $fea5
 saved_task_idx = $fea6
@@ -1935,12 +1935,12 @@ clear_game_variables:
 ; 6 is the footstep sound
 ; 8 and 9 are the door open/close sounds
 .C:04c3  A9 80       LDA #$80
-.C:04c5  8D 54 79    STA sound_mem_attrs + 3 
-.C:04c8  8D 55 79    STA sound_mem_attrs + 4
-.C:04cb  8D 56 79    STA sound_mem_attrs + 5
-.C:04ce  8D 57 79    STA sound_mem_attrs + 6
-.C:04d1  8D 59 79    STA sound_mem_attrs + 8
-.C:04d4  8D 5A 79    STA sound_mem_attrs + 9
+.C:04c5  8D 54 79    STA sound_attr_tbl + 3 
+.C:04c8  8D 55 79    STA sound_attr_tbl + 4
+.C:04cb  8D 56 79    STA sound_attr_tbl + 5
+.C:04ce  8D 57 79    STA sound_attr_tbl + 6
+.C:04d1  8D 59 79    STA sound_attr_tbl + 8
+.C:04d4  8D 5A 79    STA sound_attr_tbl + 9
 ;Set pointers to sounds 3, 4 and 5 (embedded in the middle of the code)
 .C:04d7  A9 CD       LDA #$CD
 .C:04d9  8D 0E 79    STA sound_ptr_lo_tbl + 3
@@ -2448,7 +2448,7 @@ check_actor:
 .C:0740  A0 FF       LDY #$FF
 .C:0742  8C B8 70    STY task_cur_idx
 ;Play the walking sound resulting from the AND
-.C:0745  20 2E 66    JSR start_sound_entry2
+.C:0745  20 2E 66    JSR start_sound_with_loaded_index
 ;Set .X to #00 to break the loop
 .C:0748  A2 00       LDX #$00
 next_actor:
@@ -5884,7 +5884,7 @@ handle_sound:
 .C:1831  AD 70 FE    LDA reload_sound_ptrs_flag
 .C:1834  D0 12       BNE clear_semaphore
 ;Reload the current music pointers
-.C:1836  AE A3 FE    LDX music_index
+.C:1836  AE A3 FE    LDX selected_music_idx
 .C:1839  BD C5 78    LDA sound_ptr_hi_tbl,X
 .C:183c  8D A1 FE    STA <music_to_start_ptr
 .C:183f  BD 0B 79    LDA sound_ptr_lo_tbl,X
@@ -16864,7 +16864,7 @@ next_voice_2:
 .C:48a3  AD 16 48    LDA music_playback_in_progress
 .C:48a6  F0 2B       BEQ exit
 ;Copy the sound resource for the music to music_to_start_ptr
-.C:48a8  AE A3 FE    LDX music_index
+.C:48a8  AE A3 FE    LDX selected_music_idx
 .C:48ab  BD C5 78    LDA sound_ptr_hi_tbl,X
 .C:48ae  8D A1 FE    STA <music_to_start_ptr
 .C:48b1  BD 0B 79    LDA sound_ptr_lo_tbl,X
@@ -17723,7 +17723,7 @@ reset_voice_priorities:
 ;===========================================
 dec_sound_refcount:
 ;Load the memory attribute for this sound
-.C:4cda  BD 51 79    LDA sound_mem_attrs,X
+.C:4cda  BD 51 79    LDA sound_attr_tbl,X
 ;Save flags in stack - specifically, flag N (bit 7) is relevant
 .C:4cdd  08          PHP
 ;Clear bit 7
@@ -17746,7 +17746,7 @@ restore_bit7:
 ;Otherwise set bit 7
 .C:4ceb  09 80       ORA #$80
 set_result:
-.C:4ced  9D 51 79    STA sound_mem_attrs,X
+.C:4ced  9D 51 79    STA sound_attr_tbl,X
 .C:4cf0  60          RTS
 ;===========================================
 ; Starts a sound
@@ -18490,7 +18490,7 @@ inc_sound_refcount:
 .C:4ff7  F0 01       BEQ do_increase
 .C:4ff9  60          RTS
 do_increase:
-.C:4ffa  FE 51 79    INC sound_mem_attrs,X
+.C:4ffa  FE 51 79    INC sound_attr_tbl,X
 .C:4ffd  60          RTS
 ;===========================================
 ; Allocate a voice
@@ -20395,7 +20395,7 @@ move_to_back:
 .C:5a01  C9 06       CMP #$06
 .C:5a03  D0 0A       BNE copy_block_data
 ;Is the sound in use? If not, continue
-.C:5a05  B9 51 79    LDA sound_mem_attrs,Y
+.C:5a05  B9 51 79    LDA sound_attr_tbl,Y
 .C:5a08  F0 05       BEQ copy_block_data
 ;It's a sound possibly in use - reload sound resource pointers
 .C:5a0a  A9 01       LDA #$01
@@ -20764,9 +20764,9 @@ next_costume:
 ; Release all sounds eligible for eviction
 ;
 ; Arguments: None
-; Reads:	sound_mem_attrs
+; Reads:	sound_attr_tbl
 ;			sound_rsrc_ptrs
-; Updates:	sound_mem_attrs
+; Updates:	sound_attr_tbl
 ;			sound_rsrc_ptrs
 ;===========================================
 SOUND_MAX_INDEX = #$45
@@ -20776,7 +20776,7 @@ release_evictable_sounds:
 check_eligibility:
 ;Check the memory attributes
 ;If non-zero, continue with next sound
-.C:5bb7  BD 51 79    LDA sound_mem_attrs,X
+.C:5bb7  BD 51 79    LDA sound_attr_tbl,X
 .C:5bba  D0 2A       BNE next_sound
 ;Check if the sound is loaded into memory - if not, continue
 .C:5bbc  BD C5 78    LDA sound_ptr_hi_tbl,X
@@ -23340,7 +23340,7 @@ destination_variable = $5f76
 .C:6568  20 98 5F    JSR script_load_operand_bit7
 ;Check bits 6-0 (the sound refcount) - if they are nonzero, the sound is running
 .C:656b  AA          TAX
-.C:656c  BD 51 79    LDA sound_mem_attrs,X
+.C:656c  BD 51 79    LDA sound_attr_tbl,X
 .C:656f  29 7F       AND #$7F
 ;Set the result into the variable
 .C:6571  AE 76 5F    LDX destination_variable
@@ -23435,14 +23435,14 @@ sound_code_ptr_hi = $6622
 .C:65e3  68          PLA
 .C:65e4  AA          TAX
 play_music:
-.C:65e5  8E A3 FE    STX music_index
-.C:65e8  FE 51 79    INC sound_mem_attrs,X
+.C:65e5  8E A3 FE    STX selected_music_idx
+.C:65e8  FE 51 79    INC sound_attr_tbl,X
 ;Load music index from operand
 .C:65eb  20 98 5F    JSR script_load_operand_bit7
 .C:65ee  48          PHA
 .C:65ef  20 E6 39    JSR rsrc_ensure_sound_resident
-.C:65f2  AE A3 FE    LDX music_index
-.C:65f5  DE 51 79    DEC sound_mem_attrs,X
+.C:65f2  AE A3 FE    LDX selected_music_idx
+.C:65f5  DE 51 79    DEC sound_attr_tbl,X
 ;Setup music playback pointers
 .C:65f8  BD C5 78    LDA sound_ptr_hi_tbl,X
 .C:65fb  8D A1 FE    STA <music_to_start_ptr
@@ -23450,21 +23450,21 @@ play_music:
 .C:6601  8D A2 FE    STA >music_to_start_ptr
 .C:6604  20 76 4C    JSR setup_music_pointers	
 ;Skip header (4 bytes) and compute sound code pointer (inlined)
-.C:6607  AE A3 FE    LDX music_index
+.C:6607  AE A3 FE    LDX selected_music_idx
 .C:660a  BD 0B 79    LDA sound_ptr_lo_tbl,X
 .C:660d  18          CLC
 .C:660e  69 04       ADC #$04
-.C:6610  8D 21 66    STA <inlined_music_init_code_ptr
+.C:6610  8D 21 66    STA <music_init_code_ptr
 .C:6613  BD C5 78    LDA sound_ptr_hi_tbl,X
 .C:6616  69 00       ADC #$00
-.C:6618  8D 22 66    STA >inlined_music_init_code_ptr
+.C:6618  8D 22 66    STA >music_init_code_ptr
 .C:661b  68          PLA
 ;map_in_io
 .C:661c  A0 25       LDY #$25
 .C:661e  84 01       STY cpu_port
 ;Execute music startup code
-inlined_music_init_code_ptr = $6621
-.C:6620  20 FF FF    JSR inlined_music_init_code_ptr	;Inlined
+music_init_code_ptr = $6621
+.C:6620  20 FF FF    JSR music_init_code_ptr	;Inlined
 ;map_out_io
 .C:6623  A0 24       LDY #$24
 .C:6625  84 01       STY cpu_port
@@ -23476,7 +23476,7 @@ inlined_music_init_code_ptr = $6621
 sound_index = $d0
 
 .C:662b  20 98 5F    JSR script_load_operand_bit7
-start_sound_entry2:
+start_sound_with_loaded_index:
 .C:662e  85 D0       STA sound_index
 ;map_in_io
 .C:6630  A0 25       LDY #$25
@@ -24366,9 +24366,9 @@ set_variable:
 ;===========================================
 .C:6a5b  20 14 5E    JSR script_read_byte
 .C:6a5e  AA          TAX
-.C:6a5f  BD 51 79    LDA sound_mem_attrs,X		
+.C:6a5f  BD 51 79    LDA sound_attr_tbl,X		
 .C:6a62  09 80       ORA #$80
-.C:6a64  9D 51 79    STA sound_mem_attrs,X
+.C:6a64  9D 51 79    STA sound_attr_tbl,X
 .C:6a67  60          RTS
 ;===========================================
 ;Opcode #D3 - unlock sound
@@ -24376,9 +24376,9 @@ set_variable:
 ;===========================================
 .C:6a68  20 14 5E    JSR script_read_byte
 .C:6a6b  AA          TAX
-.C:6a6c  BD 51 79    LDA sound_mem_attrs,X		
+.C:6a6c  BD 51 79    LDA sound_attr_tbl,X		
 .C:6a6f  29 7F       AND #$7F
-.C:6a71  9D 51 79    STA sound_mem_attrs,X
+.C:6a71  9D 51 79    STA sound_attr_tbl,X
 .C:6a74  60          RTS
 ;===========================================
 ;Opcode #33 - lock script

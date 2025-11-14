@@ -284,7 +284,7 @@ Global Inputs
 	control_mode                    Input/cutscene mode; CUTSCENE hides/parks cursor
 	hide_cursor_flag                Forces cursor off-screen regardless of mode when nonzero
 	reload_sound_ptrs_flag          If nonzero, music pointers already valid → skip reload
-	music_index                     Currently selected music entry to resolve pointers from
+	selected_music_idx                     Currently selected music entry to resolve pointers from
 	sound_ptr_hi/lo_tbl[]           Lookup tables to build music_to_start_ptr (HI/LO bytes)
 
 Global Outputs
@@ -719,7 +719,7 @@ h1_sound:
         lda     reload_sound_ptrs_flag        // reload needed? (≠0 → pointers already valid)
         bne     h1_clear_semaphore            // if set, skip reloading and proceed to exit
 
-        ldx     music_index                   // X := current music selection
+        ldx     selected_music_idx                   // X := current music selection
         lda     sound_ptr_hi_tbl,x            // A := high byte of music start address
         sta     <music_to_start_ptr           // store into pointer (engine’s chosen slot for HI)
         lda     sound_ptr_lo_tbl,x            // A := low byte of music start address

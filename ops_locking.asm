@@ -54,26 +54,26 @@ Limitations
 op_lock_sound:
 		// ------------------------------------------------------------
 		// Opcode #$53  Lock sound
-		// Sets bit7 of sound_mem_attrs[index] to lock the resource.
+		// Sets bit7 of sound_attr_tbl[index] to lock the resource.
 		// ------------------------------------------------------------
 		jsr     script_read_byte  	// A := sound index
 		tax                         // X := index
-		lda     sound_mem_attrs,x   // A := attrs[index]
+		lda     sound_attr_tbl,x   // A := attrs[index]
 		ora     #MASK_BIT7          // set bit7
-		sta     sound_mem_attrs,x   // commit lock
+		sta     sound_attr_tbl,x   // commit lock
 		rts                           
 
 * = $6A68
 op_unlock_sound:
 		// ------------------------------------------------------------
 		// Opcode #$D3  Unlock sound
-		// Clears bit7 of sound_mem_attrs[index] to unlock the resource.
+		// Clears bit7 of sound_attr_tbl[index] to unlock the resource.
 		// ------------------------------------------------------------
 		jsr     script_read_byte	// A := sound index
 		tax                         // X := index
-		lda     sound_mem_attrs,x   // A := attrs[index]
+		lda     sound_attr_tbl,x   // A := attrs[index]
 		and     #MASK_CLEAR_BIT7    // clear bit7
-		sta     sound_mem_attrs,x   // commit unlock
+		sta     sound_attr_tbl,x   // commit unlock
 		rts                         
 
 * = $6A75

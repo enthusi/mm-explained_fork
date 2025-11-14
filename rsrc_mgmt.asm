@@ -837,7 +837,7 @@ advance_costume:
  * Reads:
  *   SOUND_MAX_INDEX            Highest valid sound index (inclusive).
  *   SOUND_PROTECT_1..3         Reserved, non-evictable sound indices.
- *   sound_mem_attrs[X]         Per-sound attributes; 0 ⇒ evictable.
+ *   sound_attr_tbl[X]         Per-sound attributes; 0 ⇒ evictable.
  *   sound_ptr_lo_tbl[X]        Sound resource pointer (lo).
  *   sound_ptr_hi_tbl[X]        Sound resource pointer (hi); nonzero ⇒ loaded.
  *
@@ -864,9 +864,9 @@ rsrc_release_evictable_sounds:
 
 scan_sound:
         // Policy gate — only idle/unpinned sounds are evictable:
-        // sound_mem_attrs[X] == 0  ⇒ eligible
+        // sound_attr_tbl[X] == 0  ⇒ eligible
         // LDA sets Z=1 when A==0; BNE (Z=0) ⇒ non-zero attrs → skip.
-        lda sound_mem_attrs,x
+        lda sound_attr_tbl,x
         bne advance_sound              // in use/locked → not eligible
 
         // Residency gate — only loaded sounds can be freed:

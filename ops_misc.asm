@@ -23,7 +23,7 @@ Global Inputs
         task_state_tbl            Per-task state table
         task_script_idx_tbl       Per-task script index table
         opcode                    Current opcode byte
-        sound_mem_attrs           Sound resource attribute bytes
+        sound_attr_tbl           Sound resource attribute bytes
         active_side_id            Current disk side identifier
 
 Global Outputs
@@ -476,7 +476,7 @@ op_is_sound_playing:
         // ----------------------------
         // Load mem attrs and mask refcount bits (6..0)
         // ----------------------------
-        lda     sound_mem_attrs,x
+        lda     sound_attr_tbl,x
         and     #$7f                          // A := refcount
 
         // ----------------------------

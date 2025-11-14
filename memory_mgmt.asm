@@ -1784,8 +1784,8 @@ mem_bubble_used_left:
 		cmp #RSRC_TYPE_SOUND         // resource_type == sound?
 		bne copy_block_data         // no → skip reload request
 
-		lda sound_mem_attrs,Y    // load usage attribute for this sound instance
-		// Indexing sound_mem_attrs by resource_index.
+		lda sound_attr_tbl,Y    // load usage attribute for this sound instance
+		// Indexing sound_attr_tbl by resource_index.
 		beq copy_block_data         // 0 → not in use → no reload needed
 
 		lda #$01
