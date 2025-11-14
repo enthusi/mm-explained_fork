@@ -1,7 +1,3 @@
-#importonce
-#import "constants.inc"
-#import "irq_handlers.asm"
-#import "misc.asm"
 /*
 ================================================================================
   shutter.asm — Screen shutter transition system
