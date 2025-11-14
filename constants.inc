@@ -221,6 +221,7 @@ Only 2 bits are used, bit 5 (#20) and bit 0 (#01).
 .const GAME_DISK_ID_SAVEGAME   		= $30   // Disk ID for saved games
 .const GAME_DISK_ID_SIDE1   		= $31   // Valid game tag: side 1
 .const GAME_DISK_ID_SIDE2   		= $32   // Valid game tag: side 2
+.const DISK_SIDE_ID_BASE        = $30    // Base offset: side_id ($31/$32 → 1/2)
 
 // Sentence stack
 .const SENT_STACK_EMPTY_IDX        	= $FF   // Token stack sentinel “empty”
@@ -362,3 +363,5 @@ screen_row_offsets_lo:
 .const START_SOUND_ERR_NOT_LOADED          = $01  // Sound resource not resident in memory
 .const START_SOUND_ERR_MUSIC_ALL_VOICES    = $FE  // Music uses all three real voices; cannot allocate any
 .const START_SOUND_ERR_INSUFFICIENT_VOICES = $FF  // Cannot obtain enough voices (availability/priority/voice-3 conflict)
+.const MUSIC_IDX_1              = $01    // First preferred music slot
+.const MUSIC_IDX_2              = $02    // Second preferred music slot
