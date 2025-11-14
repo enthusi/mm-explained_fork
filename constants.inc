@@ -269,6 +269,11 @@ Only 2 bits are used, bit 5 (#20) and bit 0 (#01).
 .const VIC_LAYOUT_CC00_F800     	= $3E   // Screen at $CC00, character set at $F800
 .const TEXT_CHARSET_LAYOUT      	= $3E   // Screen=$CC00, charset=$F800
 
+// ------------------------------------------------------------
+// VIC-II interrupt constants
+// ------------------------------------------------------------
+.const VIC_IRQ_RASTER_ACK        = $81    // $D019 raster-IRQ ack mask (write 1s; bit7 mirrors)
+
 // Frame buffers base addresses
 .const FRAMEBUF1_BASE     			= $C800    
 .const FRAMEBUF2_BASE      			= $CC00   
