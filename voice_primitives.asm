@@ -120,6 +120,7 @@ In short:
 #import "registers.inc"
 #import "sid_voice_controller.asm"
 #import "voice_allocation.asm"
+#import "sound_engine.asm"
 
 .label sound_data_base            = $bc     // Zero-page pointer: base address of the current sound resource data
 
@@ -1005,7 +1006,7 @@ set_voice_to_unused:
         sta     instruction_repeat_counter,x    // Reset repeat counter for this slot
 
         lda     voices_executing_instruction    // Clear "executing" bit for this slot
-        and     clear_bitmasks,x
+        and     voice_alloc_clear_mask_tbl,x
         sta     voices_executing_instruction
 
         cpx     #$04                            // Slots 0–3: no resource entry to clear
