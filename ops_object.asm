@@ -101,10 +101,9 @@ Renaming objects
 .const IDX_NONE                = $00        // Operand value → use active object
 .const OBJECT_NOT_FOUND        = $FF        // Return value from get_obj_resource_in_room
 
-.const OWNER_REMOVE_SENTINEL      = $0D    // Special value meaning “remove from inventory”
 .const OWNER_NONE                 = $00    // No owner / clear inventory
 
-.label bitmask = $d0
+.label obj_bitmask = $d0
 .label room_obj_index          = $15    // Object index argument for lookup; reused as low byte of returned pointer
 .label room_obj_state          = $16    // Object state selector for lookup; reused as high byte of returned pointer
 
@@ -160,9 +159,9 @@ Description
 * = $61D9
 script_is_object_attr_bit_clear:
 		// Test bitmask of object attributes
-        sta     bitmask                        // save bitmask from A
+        sta     obj_bitmask                        // save bitmask from A
         jsr     script_read_object_attributes  // A := object attributes
-        and     bitmask                        // test selected bit(s)
+        and     obj_bitmask                        // test selected bit(s)
         bne     bit_is_set_then                // nonzero → bit set
 
         jmp     op_displace_pointer            // bit clear → take False path
@@ -201,9 +200,9 @@ Description
 * = $61E8
 script_is_object_attr_bit_set:
 		// Test bitmask of object attributes
-        sta     bitmask                        // save bitmask from A
+        sta     obj_bitmask                        // save bitmask from A
         jsr     script_read_object_attributes  // A := object attributes
-        and     bitmask                        // test selected bit(s)
+        and     obj_bitmask                        // test selected bit(s)
         beq     bit_is_clear_then              // zero → bit clear
 
         jmp     op_displace_pointer            // bit set → take False path
@@ -305,9 +304,9 @@ Description
 */
 * = $620F
 script_clear_object_attr_bit:
-        sta     bitmask                  		// save mask
+        sta     obj_bitmask                  		// save mask
         jsr     script_read_object_attributes   // A := current attributes
-        and     bitmask                  		// clear selected bit(s)
+        and     obj_bitmask                  		// clear selected bit(s)
         jmp     script_set_object_attributes    // write back and return
 /*
 ================================================================================
@@ -333,9 +332,9 @@ Description
 */
 * = $6219
 script_set_object_attr_bit:
-        sta     bitmask                   	  // save mask from A
+        sta     obj_bitmask                   	  // save mask from A
         jsr     script_read_object_attributes // A := current attributes
-        ora     bitmask                   	  // set selected bit(s)
+        ora     obj_bitmask                   	  // set selected bit(s)
         jmp     script_set_object_attributes  // write back and return
 /*
 ================================================================================
