@@ -8,6 +8,64 @@
 
 /*
 ================================================================================
+  mem_fill_x_1
+================================================================================
+Summary
+	Fill a contiguous memory region starting at fill_dest_ptr with the
+	byte value in X, decrementing fill_byte_cnt until the entire range
+	has been written.
+
+Arguments
+	.X 				Byte value to store into each location
+	fill_dest_ptr 	Zero-page pointer to start of destination range
+	fill_byte_cnt 	16-bit byte count for number of bytes to fill
+
+Returns
+	None (destination range is filled; registers are clobbered)
+
+Description
+	- Keeps Y fixed at zero and uses (fill_dest_ptr),Y as the store target.
+	- Writes the fill value from X into each successive byte of the range.
+	- Increments fill_dest_ptr after each store, handling low-byte wrap to
+	the high byte to traverse the 16-bit address space.
+	- Decrements the 16-bit fill_byte_cnt for each byte written and exits
+	when both low and high bytes reach zero.
+================================================================================
+*/
+* = $0435
+mem_fill_x_1:
+        // Keep Y at 0; advance fill_dest_ptr instead of Y
+        ldy     #$00
+
+        // Copy fill value from X into A
+        txa
+
+        // Store fill value at [fill_dest_ptr]
+        sta     (fill_dest_ptr),y
+
+        // Increment low byte of fill_dest_ptr; on wrap, bump high byte
+        inc     <fill_dest_ptr
+        bne     counter_decrement
+        inc     >fill_dest_ptr
+
+counter_decrement:
+        // Decrement 16-bit fill_byte_cnt (hi then lo)
+        lda     <fill_byte_cnt
+        bne     counter_lo_decrement
+        dec     >fill_byte_cnt
+
+counter_lo_decrement:
+        dec     <fill_byte_cnt
+
+        // OR both counter bytes; zero only when both reached 0
+        lda     <fill_byte_cnt
+        ora     >fill_byte_cnt
+        bne     mem_fill_x_1
+
+        // Done filling range
+        rts
+/*
+================================================================================
   alternate_frame_buffer
 ================================================================================
 Summary
@@ -1131,14 +1189,14 @@ Vars/State
 	Clobbers A, X, and processor flags. Y unchanged.
 
 Global Inputs
-	raster_irq_init_pending   nonzero indicates init work remains
+	raster_irq_init_pending_flag   nonzero indicates init work remains
 
 Global Outputs
 	video_processed_signal    set to #$01 to request IRQ work, waits for #$00
 	(via callee) raster IRQ configuration  established by init_raster_irq_env
 
 Description
-	- Poll raster_irq_init_pending; while nonzero, call init_raster_irq_env
+	- Poll raster_irq_init_pending_flag; while nonzero, call init_raster_irq_env
 	and recheck.
 	- After init completes, set video_processed_signal := #$01 to hand a unit
 	of work to the IRQ handler, then spin until the handler clears it.
@@ -1151,7 +1209,7 @@ ensure_raster_irq_ready:
         ldx     #$00                           // single-pass spacer/counter
 
 check_raster_pending_init:
-        lda     raster_irq_init_pending        // pending init work?
+        lda     raster_irq_init_pending_flag        // pending init work?
         beq     signal_irq_handler_once        // no → proceed to signal-and-wait
 
         jsr     init_raster_irq_env            // perform pending raster init work
