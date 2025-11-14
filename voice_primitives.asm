@@ -136,7 +136,9 @@ In short:
 
 .const OFS_VOICE_REQS = $05
 
-.label tmp_voice_sound_base = $4815
+.label tmp_voice_sound_base_lo = $4815 //lo
+.label tmp_voice_sound_base_hi = $4814 // hi
+
 
 * = $4C1C
 update_voice_base_and_instruction_ptr:
@@ -154,24 +156,24 @@ update_voice_base_and_instruction_ptr:
         lda     #$00
         sta     tracked_lowest_priority_sound
         sta     lowest_priority_sound_starting_flag
-        sta     arpeggio1_active_flag
-        sta     arpeggio2_active_flag
+        sta     arpeggio_primary_active_flag
+        sta     arpeggio_secondary_active_flag
 
 exit_sound_not_in_memory:
         lda     #$01                       // Return #$01 → sound resource is not in memory
         rts
 
 resource_loaded:
-        // Copy the current sound resource pointer into tmp_voice_sound_base (temporary 16-bit pointer)
-        sta     >tmp_voice_sound_base
+        // Copy the current sound resource pointer into tmp_voice_sound_base_lo (temporary 16-bit pointer)
+        sta     tmp_voice_sound_base_hi
         lda     sound_ptr_lo_tbl,y
-        sta     <tmp_voice_sound_base
+        sta     tmp_voice_sound_base_lo
 
         // Check whether cached base address matches the current resource base (relocation test)
         cmp     voice_base_addr_lo,x
         bne     repair_after_relocation
 
-        lda     >tmp_voice_sound_base
+        lda     tmp_voice_sound_base_hi
         cmp     voice_base_addr_hi,x
         bne     repair_after_relocation
 
@@ -180,19 +182,19 @@ resource_loaded:
 
 repair_after_relocation:
         // Relocation detected → update cached base and recompute instruction pointer
-        lda     >tmp_voice_sound_base
+        lda     tmp_voice_sound_base_hi
         sta     voice_base_addr_hi,x
 
-        lda     <tmp_voice_sound_base
+        lda     tmp_voice_sound_base_lo
         sta     voice_base_addr_lo,x
 
         // Recalculate voice_instruction_ptr := tmp_voice_sound_base + voice_instruction_offset
         clc
-        lda     <tmp_voice_sound_base
+        lda     tmp_voice_sound_base_lo
         adc     voice_instr_loop_ofs_lo,x
         sta     voice_instr_pc_lo,x
 
-        lda     >tmp_voice_sound_base
+        lda     tmp_voice_sound_base_hi
         adc     voice_instr_loop_ofs_hi,x
         sta     voice_instr_pc_hi,x
 
@@ -473,13 +475,13 @@ allocate_and_configure_needed_voices:
 
         // Test bit 6 (one of the ways to request voice 3)
         and     #$40
-        beq     bit6_clear
+        beq     crvr_bit6_clear
 
         // Bit 6 set → allocate special voice #3
         jsr     allocate_special_voice_3
         jmp     save_primary_voice_index
 
-bit6_clear:
+crvr_bit6_clear:
         // Bit 6 clear → allocate one real voice (base voice)
         jsr     allocate_available_real_voice
 
@@ -649,8 +651,8 @@ stop_sound_core:
         //          • dec_sound_refcount_if_no_music(sound_to_stop)
         //          • tracked_lowest_priority_sound = 0
         //          • lowest_priority_sound_starting_flag = 0
-        //          • arpeggio1_active_flag = 0
-        //          • arpeggio2_active_flag = 0
+        //          • arpeggio_primary_active_flag = 0
+        //          • arpeggio_secondary_active_flag = 0
         //          • clear_all_alternate_settings()
         //
         //   5. All registers A,X,Y are restored before return.
@@ -694,8 +696,8 @@ stop_sound_core:
         lda     #$00
         sta     tracked_lowest_priority_sound
         sta     lowest_priority_sound_starting_flag
-        sta     arpeggio1_active_flag
-        sta     arpeggio2_active_flag
+        sta     arpeggio_primary_active_flag
+        sta     arpeggio_secondary_active_flag
 
         jsr     clear_all_alternate_settings
         jmp     ssp_exit
@@ -835,7 +837,7 @@ stop_sound_full_cleanup:
         //        → decrement refcount of that sound
         //        → clear tracked_lowest_priority_sound
         //        → clear lowest_priority_sound_starting_flag
-        //        → clear arpeggio1_active_flag and arpeggio2_active_flag
+        //        → clear arpeggio_primary_active_flag and arpeggio_secondary_active_flag
         //        → clear_all_alternate_settings
         //
         //   Regardless:
@@ -999,15 +1001,15 @@ set_voice_to_unused:
         // ------------------------------------------------------------
         // Mark logical voice/slot X as unused:
         // - Clear its instruction repeat counter.
-        // - Clear its bit in voices_executing_instruction.
+        // - Clear its bit in voice_instr_active_mask.
         // - For slots X ≥ 4, also clear the associated resource ID.
         // ------------------------------------------------------------
         lda     #$00
         sta     voice_instr_repcount,x    // Reset repeat counter for this slot
 
-        lda     voices_executing_instruction    // Clear "executing" bit for this slot
+        lda     voice_instr_active_mask    // Clear "executing" bit for this slot
         and     voice_alloc_clear_mask_tbl,x
-        sta     voices_executing_instruction
+        sta     voice_instr_active_mask
 
         cpx     #$04                            // Slots 0–3: no resource entry to clear
         bmi     svtu_exit                            // X < 4 → done
