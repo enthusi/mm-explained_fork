@@ -684,9 +684,9 @@ sector_chain_index = $463B
 ;===========================================================
 ; Sound variables
 ;===========================================================
-voice_freq_register_offsets = $4755
-set_bitmasks = $475c
-clear_bitmasks = $4763
+voice_freq_reg_ofs_tbl = $4755
+voice_alloc_set_mask_tbl = $475c
+voice_alloc_clear_mask_tbl = $4763
 voice_attack_delays = $476c
 voice_sustain_releases = $476f
 sound_id_to_start_on_voice = $4772
@@ -16735,13 +16735,13 @@ set_signals_on_bus_2:
 ;===========================================
 .C:4752  00          BRK
 .C:4753  45 49       EOR $49
-voice_freq_register_offsets:
+voice_freq_reg_ofs_tbl:
 .C:4755  00 07 0E 15
-voice_pwm_register_offsets:
+voice_pwm_reg_ofs_tbl:
 .C:4759 02 09 10       
-set_bitmasks:
+voice_alloc_set_mask_tbl:
 .C:475c  01 02 04 08 10 20 40          
-clear_bitmasks:
+voice_alloc_clear_mask_tbl:
 .C:4763  FE FD FB F7 EF DF BF 00    
 sid_master_volume_saved 476A	;paired with D418 register (volume, voice 3 and filter enablement)
 .C:476b  00          BRK
@@ -16798,7 +16798,7 @@ apply_duration_to_voices:
 check_voice_execution:
 .C:4842  AD 0C 48    LDA voices_executing_instruction
 ;Check if voice is active
-.C:4845  3D 5C 47    AND set_bitmasks,X
+.C:4845  3D 5C 47    AND voice_alloc_set_mask_tbl,X
 ;If not, skip to the next voice
 .C:4848  F0 06       BEQ next_voice
 ;Apply duration and glissando to the active voice
@@ -16852,7 +16852,7 @@ update_voice_control_to_voices:
 check_voice_execution:
 .C:488f  8E 0D 48    STX x_saved
 .C:4892  AD 0C 48    LDA voices_executing_instruction
-.C:4895  3D 5C 47    AND set_bitmasks,X
+.C:4895  3D 5C 47    AND voice_alloc_set_mask_tbl,X
 .C:4898  F0 03       BEQ next_voice_2
 .C:489a  20 0D 4C    JSR update_voice_control
 next_voice_2:
@@ -17029,7 +17029,7 @@ set_hi_bytes:
 check_voice_control_change:
 ;Is this voice in use by music? If not, set voice control
 .C:49aa  AD 17 48    LDA music_voices_in_use
-.C:49ad  3D 5C 47    AND set_bitmasks,X
+.C:49ad  3D 5C 47    AND voice_alloc_set_mask_tbl,X
 .C:49b0  F0 04       BEQ update_voice_control
 ;It is - don't set voice control, skip next byte
 .C:49b2  C8          INY
@@ -17053,12 +17053,12 @@ update_voice_control:
 .C:49c0  F0 09       BEQ clear_filter_bit
 ;Low nibble nonzero, set the bit in the filter control bitmask
 .C:49c2  AD 6B 47    LDA filter_control_reg_copy
-.C:49c5  1D 5C 47    ORA set_bitmasks,X
+.C:49c5  1D 5C 47    ORA voice_alloc_set_mask_tbl,X
 .C:49c8  4C D1 49    JMP set_filter_value
 ;Low nibble zero, clear the bit in the filter control bitmask
 clear_filter_bit:
 .C:49cb  AD 6B 47    LDA filter_control_reg_copy
-.C:49ce  3D 63 47    AND clear_bitmasks,X
+.C:49ce  3D 63 47    AND voice_alloc_clear_mask_tbl,X
 set_filter_value:
 .C:49d1  8D 6B 47    STA filter_control_reg_copy
 .C:49d4  8D 17 D4    STA filter_control_register
@@ -17067,7 +17067,7 @@ move_pointers:
 .C:49d7  20 FC 49    JSR update_instruction_ptr_and_offset
 ;Mark the voice as executing instructions
 .C:49da  AD 0C 48    LDA voices_executing_instruction
-.C:49dd  1D 5C 47    ORA set_bitmasks,X
+.C:49dd  1D 5C 47    ORA voice_alloc_set_mask_tbl,X
 .C:49e0  8D 0C 48    STA voices_executing_instruction
 ;Process instructions for this voice
 .C:49e3  20 6B 4A    JSR process_voice_instructions
@@ -17232,7 +17232,7 @@ clear_voice_duration_and_glissando:
 ;===========================================
 temp_y = $4813
 voice_index = $480d
-instruction_shifter = $480e
+instr_bit_cursor = $480e
 instruction_operand = $480f
 instruction_original = $4810
 
@@ -17271,7 +17271,7 @@ sound_in_memory:
 ;Byte not zero
 instruction_present:
 .C:4a97  9D A3 47    STA instruction_for_voice,X
-.C:4a9a  8D 0E 48    STA instruction_shifter
+.C:4a9a  8D 0E 48    STA instr_bit_cursor
 .C:4a9d  8D 10 48    STA instruction_original
 ; As voice_in_sid_range_flag is treated as a "boolean", its possible values will be either #00 or #FF.
 ; So either its bits will all be 0 or all 1.
@@ -17286,7 +17286,7 @@ instruction_present:
 ; executing BIT followed by LSR will be V. This will be relevant when we test the boolean later.
 .C:4aa0  2C 11 48    BIT voice_in_sid_range_flag
 ;Shift right once - bit 0 will go into carry (N might change)
-.C:4aa3  4E 0E 48    LSR instruction_shifter
+.C:4aa3  4E 0E 48    LSR instr_bit_cursor
 ;Now we test for the V flag that was set/cleared before (in the BIT instruction)
 ;If voice_in_sid_range_flag is #00 (true), .X < 3, then the trigger/release logic will apply
 .C:4aa6  50 0F       BVC test_bit1
@@ -17308,7 +17308,7 @@ update_control:
 ;--------------------------------------------
 test_bit1:
 ;Shift right once - bit 0 will go into carry
-.C:4ab7  4E 0E 48    LSR instruction_shifter
+.C:4ab7  4E 0E 48    LSR instr_bit_cursor
 .C:4aba  90 0B       BCC test_bit2
 ;--------------------------------------------
 ;Bit 1 is set - stop voice, simple mode
@@ -17321,7 +17321,7 @@ cut_voice:
 .C:4ac6  60          RTS
 ;--------------------------------------------
 test_bit2:
-.C:4ac7  4E 0E 48    LSR instruction_shifter
+.C:4ac7  4E 0E 48    LSR instr_bit_cursor
 ;Test the original unshifted instruction to set/clear the oVerflow bit (bit 6)
 .C:4aca  2C 10 48    BIT instruction_original
 .C:4acd  90 2F       BCC no_duration_or_glissando_2
@@ -17365,7 +17365,7 @@ no_duration_or_glissando_2:
 test_bit3:
 ;Check if .X < 3
 .C:4b01  2C 11 48    BIT voice_in_sid_range_flag
-.C:4b04  4E 0E 48    LSR instruction_shifter
+.C:4b04  4E 0E 48    LSR instr_bit_cursor
 ;If .X < 3, the ADSR part doesn't apply
 .C:4b07  50 2D       BVC test_bit4
 .C:4b09  90 2B       BCC test_bit4
@@ -17405,7 +17405,7 @@ test_bit3:
 .C:4b30  1D B1 47    ORA voice_controls,X
 .C:4b33  9D B1 47    STA voice_controls,X
 test_bit4:
-.C:4b36  4E 0E 48    LSR instruction_shifter
+.C:4b36  4E 0E 48    LSR instr_bit_cursor
 .C:4b39  90 4C       BCC test_bit5
 ;--------------------------------------------
 ; Bit 4 set - an operand is needed
@@ -17427,7 +17427,7 @@ test_operand_bit0:
 ;--------------------------------------------
 .C:4b4b  C8          INY
 ;Load the register offset for PWM control into .X
-.C:4b4c  BD 59 47    LDA voice_pwm_register_offsets,X
+.C:4b4c  BD 59 47    LDA voice_pwm_reg_ofs_tbl,X
 .C:4b4f  AA          TAX
 ;Read 2 bytes, set as PWM control
 .C:4b50  B1 BA       LDA (voice_read_ptr),Y
@@ -17464,7 +17464,7 @@ test_operand_bit2:
 .C:4b82  B1 BA       LDA (voice_read_ptr),Y
 .C:4b84  9D DB 47    STA sound_duration_hi,X
 test_bit5:
-.C:4b87  4E 0E 48    LSR instruction_shifter
+.C:4b87  4E 0E 48    LSR instr_bit_cursor
 .C:4b8a  90 0B       BCC test_bit7
 ;--------------------------------------------
 ; Bit 5 set - set voice waveform, keep bits 0-3 of voice control unchanged
@@ -17475,8 +17475,8 @@ test_bit5:
 .C:4b92  11 BA       ORA (voice_read_ptr),Y
 .C:4b94  9D B1 47    STA voice_controls,X
 test_bit7:
-.C:4b97  4E 0E 48    LSR instruction_shifter
-.C:4b9a  4E 0E 48    LSR instruction_shifter
+.C:4b97  4E 0E 48    LSR instr_bit_cursor
+.C:4b9a  4E 0E 48    LSR instr_bit_cursor
 .C:4b9d  90 43       BCC exit
 ;--------------------------------------------
 ;Bit 7 set - instruction repetition
@@ -17555,7 +17555,7 @@ update_voice_freq_and_env:
 .C:4beb  60          RTS
 change_enabled:
 ;Load voice frequency register offset into .Y
-.C:4bec  BD 55 47    LDA voice_freq_register_offsets,X
+.C:4bec  BD 55 47    LDA voice_freq_reg_ofs_tbl,X
 .C:4bef  A8          TAY
 ;Copy voice frequency
 ;Note: if the voice index is 3, we're actually copying the filter cutoff frequency
@@ -17583,7 +17583,7 @@ update_voice_control:
 .C:4c0d  E0 03       CPX #$03
 .C:4c0f  10 0A       BPL exit
 ;Get the voice index for .X
-.C:4c11  BD 55 47    LDA voice_freq_register_offsets,X
+.C:4c11  BD 55 47    LDA voice_freq_reg_ofs_tbl,X
 .C:4c14  A8          TAY
 ;Set the voice control value
 .C:4c15  BD B1 47    LDA voice_controls,X
@@ -18186,7 +18186,7 @@ allocate_available_real_voice:
 .C:4ebc  A2 02       LDX #$02
 test_voice_allocation:
 ;Is the voice allocated?
-.C:4ebe  3D 5C 47    AND set_bitmasks,X
+.C:4ebe  3D 5C 47    AND voice_alloc_set_mask_tbl,X
 ;If it is, skip to the next one
 .C:4ec1  D0 05       BNE next_voice
 ;Voice is free, allocate it and exit
@@ -18239,7 +18239,7 @@ count_evictable_voices:
 ;Check if voice is allocated
 check_if_voice_is_allocated:
 .C:4ee1  AD 07 4D    LDA voices_allocated
-.C:4ee4  3D 5C 47    AND set_bitmasks,X
+.C:4ee4  3D 5C 47    AND voice_alloc_set_mask_tbl,X
 ;If voice is free, continue with the next one
 .C:4ee7  F0 14       BEQ next_voice
 ;Voice is allocated
@@ -18412,7 +18412,7 @@ set_voice_in_use:
 .C:4fa6  48          PHA
 ;Mark voice as executing instructions
 .C:4fa7  AD 0C 48    LDA voices_executing_instruction
-.C:4faa  1D 5C 47    ORA set_bitmasks,X
+.C:4faa  1D 5C 47    ORA voice_alloc_set_mask_tbl,X
 .C:4fad  8D 0C 48    STA voices_executing_instruction
 ;Adjust waveform/filter
 .C:4fb0  20 42 53    JSR adjust_waveform_and_filter_for_voice
@@ -18441,7 +18441,7 @@ deallocate_voice:
 .C:4fc7  9D 95 47    STA voice_priority_0,X
 ;Clear voice in voices_allocated bitmask
 .C:4fca  AD 07 4D    LDA voices_allocated
-.C:4fcd  3D 63 47    AND clear_bitmasks,X
+.C:4fcd  3D 63 47    AND voice_alloc_clear_mask_tbl,X
 .C:4fd0  8D 07 4D    STA voices_allocated
 .C:4fd3  20 26 4F    JSR count_available_real_voices
 ;-----------------------------------
@@ -18524,7 +18524,7 @@ case_lt_3:
 ;Voice index < 3 - it's a real voice
 ;Mark real voice as allocated in the voices_allocated bitmask
 .C:5011  AD 07 4D    LDA voices_allocated
-.C:5014  1D 5C 47    ORA set_bitmasks,X
+.C:5014  1D 5C 47    ORA voice_alloc_set_mask_tbl,X
 .C:5017  8D 07 4D    STA voices_allocated
 ;Update the count of available real voices
 .C:501a  20 26 4F    JSR count_available_real_voices
@@ -18775,7 +18775,7 @@ set_voice_to_unused:
 .C:5128  9D AA 47    STA instruction_repeat_counter,X
 ;Mark that this voice is no longer executing instructions
 .C:512b  AD 0C 48    LDA voices_executing_instruction
-.C:512e  3D 63 47    AND clear_bitmasks,X
+.C:512e  3D 63 47    AND voice_alloc_clear_mask_tbl,X
 .C:5131  8D 0C 48    STA voices_executing_instruction
 ;If X < 4, exit
 .C:5134  E0 04       CPX #$04
@@ -19040,7 +19040,7 @@ swap_with_alternate_0:
 .C:5303  E8          INX
 ;Check if the voice is executing instructions
 .C:5304  AD 0C 48    LDA voices_executing_instruction
-.C:5307  3D 5C 47    AND set_bitmasks,X
+.C:5307  3D 5C 47    AND voice_alloc_set_mask_tbl,X
 ;If it's available, exit
 .C:530a  F0 0A       BEQ exit_2
 ;---------------------------------------
@@ -19138,7 +19138,7 @@ start_filtering_voice:
 .C:537c  29 F0       AND #$F0
 ;Set the bit corresponding to the voice position (0-2)
 ;That will enable filtering for that voice
-.C:537e  1D 5C 47    ORA set_bitmasks,X
+.C:537e  1D 5C 47    ORA voice_alloc_set_mask_tbl,X
 ;Save a copy of the value
 .C:5381  8D 6B 47    STA filter_control_reg_copy
 ;Set it to the actual register
@@ -19168,7 +19168,7 @@ stop_filtering_voice:
 ;Clear the bit corresponding to the voice position (0-2)
 ;That will disable filtering for that voice
 .C:53a7  AE 65 51    LDX voice_being_modified
-.C:53aa  3D 63 47    AND clear_bitmasks,X
+.C:53aa  3D 63 47    AND voice_alloc_clear_mask_tbl,X
 ;Save a copy of the value
 .C:53ad  8D 6B 47    STA filter_control_reg_copy
 ;Set it to the actual register
