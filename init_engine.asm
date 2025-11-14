@@ -6,6 +6,7 @@
 #import "irq_handlers.asm"
 #import "cursor.asm"
 #import "drive_setup.asm"
+#import "sound_engine.asm"
 
 .label copy_counter_lo = $15    // ZP: copy byte count, low
 .label copy_counter_hi = $16    // ZP: copy byte count, high
@@ -102,8 +103,6 @@
 .const INIT_COPY_DST_START         = $F040    // Copy dst start
 .const INIT_COPY_SIZE_BYTES        = $0080    // Copy size in bytes
 
-.label init_sound_voices = $0
-
 /*
 ================================================================================
   init_memory_sound_and_video
@@ -180,7 +179,7 @@ init_memory_sound_and_video:
         // ------------------------------------------------------------
         ldy     #MAP_IO_IN
         sty     cpu_port                       
-        jsr     init_sound_voices
+        jsr     reset_sound_engine_state
         ldy     #MAP_IO_OUT
         sty     cpu_port                       
 
