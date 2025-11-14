@@ -14,9 +14,6 @@ start_sound_for_voice:
 update_instruction_ptr_and_offset:
 .C:49fc  AE 0D 48    LDX active_voice
 
-process_voice_instructions:
-.C:4a6b  AE 0D 48    LDX voice_index
-
 setup_music_pointers:
 .C:4c76  8A          TXA
 
@@ -45,9 +42,6 @@ inlined_music_ptr = $53cb
 #import "globals.inc"
 #import "constants.inc"
 #import "registers.inc"
-
-.label  process_voice_instructions = $0   // Entry point to decode/execute next voice script instruction
-
 
 /*
 ================================================================================
@@ -292,7 +286,7 @@ Arguments
 
 Global Inputs
         arpeggio_ongoing             Indicates whether arpeggio is currently active
-        voice_freq_register_offsets  Per-voice SID base register offsets
+        voice_freq_reg_ofs_tbl  Per-voice SID base register offsets
         voice_frequencies_lo         Cached low-byte frequency/cutoff table
         voice_frequencies_hi         Cached high-byte frequency/cutoff table
         voice_attack_delays          Cached attack/decay envelope values
@@ -338,7 +332,7 @@ update_freq_env_no_arpeggio:
 		// Resolve per-voice SID base offset for logical voice X so subsequent
 		// stores hit the correct frequency (or cutoff) register block via Y
 		// ------------------------------------------------------------
-		lda     voice_freq_register_offsets,x // A := base offset for this voice in SID register map
+		lda     voice_freq_reg_ofs_tbl,x // A := base offset for this voice in SID register map
 		tay                                   // Y := per-voice register offset
 
 		// ------------------------------------------------------------
@@ -391,7 +385,7 @@ Arguments
 	X       Logical voice index (0..LOGICAL_VOICE_LIMIT-1)
 
 Global Inputs
-	voice_freq_register_offsets   Per-voice SID register base offsets
+	voice_freq_reg_ofs_tbl   Per-voice SID register base offsets
 	voice_controls                Cached SID control bytes per logical voice
 
 Global Outputs
@@ -422,7 +416,7 @@ update_voice_control:
 		//
 		// Resolve per-voice SID register offset so we can address the correct control register
 		// ------------------------------------------------------------
-		lda     voice_freq_register_offsets,x  // A := base offset for this voice’s SID register block
+		lda     voice_freq_reg_ofs_tbl,x  // A := base offset for this voice’s SID register block
 		tay                                    // Y := offset into SID register space
 
 		// ------------------------------------------------------------
