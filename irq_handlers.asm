@@ -268,7 +268,7 @@ Summary
 	bands, and gates a small UI/cursor/sound service block before returning.
 	
 Global Inputs
-	irq_entry_lock                  One-shot gate: if set, handler clears it and exits early
+	irq_sync_lock                  One-shot gate: if set, handler clears it and exits early
 	video_update_signal             Main-thread request for full video/layout update this frame
 	target_sprite_shapeset          Pending sprite shape-set to apply (NONE/SET1/SET2)
 	actor_sprite_x/y_lo[]           Precomputed on-screen X/Y low bytes for up to 4 visible sprites
@@ -311,7 +311,7 @@ Global Outputs
 
 Description
 	• Save/Map: Save A/X/Y and the processor port, then map I/O.
-	• Lock gate: If irq_entry_lock is set, clear it and exit (one-shot unlock).
+	• Lock gate: If irq_sync_lock is set, clear it and exit (one-shot unlock).
 	• VIC baseline: Write $D011 preset (display on, 25 rows, V-scroll=3) and
 	set background colour 0 to black.
 	• Book-keeping: Increment entry counter and clear the “colour RAM copied”
@@ -362,11 +362,11 @@ irq_handler1:
         // ------------------------------------------------------------
         // IRQ lock gate: if set, clear and exit
         // ------------------------------------------------------------
-        lda     irq_entry_lock
+        lda     irq_sync_lock
         beq     h1_enabled
 		
         lda     #LOCK_CLEAR
-        sta     irq_entry_lock
+        sta     irq_sync_lock
         jmp     h1_exit
 
 h1_enabled:
@@ -2382,7 +2382,7 @@ Summary
 	Initialize the raster IRQ environment once, then disable further setup runs.
 
 Global Inputs
-	raster_irq_init_pending		nonzero means initialization must run
+	raster_irq_init_pending_flag		nonzero means initialization must run
 	sid_volfilt_reg_shadow 	last known SID master volume/filter nibble
 	$3465						nonzero flag to restore SID master volume
 
@@ -2393,7 +2393,7 @@ Global Outputs
 	CIA1/CIA2: 	pending IRQ/status latched-and-cleared by dummy reads.
 	SID: 		master volume optionally restored from sid_volfilt_reg_shadow.
 	cpu_port: 	mapped to I/O for setup, then restored to mapped-out state.
-	raster_irq_init_pending: cleared to 0 after successful initialization.
+	raster_irq_init_pending_flag: cleared to 0 after successful initialization.
 
 Description
 	* Exit early if initialization is not pending.
@@ -2416,11 +2416,11 @@ init_raster_irq_env:
         // ------------------------------------------------------------
         // Initialize raster interrupt environment if required
         //
-        // If raster_irq_init_pending = 0, this routine exits immediately.
+        // If raster_irq_init_pending_flag = 0, this routine exits immediately.
         // Otherwise it configures VIC-II raster IRQs, sprite enables,
         // screen mode, and SID volume, then marks setup as complete.
         // ------------------------------------------------------------
-        lda     raster_irq_init_pending
+        lda     raster_irq_init_pending_flag
         beq     early_exit_no_setup
 
         // ------------------------------------------------------------
@@ -2491,7 +2491,7 @@ finish_setup_unmap_io:
         sty     cpu_port
         cli
         lda     #FALSE
-        sta     raster_irq_init_pending
+        sta     raster_irq_init_pending_flag
 
 early_exit_no_setup:
         rts
