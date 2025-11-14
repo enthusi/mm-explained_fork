@@ -244,8 +244,6 @@
 .label mem_read_ptr        = $5D      // mem_src pointer (zp: lo @ $5D, hi @ $5E); hi increments after each full page
 .label mem_write_ptr       = $5F      // mem_dst pointer (zp: lo @ $5F, hi @ $60); hi increments after each full page
 
-.const HEAP_FREE_HDR_ADDR       = $7B7B    // Address of initial free block header
-.const HEAP_INIT_SIZE_BYTES     = $4C85    // Size of initial free span
 
 
 /*===========================================
