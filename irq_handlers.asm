@@ -186,10 +186,6 @@ cursor_colors:
 
 .label cpu_port_shadow     = $26   // ZP copy of $01
 
-// ------------------------------------------------------------
-// VIC-II interrupt constants
-// ------------------------------------------------------------
-.const VIC_IRQ_RASTER_ACK        = $81    // $D019 raster-IRQ ack mask (write 1s; bit7 mirrors)
 
 // ------------------------------------------------------------
 // Raster line compare values for chained IRQ handlers
@@ -343,7 +339,6 @@ Description
 		Finally, release the semaphore.
 ================================================================================
 */
-
 * = $167A
 irq_handler1:
         // ------------------------------------------------------------
