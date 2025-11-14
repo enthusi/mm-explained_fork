@@ -628,8 +628,8 @@ They were definitely intended as debugging aids.
 //===========================================================
 // Sound variables
 //===========================================================
-.label voice_attack_delays = $476c
-.label voice_sustain_releases = $476f
+.label voice_adsr_attack_decay = $476c
+.label voice_adsr_sustain_release = $476f
 .label sound_id_to_start_on_voice = $4772
 .label voice_data_base_lo = $4779
 .label voice_data_base_hi = $4780
@@ -649,26 +649,26 @@ They were definitely intended as debugging aids.
 .label rsrc_for_voice_4 = $47a0
 .label rsrc_for_voice_5 = $47a1
 .label rsrc_for_voice_6 = $47a2
-.label instruction_for_voice = $47a3
-.label instruction_repeat_counter = $47aa
-.label voice_controls = $47b1
-.label voice_instr_ptr_lo = $47b8
-.label voice_instr_ptr_hi = $47bf
-.label voice_frequencies_lo = $47c6
+.label voice_instr_header = $47a3
+.label voice_instr_repcount = $47aa
+.label voice_ctrl_shadow = $47b1
+.label voice_instr_pc_lo = $47b8
+.label voice_instr_pc_hi = $47bf
+.label voice_freq_lo = $47c6
 .label filter_cutoff_freq_lo = $47c9
-.label voice_frequencies_hi = $47cd
+.label voice_freq_hi = $47cd
 .label filter_cutoff_freq_hi = $47d0
-.label sound_duration_lo = $47d4
-.label sound_duration_hi = $47db
-.label glissando_lo = $47e2
-.label glissando_hi = $47e9
+.label voice_duration_lo = $47d4
+.label voice_duration_hi = $47db
+.label voice_gliss_lo = $47e2
+.label voice_gliss_hi = $47e9
 .label voice_base_addr_lo = $47f0
 .label voice_base_addr_hi = $47f7
 .label voice_instr_offset_lo = $47fe
 .label voice_instr_offset_hi = $4805
 .label voices_executing_instruction = $480c	//Bitmask that holds which voices are currently executing sound instructions
 
-.label voice_in_sid_range_flag = $4811	//#00 if X < 3, #FF otherwise
+.label voice_sid_range_flags = $4811	//#00 if X < 3, #FF otherwise
 
 .label music_playback_in_progress = $4816
 .label music_voices_in_use = $4817
@@ -712,17 +712,17 @@ They were definitely intended as debugging aids.
 .label filter_pass_select = $5166
 .label all_alt_settings_cleared = $5167	// #00 = false, #FF = true
 
-.label alt_voice_attack_delays = $5168
-.label alt_voice_sustain_releases = $516a
+.label alt_voice_adsr_attack_decay = $5168
+.label alt_voice_adsr_sustain_release = $516a
 .label alt_voice_data_ptrs_lo = $516c
 .label alt_voice_data_ptrs_hi = $516f
-.label alt_voice_controls = $517e
-.label alt_voice_frequencies_lo = $5187
-.label alt_voice_frequencies_hi = $518a
-.label alt_sound_duration_lo = $518d
-.label alt_sound_duration_hi = $5190
-.label alt_glissando_lo = $5193
-.label alt_glissando_hi = $5196
+.label alt_voice_ctrl_shadow = $517e
+.label alt_voice_freq_lo = $5187
+.label alt_voice_freq_hi = $518a
+.label alt_voice_duration_lo = $518d
+.label alt_voice_duration_hi = $5190
+.label alt_voice_gliss_lo = $5193
+.label alt_voice_gliss_hi = $5196
 
 .label music_in_progress_ptr = $547c
 //Relative offset constants lo/hi for each sound track
