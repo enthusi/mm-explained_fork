@@ -2384,7 +2384,7 @@ Summary
 
 Global Inputs
 	raster_irq_init_pending		nonzero means initialization must run
-	sid_master_volume_saved 	last known SID master volume/filter nibble
+	sid_volfilt_reg_shadow 	last known SID master volume/filter nibble
 	$3465						nonzero flag to restore SID master volume
 
 Global Outputs
@@ -2392,7 +2392,7 @@ Global Outputs
 	VIC-II: 	sprite enable, screen control #1, raster line, IRQ flag/mask,
 				border color are configured for first IRQ stage.
 	CIA1/CIA2: 	pending IRQ/status latched-and-cleared by dummy reads.
-	SID: 		master volume optionally restored from sid_master_volume_saved.
+	SID: 		master volume optionally restored from sid_volfilt_reg_shadow.
 	cpu_port: 	mapped to I/O for setup, then restored to mapped-out state.
 	raster_irq_init_pending: cleared to 0 after successful initialization.
 
@@ -2481,7 +2481,7 @@ init_raster_irq_env:
         // ------------------------------------------------------------
         lda     $3465
         beq     finish_setup_unmap_io
-        lda     sid_master_volume_saved
+        lda     sid_volfilt_reg_shadow
         sta     sid_master_volume
 
 finish_setup_unmap_io:
