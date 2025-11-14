@@ -168,6 +168,7 @@ Notes
 #import "ui_interaction.asm"
 #import "misc.asm"
 #import "script_primitives.asm"
+#import "sound_engine.asm"
 
 * = $1671
 // ------------------------------------------------------------
@@ -178,8 +179,6 @@ Notes
 // ------------------------------------------------------------
 cursor_colors:
         .byte $01, $0F, $0C, $0B, $0C, $0F    
-
-.label sound_irq_handler = $0
 
 .label temp_y                      = $0FEC   // Saved Y during IRQ
 .label temp_a                      = $0FED   // Saved A during IRQ
