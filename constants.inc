@@ -125,6 +125,7 @@ Only 2 bits are used, bit 5 (#20) and bit 0 (#01).
 .const ACTOR_RENDER_REFRESH         = $01   
 .const ACTOR_RENDER_VISIBLE_AND_REFRESH = ACTOR_RENDER_VISIBLE | ACTOR_RENDER_REFRESH   
 .const ACTOR_RENDER_CLEAR_REFRESH   = $FE    
+.const ACTOR_RENDER_CLEAR_VISIBLE   = $DF
 
 
 // Actor mouth states
@@ -132,6 +133,7 @@ Only 2 bits are used, bit 5 (#20) and bit 0 (#01).
 .const MOUTH_STATE_SPEAK_CLOSED    	= $01   // speaking cycle: frame with mouth closed
 .const MOUTH_STATE_SPEAK_OPEN      	= $FF   // speaking cycle: frame with mouth open
 .const MOUTH_STATE_HELD_OPEN       	= $80   // forced open until explicitly closed
+.const MOUTH_TOGGLE_MASK          = $FE    // EOR mask to toggle mouth states #$01 <-> #$FF
 
 .const OBJ_NAME_OFS              	= $0D   // Byte offset to name pointer within object record
 .const OBJ_TYPE_ACTOR            	= $02   // destination_obj_hi value for “actor”
@@ -221,7 +223,7 @@ Only 2 bits are used, bit 5 (#20) and bit 0 (#01).
 .const GAME_DISK_ID_SAVEGAME   		= $30   // Disk ID for saved games
 .const GAME_DISK_ID_SIDE1   		= $31   // Valid game tag: side 1
 .const GAME_DISK_ID_SIDE2   		= $32   // Valid game tag: side 2
-.const DISK_SIDE_ID_BASE        = $30    // Base offset: side_id ($31/$32 → 1/2)
+.const DISK_SIDE_ID_BASE        	= $30    // Base offset: side_id ($31/$32 → 1/2)
 
 // Sentence stack
 .const SENT_STACK_EMPTY_IDX        	= $FF   // Token stack sentinel “empty”
@@ -369,3 +371,12 @@ screen_row_offsets_lo:
 
 .const HEAP_FREE_HDR_ADDR       = $7B7B    // Address of initial free block header
 .const HEAP_INIT_SIZE_BYTES     = $4C85    // Size of initial free span
+
+.const ROOM_FRONT_OF_MANSION          = $01    // Room where walking sounds are disabled
+.const ROOM_MANSION_ROAD_ENTRANCE     = $2C    // Second exterior room with no walking sounds
+.const WALK_SND_THROTTLE_RESET        = $02    // Number of calls between walking-sound checks
+
+// Inventory dataset and parsing
+.const  INVENTORY_SLOTS           = $2D    // Total logical item slots (45)
+.const OWNER_REMOVE_SENTINEL      = $0D    // Special value meaning “remove from inventory”
+.const CURSOR_Y_BIAS   = $08          // Bias before halving Y
