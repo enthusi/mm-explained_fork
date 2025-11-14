@@ -725,7 +725,7 @@ voice_base_addr_lo = $47f0
 voice_base_addr_hi = $47f7
 voice_instr_loop_ofs_lo = $47fe
 voice_instr_loop_ofs_hi = $4805
-voices_executing_instruction = $480c	;Bitmask that holds which voices are currently executing sound instructions
+voice_instr_active_mask = $480c	;Bitmask that holds which voices are currently executing sound instructions
 
 voice_sid_range_flags = $4811	;#00 if X < 3, #FF otherwise
 
@@ -765,11 +765,11 @@ sound_to_stop = $4d08
 
 ;Combine multiple notes in one voice by arpeggio
 arpeggio_ongoing = $5160	; #00 = disabled, #FF = enabled
-arpeggio2_active_flag = $5161		; #00 = disabled, #FF = enabled
-arpeggio1_active_flag = $5162		; #00 = disabled, #FF = enabled
-filter_enable_flag = $5164			; #00 = filter voice, #FF = stop filtering voice
-filter_pass_select = $5166
-all_alt_settings_cleared = $5167	; #00 = false, #FF = true
+arpeggio_secondary_active_flag = $5161		; #00 = disabled, #FF = enabled
+arpeggio_primary_active_flag = $5162		; #00 = disabled, #FF = enabled
+filter_arpeggio_enabled_flag = $5164			; #00 = filter voice, #FF = stop filtering voice
+filter_mode_mask = $5166
+alt_voice_slots_cleared_flag = $5167	; #00 = false, #FF = true
 
 alt_voice_adsr_attack_decay = $5168
 alt_voice_adsr_sustain_release = $516a
@@ -1802,7 +1802,7 @@ reset_game_engine:
 .C:0413  A9 01       LDA #$01
 .C:0415  85 96       STA raster_irq_init_pending
 .C:0417  20 E0 33    JSR init_sprites_sound
-.C:041a  20 F7 48    JSR init_more_sound
+.C:041a  20 F7 48    JSR reset_logical_voices_and_state
 ;Fill "heap" ($7B7B-C800) with #00
 ;Note: this overwrites the setup code in the range 7FFF-85E3
 .C:041d  A9 7B       LDA #$7B
@@ -10132,7 +10132,7 @@ wait_for_space_key:
 ;---------------------------------
 ;Unpause game
 ;Restore volume settings
-.C:2924  AD 6A 47    LDA sid_master_volume_saved
+.C:2924  AD 6A 47    LDA sid_volfilt_reg_shadow
 .C:2927  8D 18 D4    STA sid_master_volume
 ;map_out_io
 .C:292a  A0 24       LDY #$24
@@ -12500,7 +12500,7 @@ wait_for_irq_handler_entry:
 .C:3401  A9 00       LDA #$00
 .C:3403  8D 20 D0    STA vic_border_color_reg_register
 ;???
-.C:3406  AD 0C 48    LDA voices_executing_instruction
+.C:3406  AD 0C 48    LDA voice_instr_active_mask
 .C:3409  8D 65 34    STA $3465
 .C:340c  F0 05       BEQ io_finished
 ;Set volume to 0, disable all filters
@@ -12552,7 +12552,7 @@ init_raster_irq_env:
 .C:3450  AD 65 34    LDA $3465
 .C:3453  F0 06       BEQ finalize_setup
 ;Reset the SID volume control
-.C:3455  AD 6A 47    LDA sid_master_volume_saved
+.C:3455  AD 6A 47    LDA sid_volfilt_reg_shadow
 .C:3458  8D 18 D4    STA sid_master_volume
 finalize_setup:
 ;map_out_io
@@ -16743,7 +16743,7 @@ voice_alloc_set_mask_tbl:
 .C:475c  01 02 04 08 10 20 40          
 voice_alloc_clear_mask_tbl:
 .C:4763  FE FD FB F7 EF DF BF 00    
-sid_master_volume_saved 476A	;paired with D418 register (volume, voice 3 and filter enablement)
+sid_volfilt_reg_shadow 476A	;paired with D418 register (volume, voice 3 and filter enablement)
 .C:476b  00          BRK
 .C:476c  00          BRK
 .C:476d  00          BRK
@@ -16788,7 +16788,7 @@ next_sound:
 .C:4837  8D 71 FE    STA new_sound_instructions_allowed
 check_any_voice_in_execution:
 ;Are there any voices executing sound instructions? If not, return
-.C:483a  AD 0C 48    LDA voices_executing_instruction
+.C:483a  AD 0C 48    LDA voice_instr_active_mask
 .C:483d  D0 01       BNE apply_duration_to_voices
 .C:483f  60          RTS
 ;----------------------------------------------------
@@ -16796,7 +16796,7 @@ check_any_voice_in_execution:
 apply_duration_to_voices:
 .C:4840  A2 06       LDX #$06
 check_voice_execution:
-.C:4842  AD 0C 48    LDA voices_executing_instruction
+.C:4842  AD 0C 48    LDA voice_instr_active_mask
 ;Check if voice is active
 .C:4845  3D 5C 47    AND voice_alloc_set_mask_tbl,X
 ;If not, skip to the next voice
@@ -16810,7 +16810,7 @@ next_voice:
 .C:4851  10 EF       BPL check_voice_execution
 ;----------------------------------------------------
 ;Are we doing voice arpeggio?
-.C:4853  AD 62 51    LDA arpeggio1_active_flag
+.C:4853  AD 62 51    LDA arpeggio_primary_active_flag
 ;If not, skip this part
 .C:4856  F0 35       BEQ update_voice_control_to_voices
 ;Voice arpeggio enabled
@@ -16829,7 +16829,7 @@ next_voice:
 .C:486b  A0 00       LDY #$00
 .C:486d  20 A5 51    JSR swap_voice_settings
 ;Do we need to do another arpeggio?
-.C:4870  AD 61 51    LDA arpeggio2_active_flag
+.C:4870  AD 61 51    LDA arpeggio_secondary_active_flag
 .C:4873  F0 13       BEQ enable_freq_and_envelope_change
 ;Swap current setting 4 with alternate setting 1
 .C:4875  A2 04       LDX #$04
@@ -16851,7 +16851,7 @@ update_voice_control_to_voices:
 .C:488d  A2 06       LDX #$06
 check_voice_execution:
 .C:488f  8E 0D 48    STX x_saved
-.C:4892  AD 0C 48    LDA voices_executing_instruction
+.C:4892  AD 0C 48    LDA voice_instr_active_mask
 .C:4895  3D 5C 47    AND voice_alloc_set_mask_tbl,X
 .C:4898  F0 03       BEQ next_voice_2
 .C:489a  20 0D 4C    JSR update_voice_control
@@ -16891,7 +16891,7 @@ inlined_music_address = $48d5
 .C:48d4  20 00 00    JSR $0000		;Inlined address
 .C:48d7  60          RTS
 ;===========================================
-init_sound_voices:
+reset_sound_engine_state:
 ;Set voices #1-#3 off, disable sound filters
 .C:48d8  A9 00       LDA #$00
 .C:48da  8D 04 D4    STA voice1_control_register
@@ -16903,9 +16903,9 @@ init_sound_voices:
 ;Set volume to max, disable filter pass selections (low, high, band)
 .C:48ec  A9 0F       LDA #$0F
 .C:48ee  8D 18 D4    STA sid_master_volume
-.C:48f1  8D 6A 47    STA sid_master_volume_saved
+.C:48f1  8D 6A 47    STA sid_volfilt_reg_shadow
 .C:48f4  20 76 4C    JSR setup_music_pointers
-init_more_sound:
+reset_logical_voices_and_state:
 .C:48f7  A2 06       LDX #$06
 stop_logical_voice_loop:
 .C:48f9  8A          TXA
@@ -16924,11 +16924,11 @@ stop_logical_voice_loop:
 .C:4913  A9 03       LDA #$03
 .C:4915  8D FF 4C    STA total_real_voices_available
 .C:4918  A9 00       LDA #$00
-.C:491a  8D 62 51    STA arpeggio1_active_flag
+.C:491a  8D 62 51    STA arpeggio_primary_active_flag
 .C:491d  A9 00       LDA #$00
-.C:491f  8D 64 51    STA filter_enable_flag
+.C:491f  8D 64 51    STA filter_arpeggio_enabled_flag
 .C:4922  A9 00       LDA #$00
-.C:4924  8D 61 51    STA arpeggio2_active_flag
+.C:4924  8D 61 51    STA arpeggio_secondary_active_flag
 .C:4927  A9 00       LDA #$00
 .C:4929  8D 63 51    STA $5163
 .C:492c  AD A2 FE    LDA >music_to_start_ptr
@@ -17066,9 +17066,9 @@ set_filter_value:
 move_pointers:
 .C:49d7  20 FC 49    JSR update_instruction_ptr_and_offset
 ;Mark the voice as executing instructions
-.C:49da  AD 0C 48    LDA voices_executing_instruction
+.C:49da  AD 0C 48    LDA voice_instr_active_mask
 .C:49dd  1D 5C 47    ORA voice_alloc_set_mask_tbl,X
-.C:49e0  8D 0C 48    STA voices_executing_instruction
+.C:49e0  8D 0C 48    STA voice_instr_active_mask
 ;Process instructions for this voice
 .C:49e3  20 6B 4A    JSR decode_voice_instruction
 .C:49e6  60          RTS
@@ -17083,7 +17083,7 @@ update_filter_and_volume:
 .C:49ef  8D 17 D4    STA filter_control_register
 .C:49f2  C8          INY
 .C:49f3  B1 BA       LDA (voice_read_ptr),Y
-.C:49f5  8D 6A 47    STA sid_master_volume_saved		
+.C:49f5  8D 6A 47    STA sid_volfilt_reg_shadow		
 .C:49f8  8D 18 D4    STA sid_master_volume
 .C:49fb  60          RTS
 ;===========================================
@@ -17616,8 +17616,8 @@ sound_ptr_unset:
 .C:4c2d  A9 00       LDA #$00
 .C:4c2f  8D F1 4C    STA tracked_lowest_priority_sound
 .C:4c32  8D F2 4C    STA lowest_priority_sound_starting_flag
-.C:4c35  8D 62 51    STA arpeggio1_active_flag
-.C:4c38  8D 61 51    STA arpeggio2_active_flag
+.C:4c35  8D 62 51    STA arpeggio_primary_active_flag
+.C:4c38  8D 61 51    STA arpeggio_secondary_active_flag
 return_01:
 .C:4c3b  A9 01       LDA #$01
 .C:4c3d  60          RTS
@@ -18342,13 +18342,13 @@ release_voice:
 .C:4f4f  E0 00       CPX #$00
 .C:4f51  D0 06       BNE disable_arpeggio_2
 ;Voice is #00, disable arpeggio #1
-.C:4f53  8E 62 51    STX arpeggio1_active_flag
+.C:4f53  8E 62 51    STX arpeggio_primary_active_flag
 ;Clear all alternate settings
 .C:4f56  20 D0 52    JSR clear_all_alternate_settings
 disable_arpeggio_2:
 ;Disable arpeggio #2
 .C:4f59  A9 00       LDA #$00
-.C:4f5b  8D 61 51    STA arpeggio2_active_flag
+.C:4f5b  8D 61 51    STA arpeggio_secondary_active_flag
 .C:4f5e  4C D6 4F    JMP clear_resource_for_voice
 ;-----------------------------------
 no_arpeggio:
@@ -18391,13 +18391,13 @@ sound_priority_not_01:
 .C:4f88  AD F2 4C    LDA lowest_priority_sound_starting_flag
 .C:4f8b  F0 38       BEQ deallocate_voice
 ;If there's no arpeggio active, release the voice
-.C:4f8d  AD 62 51    LDA arpeggio1_active_flag
+.C:4f8d  AD 62 51    LDA arpeggio_primary_active_flag
 .C:4f90  F0 33       BEQ deallocate_voice
 ;If the voice index >= 3, release the voice
 .C:4f92  E0 03       CPX #$03
 .C:4f94  10 2F       BPL deallocate_voice
 ;If the filter for the voice is not enabled, set the voice in use
-.C:4f96  AD 64 51    LDA filter_enable_flag
+.C:4f96  AD 64 51    LDA filter_arpeggio_enabled_flag
 .C:4f99  F0 08       BEQ set_voice_in_use
 ;If voice 3 is not in unse, set the voice in use
 .C:4f9b  AD F5 4C    LDA voice3_in_use
@@ -18411,11 +18411,11 @@ set_voice_in_use:
 .C:4fa3  BD 9C 47    LDA voice_sound_id_tbl,X
 .C:4fa6  48          PHA
 ;Mark voice as executing instructions
-.C:4fa7  AD 0C 48    LDA voices_executing_instruction
+.C:4fa7  AD 0C 48    LDA voice_instr_active_mask
 .C:4faa  1D 5C 47    ORA voice_alloc_set_mask_tbl,X
-.C:4fad  8D 0C 48    STA voices_executing_instruction
+.C:4fad  8D 0C 48    STA voice_instr_active_mask
 ;Adjust waveform/filter
-.C:4fb0  20 42 53    JSR adjust_waveform_and_filter_for_voice
+.C:4fb0  20 42 53    JSR apply_arpeggio_and_filter_for_voice
 ;Start a note (set bit 1 of voice control)
 .C:4fb3  BD B1 47    LDA voice_ctrl_shadow,X
 .C:4fb6  09 01       ORA #$01
@@ -18577,8 +18577,8 @@ stop_sound_core:
 .C:5055  8D F1 4C    STA tracked_lowest_priority_sound
 .C:5058  8D F2 4C    STA lowest_priority_sound_starting_flag
 ;Stop arpeggio
-.C:505b  8D 62 51    STA arpeggio1_active_flag
-.C:505e  8D 61 51    STA arpeggio2_active_flag
+.C:505b  8D 62 51    STA arpeggio_primary_active_flag
+.C:505e  8D 61 51    STA arpeggio_secondary_active_flag
 .C:5061  20 D0 52    JSR clear_all_alternate_settings
 ;-----------------------------------
 ;Mode #FF - simple stop (don't dereference sound or stop arpeggio)
@@ -18774,9 +18774,9 @@ set_voice_to_unused:
 .C:5126  A9 00       LDA #$00
 .C:5128  9D AA 47    STA voice_instr_repcount,X
 ;Mark that this voice is no longer executing instructions
-.C:512b  AD 0C 48    LDA voices_executing_instruction
+.C:512b  AD 0C 48    LDA voice_instr_active_mask
 .C:512e  3D 63 47    AND voice_alloc_clear_mask_tbl,X
-.C:5131  8D 0C 48    STA voices_executing_instruction
+.C:5131  8D 0C 48    STA voice_instr_active_mask
 ;If X < 4, exit
 .C:5134  E0 04       CPX #$04
 .C:5136  30 05       BMI exit
@@ -19025,7 +19025,7 @@ x_validated:
 .C:52f1  10 26       BPL x_greater_than_3
 ;.X == #03
 ;If all alt settings have already been cleared, skip that
-.C:52f3  AD 67 51    LDA all_alt_settings_cleared
+.C:52f3  AD 67 51    LDA alt_voice_slots_cleared_flag
 .C:52f6  D0 03       BNE swap_with_alternate_0
 .C:52f8  20 D0 52    JSR clear_all_alternate_settings
 ;---------------------------------------
@@ -19039,7 +19039,7 @@ swap_with_alternate_0:
 .C:5302  E8          INX
 .C:5303  E8          INX
 ;Check if the voice is executing instructions
-.C:5304  AD 0C 48    LDA voices_executing_instruction
+.C:5304  AD 0C 48    LDA voice_instr_active_mask
 .C:5307  3D 5C 47    AND voice_alloc_set_mask_tbl,X
 ;If it's available, exit
 .C:530a  F0 0A       BEQ exit_2
@@ -19047,36 +19047,36 @@ swap_with_alternate_0:
 ;It's in use, swap with alternate #1
 .C:530c  A0 01       LDY #$01
 .C:530e  20 A5 51    JSR swap_voice_settings
-;Enable arpeggio2_active_flag and exit
+;Enable arpeggio_secondary_active_flag and exit
 .C:5311  A9 FF       LDA #$FF
-.C:5313  8D 61 51    STA arpeggio2_active_flag
+.C:5313  8D 61 51    STA arpeggio_secondary_active_flag
 exit_2:
 .C:5316  4C 37 53    JMP exit
 ;---------------------------------------
 x_greater_than_3:
 .C:5319  D0 1C       BNE exit
 ;Get bits 6-4 (filter mode control: low-pass, band-pass, high-pass)
-.C:531b  AD 6A 47    LDA sid_master_volume_saved
+.C:531b  AD 6A 47    LDA sid_volfilt_reg_shadow
 .C:531e  29 70       AND #$70
-;Save those bits as filter_pass_select
-.C:5320  8D 66 51    STA filter_pass_select
+;Save those bits as filter_mode_mask
+.C:5320  8D 66 51    STA filter_mode_mask
 ;Clear all alt settings
 .C:5323  20 D0 52    JSR clear_all_alternate_settings
 ;Mark that all alt settings have been cleared already,
 ; to disable clearing the next time
 .C:5326  A9 FF       LDA #$FF
-.C:5328  8D 67 51    STA all_alt_settings_cleared
+.C:5328  8D 67 51    STA alt_voice_slots_cleared_flag
 ;Swap settings #3 with alt #2
 .C:532b  A2 03       LDX #$03
 .C:532d  A0 02       LDY #$02
 .C:532f  20 A5 51    JSR swap_voice_settings
 .C:5332  A9 FF       LDA #$FF
-.C:5334  8D 64 51    STA filter_enable_flag
+.C:5334  8D 64 51    STA filter_arpeggio_enabled_flag
 ;---------------------------------------
 exit:
-;Enable arpeggio1_active_flag
+;Enable arpeggio_primary_active_flag
 .C:5337  A9 FF       LDA #$FF
-.C:5339  8D 62 51    STA arpeggio1_active_flag
+.C:5339  8D 62 51    STA arpeggio_primary_active_flag
 .C:533c  68          PLA
 .C:533d  A8          TAY
 .C:533e  68          PLA
@@ -19086,7 +19086,7 @@ exit:
 ;===========================================
 voice_being_modified = $5165
 
-adjust_waveform_and_filter_for_voice:
+apply_arpeggio_and_filter_for_voice:
 .C:5342  E0 03       CPX #$03
 .C:5344  30 01       BMI voice_index_validated
 .C:5346  60          RTS
@@ -19105,8 +19105,8 @@ voice_index_validated:
 ;Set frequency and envelope
 .C:5354  20 E6 4B    JSR update_voice_freq_and_env
 ;Do we need to multiplex?
-.C:5357  AD 61 51    LDA arpeggio2_active_flag
-.C:535a  F0 0C       BEQ check_filter_change
+.C:5357  AD 61 51    LDA arpeggio_secondary_active_flag
+.C:535a  F0 0C       BEQ check_filter_arpeggio_state
 ;Yes, we need to multiplex
 ;Add 4 to current voice index
 .C:535c  E8          INX
@@ -19118,19 +19118,19 @@ voice_index_validated:
 .C:5362  20 A5 51    JSR swap_voice_settings
 ;Set frequency and envelope
 .C:5365  20 E6 4B    JSR update_voice_freq_and_env
-check_filter_change:
+check_filter_arpeggio_state:
 ;Do we have to filter the voice?
-.C:5368  AD 64 51    LDA filter_enable_flag
+.C:5368  AD 64 51    LDA filter_arpeggio_enabled_flag
 .C:536b  C9 FF       CMP #$FF
-;If not, skip to stop_filtering_voice
-.C:536d  D0 35       BNE stop_filtering_voice
+;If not, skip to disable_filter_for_current_voice
+.C:536d  D0 35       BNE disable_filter_for_current_voice
 ;Yes, we have to filter
 ;Swap current voice 3 with alternate voice 2
 .C:536f  A2 03       LDX #$03
 .C:5371  A0 02       LDY #$02
 .C:5373  20 A5 51    JSR swap_voice_settings
 ;---------------------
-start_filtering_voice:
+enable_filter_for_current_voice:
 ;Read the default filter control value
 .C:5376  AD FA 4C    LDA filter_control_snapshot
 .C:5379  AE 65 51    LDX voice_being_modified
@@ -19145,13 +19145,13 @@ start_filtering_voice:
 .C:5384  8D 17 D4    STA filter_control_register
 ;---------------------
 ;Read the current saved volume control value
-.C:5387  AD 6A 47    LDA sid_master_volume_saved
+.C:5387  AD 6A 47    LDA sid_volfilt_reg_shadow
 ;Take the low nibble (volume value)
 .C:538a  29 0F       AND #$0F
 ;Set the filter pass selection bits
-.C:538c  0D 66 51    ORA filter_pass_select
+.C:538c  0D 66 51    ORA filter_mode_mask
 ;Save a copy of the value
-.C:538f  8D 6A 47    STA sid_master_volume_saved
+.C:538f  8D 6A 47    STA sid_volfilt_reg_shadow
 ;Set it to the actual register
 .C:5392  8D 18 D4    STA sid_master_volume
 ;---------------------
@@ -19162,7 +19162,7 @@ start_filtering_voice:
 .C:539e  8D 16 D4    STA filter_cutoff_freq_hi_reg
 .C:53a1  4C B3 53    JMP exit
 ;---------------------
-stop_filtering_voice:
+disable_filter_for_current_voice:
 ;Read the default filter control value
 .C:53a4  AD FA 4C    LDA filter_control_snapshot
 ;Clear the bit corresponding to the voice position (0-2)
@@ -19177,11 +19177,11 @@ stop_filtering_voice:
 exit:
 ;Disable multiple flags
 .C:53b3  A9 00       LDA #$00
-.C:53b5  8D 62 51    STA arpeggio1_active_flag
-.C:53b8  8D 61 51    STA arpeggio2_active_flag
-.C:53bb  8D 67 51    STA all_alt_settings_cleared
-.C:53be  8D 66 51    STA filter_pass_select
-.C:53c1  8D 64 51    STA filter_enable_flag
+.C:53b5  8D 62 51    STA arpeggio_primary_active_flag
+.C:53b8  8D 61 51    STA arpeggio_secondary_active_flag
+.C:53bb  8D 67 51    STA alt_voice_slots_cleared_flag
+.C:53be  8D 66 51    STA filter_mode_mask
+.C:53c1  8D 64 51    STA filter_arpeggio_enabled_flag
 ;Restore registers from stack
 .C:53c4  68          PLA
 .C:53c5  A8          TAY
@@ -24937,7 +24937,7 @@ init_memory_sound_and_video:
 ;map_in_io
 .C:8327  A0 25       LDY #$25
 .C:8329  84 01       STY cpu_port
-.C:832b  20 D8 48    JSR init_sound_voices
+.C:832b  20 D8 48    JSR reset_sound_engine_state
 ;map_out_io
 .C:832e  A0 24       LDY #$24
 .C:8330  84 01       STY cpu_port
