@@ -44,7 +44,7 @@ Values observed
 .label room_bg0_shadow = $8f
 .label room_bg1_shadow = $90
 .label needs_sentence_rebuild = $95
-.label raster_irq_init_pending = $96
+.label raster_irq_init_pending_flag = $96
 .label vic_memory_layout_shadow = $be
 .label actor = $D8
 .label irq_entry_count = $d9
@@ -53,7 +53,7 @@ Values observed
 .label random_1 = $dd
 .label random_2 = $de
 .label random_3 = $df
-.label irq_entry_lock = $e3
+.label irq_sync_lock = $e3
 
 .label open_shutter_flag = $066E
 .label remove_obj_from_inv_flag = $0670
@@ -540,10 +540,6 @@ They were definitely intended as debugging aids.
 .label nmi_handler_hi = $fffb
 .label irq_handler = $fffe
 
-//Placeholders for routines not modularized yet
-.label init_sprites_sound = $0
-.label reset_game_engine = $0
-
 //===========================================================
 // UI 
 //===========================================================
@@ -746,3 +742,4 @@ They were definitely intended as debugging aids.
 .label  voice_read_ptr            = $BA      // ZP pointer to current voice script/parameter stream
 .label  filter_control_reg_copy   = $476B    // Shadow copy of SID filter control register (software mirror)
 .label  x_saved                   = $480D    // Scratch storage for last logical voice index processed
+.label voice_active_mask_snapshot = $3465
