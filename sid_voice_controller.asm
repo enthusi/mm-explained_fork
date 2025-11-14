@@ -1,48 +1,10 @@
-/*
-sound_irq_handler:
-.C:481b  AD 19 48    LDA sound_processing_disabled_flag
-
-jump_to_music_code:
-.C:48d4  20 00 00    JSR $0000		;Inlined address
-
-init_sound_voices:
-.C:48d8  A9 00       LDA #$00
-
-start_sound_for_voice:
-.C:4939  A8          TAY
-
-update_instruction_ptr_and_offset:
-.C:49fc  AE 0D 48    LDX active_voice
-
-setup_music_pointers:
-.C:4c76  8A          TXA
-
-stop_music:
-;Stop playback
-.C:4caa  A9 00       LDA #$00
-
-swap_voice_settings:
-.C:51a5  E0 03       CPX #$03
-
-clear_all_alternate_settings:
-.C:52d0  48          PHA
-
-process_arpeggio:
-.C:52e5  E0 04       CPX #$04
-
-adjust_waveform_and_filter_for_voice:
-.C:5342  E0 03       CPX #$03
-
-jump_to_inlined_music_routine:
-inlined_music_ptr = $53cb
-.C:53ca  4C FF FF    JMP $FFFF
-*/
 #importonce
 
 #import "globals.inc"
 #import "constants.inc"
 #import "registers.inc"
 #import "sound_engine.asm"
+#import "music.asm"
 
 /*
 ================================================================================
@@ -60,12 +22,12 @@ Arguments
 Global Inputs
 	voice_read_ptr             Base pointer to current voice script
 	filter_control_reg_copy    Shadow of SID filter control register
-	sid_master_volume_saved    Previous cached SID master volume byte
+	sid_volfilt_reg_shadow    Previous cached SID master volume byte
 
 Global Outputs
 	filter_control_reg_copy    Updated merged filter control shadow
 	filter_control_register    SID filter control hardware register
-	sid_master_volume_saved    Updated cached master volume byte
+	sid_volfilt_reg_shadow    Updated cached master volume byte
 	sid_master_volume          SID master volume hardware register
 
 Returns
@@ -77,7 +39,7 @@ Description
 	- Writes the merged filter byte both to the shadow copy and to the SID filter 
 	control register.
 	- Advances Y and reads a master volume byte from the script, storing it into 
-	sid_master_volume_saved.
+	sid_volfilt_reg_shadow.
 	- Applies the same master volume byte to the SID master volume register so 
 	hardware and shadow remain consistent.
 ================================================================================
@@ -98,7 +60,7 @@ update_filter_and_volume:
 		// Update SID master volume from voice script and cache in shadow
 		// ------------------------------------------------------------
 		lda     (voice_read_ptr),y        // Read master volume byte from voice script
-		sta     sid_master_volume_saved   // Cache volume in software copy for later reference
+		sta     sid_volfilt_reg_shadow   // Cache volume in software copy for later reference
 		sta     sid_master_volume         // Apply volume to SID master volume hardware register
 		rts                               // Done updating filter and volume; return to caller
 /*
