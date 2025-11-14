@@ -190,7 +190,6 @@ repair_after_relocation:
 
         // Recalculate voice_instruction_ptr := tmp_voice_sound_base + voice_instruction_offset
         clc
-        lda     tmp_voice_sound_base_lo
         adc     voice_instr_loop_ofs_lo,x
         sta     voice_instr_pc_lo,x
 
