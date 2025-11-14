@@ -131,6 +131,8 @@
 .label voice1_control_register   = $D404    // Base SID register: voice 1 control (gate/waveform/test/ring/sync)
 .label voice1_attack_delay_reg   = $D405    // Base SID register: voice 1 attack/decay envelope
 .label voice1_sustain_release_reg = $D406   // Base SID register: voice 1 sustain/release envelope
+.label voice2_control_register   = $D40B    
+.label voice3_control_register   = $D412
 .label filter_cutoff_freq_lo_reg = $D415
 .label filter_cutoff_freq_hi_reg = $D416
 .label filter_control_register   = $D417    // SID filter control hardware register (writes affect filter)
