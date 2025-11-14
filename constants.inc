@@ -274,6 +274,7 @@ Only 2 bits are used, bit 5 (#20) and bit 0 (#01).
 
 // VIC sprites bitmasks
 .const SPRITES_ENABLE_ALL          	= $FF   // $D015: enable sprites 0–7
+.const SPRITES_DISABLE_ALL         	= $00   // $D015: disable sprites 0–7
 
 // VIC raster lines for IRQs
 .const RASTER_IRQ_LINE_INIT        	= $FA   // $D012: raster line 250
@@ -365,3 +366,6 @@ screen_row_offsets_lo:
 .const START_SOUND_ERR_INSUFFICIENT_VOICES = $FF  // Cannot obtain enough voices (availability/priority/voice-3 conflict)
 .const MUSIC_IDX_1              = $01    // First preferred music slot
 .const MUSIC_IDX_2              = $02    // Second preferred music slot
+
+.const HEAP_FREE_HDR_ADDR       = $7B7B    // Address of initial free block header
+.const HEAP_INIT_SIZE_BYTES     = $4C85    // Size of initial free span
