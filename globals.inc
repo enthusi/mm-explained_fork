@@ -628,9 +628,6 @@ They were definitely intended as debugging aids.
 //===========================================================
 // Sound variables
 //===========================================================
-.label voice_freq_register_offsets = $4755
-.label set_bitmasks = $475c
-.label clear_bitmasks = $4763
 .label voice_attack_delays = $476c
 .label voice_sustain_releases = $476f
 .label sound_id_to_start_on_voice = $4772
