@@ -190,11 +190,11 @@ repair_after_relocation:
         clc
         lda     <tmp_voice_sound_base
         adc     voice_instr_offset_lo,x
-        sta     voice_instr_ptr_lo,x
+        sta     voice_instr_pc_lo,x
 
         lda     >tmp_voice_sound_base
         adc     voice_instr_offset_hi,x
-        sta     voice_instr_ptr_hi,x
+        sta     voice_instr_pc_hi,x
 
         lda     #$ff                       // Return #$FF → relocation occurred, pointers adjusted
         rts
@@ -955,21 +955,21 @@ sv_exit:
 * = $510A
 clear_waveform_on_full_stop:
         // ----------------------------------------------------------------------
-        // Conditionally clear waveform bits + gate bit in voice_controls[X].
+        // Conditionally clear waveform bits + gate bit in voice_ctrl_shadow[X].
         //
         // Behavior:
         //   - Always loads and saves the current control byte for this voice.
         //   - If music_playback_in_progress ≠ 0 → no changes are applied.
         //   - If stop_sound_cleanup_mode ≠ $FF → no changes are applied.
         //   - Otherwise (no music playing AND stop_sound_cleanup_mode == $FF):
-        //         voice_controls[X] := (original_control & $0E)
+        //         voice_ctrl_shadow[X] := (original_control & $0E)
         //         update_voice_control is called to commit the change.
         //
         // On return:
         //   - A is restored to the original control byte.
         //   - X and Y are preserved.
         // ----------------------------------------------------------------------
-        lda     voice_controls,x                // Fetch original control byte
+        lda     voice_ctrl_shadow,x                // Fetch original control byte
         pha                                     // Save original control on stack
         tay                                     // Copy to Y for later restore
 
@@ -986,7 +986,7 @@ clear_waveform_on_full_stop:
         // ------------------------------------------------------------
         tya                                     // Restore original control into A
         and     #$0E                            // Mask: clear bit0 and bits4–7
-        sta     voice_controls,x                // Store new control byte
+        sta     voice_ctrl_shadow,x                // Store new control byte
         jsr     update_voice_control            // Commit update
 
 cwast_exit:
@@ -1003,7 +1003,7 @@ set_voice_to_unused:
         // - For slots X ≥ 4, also clear the associated resource ID.
         // ------------------------------------------------------------
         lda     #$00
-        sta     instruction_repeat_counter,x    // Reset repeat counter for this slot
+        sta     voice_instr_repcount,x    // Reset repeat counter for this slot
 
         lda     voices_executing_instruction    // Clear "executing" bit for this slot
         and     voice_alloc_clear_mask_tbl,x

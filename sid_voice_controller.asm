@@ -114,22 +114,22 @@ Arguments
 	X       Logical voice index
 
 Vars/State
-	voice_in_sid_range_flag   	Cached boolean flag indicating X < LOGICAL_VOICE_LIMIT
+	voice_sid_range_flags   	Cached boolean flag indicating X < LOGICAL_VOICE_LIMIT
 	x_saved          			Last logical voice index processed and saved for reuse
 
 Global Inputs
-	sound_duration_lo        Per-voice duration counter low byte table
-	sound_duration_hi        Per-voice duration counter high byte table
-	glissando_lo             Per-voice glissando delta low byte table
-	glissando_hi             Per-voice glissando delta high byte table
-	voice_frequencies_lo     Cached per-voice frequency low byte table
-	voice_frequencies_hi     Cached per-voice frequency high byte table
+	voice_duration_lo        Per-voice duration counter low byte table
+	voice_duration_hi        Per-voice duration counter high byte table
+	voice_gliss_lo             Per-voice glissando delta low byte table
+	voice_gliss_hi             Per-voice glissando delta high byte table
+	voice_freq_lo     Cached per-voice frequency low byte table
+	voice_freq_hi     Cached per-voice frequency high byte table
 
 Global Outputs
-	sound_duration_lo        Updated 16-bit duration counter low byte
-	sound_duration_hi        Updated 16-bit duration counter high byte
-	voice_frequencies_lo     Glissando-adjusted frequency low byte
-	voice_frequencies_hi     Glissando-adjusted frequency high byte
+	voice_duration_lo        Updated 16-bit duration counter low byte
+	voice_duration_hi        Updated 16-bit duration counter high byte
+	voice_freq_lo     Glissando-adjusted frequency low byte
+	voice_freq_hi     Glissando-adjusted frequency high byte
 
 Returns
 	None (may call process_voice_instructions and update_voice_freq_and_env
@@ -144,7 +144,7 @@ Description
 	- If the duration underflows to zero, calls	process_voice_instructions to 
 	advance the voice script and then refreshes the voice’s frequency/envelope 
 	instead of applying	further glissando.
-	- Records whether X is within the primary SID voice range in voice_in_sid_range_flag 
+	- Records whether X is within the primary SID voice range in voice_sid_range_flags 
 	and saves X into x_saved for use by other engine code that needs to know 
 	which voice was last processed.
 ================================================================================
@@ -153,7 +153,7 @@ Description
 update_duration_and_glissando:
 		// ------------------------------------------------------------
 		// Flag whether logical voice X is within the primary SID-voice range
-		// (0..LOGICAL_VOICE_LIMIT-1) and cache that as $FF/00 in voice_in_sid_range_flag
+		// (0..LOGICAL_VOICE_LIMIT-1) and cache that as $FF/00 in voice_sid_range_flags
 		// ------------------------------------------------------------
 		lda     #BTRUE                 // Provisional “true” for X < 3
 		cpx     #LOGICAL_VOICE_LIMIT          // Compare logical voice index against 3
@@ -161,7 +161,7 @@ update_duration_and_glissando:
 		
 		lda     #FALSE                        // Else X >= 3 → flag false
 store_voice_index_flag:
-		sta     voice_in_sid_range_flag       // Record whether voice slot is one of the first three
+		sta     voice_sid_range_flags       // Record whether voice slot is one of the first three
 
 		// Preserve caller’s X (logical voice index) across any helper calls
 		stx     x_saved
@@ -175,16 +175,16 @@ store_voice_index_flag:
 		// applying a glissando step; otherwise the timer has just expired.
 		// ------------------------------------------------------------
 		// Decrement low duration byte; carry tells whether it underflowed
-		lda     sound_duration_lo,x           
+		lda     voice_duration_lo,x           
 		sec                                   
 		sbc     #$01                          
-		sta     sound_duration_lo,x           
+		sta     voice_duration_lo,x           
 		bcs     apply_glissando_step          // If no borrow (C=1) → duration still > 0
 
 		// Low byte underflowed → propagate borrow into high duration byte
-		lda     sound_duration_hi,x           
+		lda     voice_duration_hi,x           
 		sbc     #$00                          
-		sta     sound_duration_hi,x           
+		sta     voice_duration_hi,x           
 		bcs     apply_glissando_step          // If still non-negative → duration not yet expired
 
 		// ------------------------------------------------------------
@@ -206,14 +206,14 @@ store_voice_index_flag:
 		// pitch to SID while the duration timer is still non-zero
 		// ------------------------------------------------------------
 apply_glissando_step:
-		lda     voice_frequencies_lo,x        
+		lda     voice_freq_lo,x        
 		clc                                   
-		adc     glissando_lo,x                
-		sta     voice_frequencies_lo,x        
+		adc     voice_gliss_lo,x                
+		sta     voice_freq_lo,x        
 
-		lda     voice_frequencies_hi,x        
-		adc     glissando_hi,x                
-		sta     voice_frequencies_hi,x        
+		lda     voice_freq_hi,x        
+		adc     voice_gliss_hi,x                
+		sta     voice_freq_hi,x        
 
 		// ------------------------------------------------------------
 		// Update frequency
@@ -237,16 +237,16 @@ Arguments
 	X       Logical voice index whose duration and glissando are cleared
 
 Global Inputs
-	sound_duration_lo         Low byte of per-voice duration counter
-	sound_duration_hi         High byte of per-voice duration counter
-	glissando_lo              Low byte of per-voice glissando delta
-	glissando_hi              High byte of per-voice glissando delta
+	voice_duration_lo         Low byte of per-voice duration counter
+	voice_duration_hi         High byte of per-voice duration counter
+	voice_gliss_lo              Low byte of per-voice glissando delta
+	voice_gliss_hi              High byte of per-voice glissando delta
 
 Global Outputs
-	sound_duration_lo         Cleared to zero for voice X
-	sound_duration_hi         Cleared to zero for voice X
-	glissando_lo              Cleared to zero for voice X
-	glissando_hi              Cleared to zero for voice X
+	voice_duration_lo         Cleared to zero for voice X
+	voice_duration_hi         Cleared to zero for voice X
+	voice_gliss_lo              Cleared to zero for voice X
+	voice_gliss_hi              Cleared to zero for voice X
 
 Returns
 	None (updates duration and glissando state in RAM for voice X)
@@ -265,10 +265,10 @@ clear_voice_duration_and_glissando:
 		// duration bytes and both glissando bytes to disable them)
 		// ------------------------------------------------------------
 		lda     #$00
-		sta     sound_duration_lo,x
-		sta     sound_duration_hi,x
-		sta     glissando_lo,x
-		sta     glissando_hi,x
+		sta     voice_duration_lo,x
+		sta     voice_duration_hi,x
+		sta     voice_gliss_lo,x
+		sta     voice_gliss_hi,x
 		rts
 
 /*
@@ -287,10 +287,10 @@ Arguments
 Global Inputs
         arpeggio_ongoing             Indicates whether arpeggio is currently active
         voice_freq_reg_ofs_tbl  Per-voice SID base register offsets
-        voice_frequencies_lo         Cached low-byte frequency/cutoff table
-        voice_frequencies_hi         Cached high-byte frequency/cutoff table
-        voice_attack_delays          Cached attack/decay envelope values
-        voice_sustain_releases       Cached sustain/release envelope values
+        voice_freq_lo         Cached low-byte frequency/cutoff table
+        voice_freq_hi         Cached high-byte frequency/cutoff table
+        voice_adsr_attack_decay          Cached attack/decay envelope values
+        voice_adsr_sustain_release       Cached sustain/release envelope values
 
 Global Outputs
         voice1_freq_reg_lo           SID frequency low-byte registers (voice-relative)
@@ -342,9 +342,9 @@ update_freq_env_no_arpeggio:
 		// for voices 0–2 this is the tone frequency; for the special
 		// logical slot (X == 3) the same value is used as filter cutoff
 		// ------------------------------------------------------------
-		lda     voice_frequencies_lo,x        
+		lda     voice_freq_lo,x        
 		sta     voice1_freq_reg_lo,y          
-		lda     voice_frequencies_hi,x        
+		lda     voice_freq_hi,x        
 		sta     voice1_freq_reg_hi,y          
 
 		// ------------------------------------------------------------
@@ -364,9 +364,9 @@ update_freq_env_no_arpeggio:
 		// write packed attack/decay and sustain/release nibbles to the
 		// per-voice ADSR registers addressed via the base offset in Y
 		// ------------------------------------------------------------
-		lda     voice_attack_delays,x         
+		lda     voice_adsr_attack_decay,x         
 		sta     voice1_attack_delay_reg,y     
-		lda     voice_sustain_releases,x      
+		lda     voice_adsr_sustain_release,x      
 		sta     voice1_sustain_release_reg,y  
 
 exit_voice_freq_env:
@@ -386,7 +386,7 @@ Arguments
 
 Global Inputs
 	voice_freq_reg_ofs_tbl   Per-voice SID register base offsets
-	voice_controls                Cached SID control bytes per logical voice
+	voice_ctrl_shadow                Cached SID control bytes per logical voice
 
 Global Outputs
 	voice1_control_register       SID voice control register block
@@ -425,7 +425,7 @@ update_voice_control:
 		// Commit cached control byte for logical voice X to the mapped SID
 		// voice control register at the resolved offset in Y
 		// ------------------------------------------------------------
-		lda     voice_controls,x               // A := cached control value for logical voice X
+		lda     voice_ctrl_shadow,x               // A := cached control value for logical voice X
 		sta     voice1_control_register,y      // Write to correct SID voice control register
 
 exit_update_voice_control:

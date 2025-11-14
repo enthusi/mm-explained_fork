@@ -687,8 +687,8 @@ sector_chain_index = $463B
 voice_freq_reg_ofs_tbl = $4755
 voice_alloc_set_mask_tbl = $475c
 voice_alloc_clear_mask_tbl = $4763
-voice_attack_delays = $476c
-voice_sustain_releases = $476f
+voice_adsr_attack_decay = $476c
+voice_adsr_sustain_release = $476f
 sound_id_to_start_on_voice = $4772
 voice_data_base_lo = $4779
 voice_data_base_hi = $4780
@@ -708,26 +708,26 @@ rsrc_for_voice_3 = $479f
 rsrc_for_voice_4 = $47a0
 rsrc_for_voice_5 = $47a1
 rsrc_for_voice_6 = $47a2
-instruction_for_voice = $47a3
-instruction_repeat_counter = $47aa
-voice_controls = $47b1
-voice_instr_ptr_lo = $47b8
-voice_instr_ptr_hi = $47bf
-voice_frequencies_lo = $47c6
+voice_instr_header = $47a3
+voice_instr_repcount = $47aa
+voice_ctrl_shadow = $47b1
+voice_instr_pc_lo = $47b8
+voice_instr_pc_hi = $47bf
+voice_freq_lo = $47c6
 filter_cutoff_freq_lo = $47c9
-voice_frequencies_hi = $47cd
+voice_freq_hi = $47cd
 filter_cutoff_freq_hi = $47d0
-sound_duration_lo = $47d4
-sound_duration_hi = $47db
-glissando_lo = $47e2
-glissando_hi = $47e9
+voice_duration_lo = $47d4
+voice_duration_hi = $47db
+voice_gliss_lo = $47e2
+voice_gliss_hi = $47e9
 voice_base_addr_lo = $47f0
 voice_base_addr_hi = $47f7
 voice_instr_offset_lo = $47fe
 voice_instr_offset_hi = $4805
 voices_executing_instruction = $480c	;Bitmask that holds which voices are currently executing sound instructions
 
-voice_in_sid_range_flag = $4811	;#00 if X < 3, #FF otherwise
+voice_sid_range_flags = $4811	;#00 if X < 3, #FF otherwise
 
 music_playback_in_progress = $4816
 music_voices_in_use = $4817
@@ -771,17 +771,17 @@ filter_enable_flag = $5164			; #00 = filter voice, #FF = stop filtering voice
 filter_pass_select = $5166
 all_alt_settings_cleared = $5167	; #00 = false, #FF = true
 
-alt_voice_attack_delays = $5168
-alt_voice_sustain_releases = $516a
+alt_voice_adsr_attack_decay = $5168
+alt_voice_adsr_sustain_release = $516a
 alt_voice_data_ptrs_lo = $516c
 alt_voice_data_ptrs_hi = $516f
-alt_voice_controls = $517e
-alt_voice_frequencies_lo = $5187
-alt_voice_frequencies_hi = $518a
-alt_sound_duration_lo = $518d
-alt_sound_duration_hi = $5190
-alt_glissando_lo = $5193
-alt_glissando_hi = $5196
+alt_voice_ctrl_shadow = $517e
+alt_voice_freq_lo = $5187
+alt_voice_freq_hi = $518a
+alt_voice_duration_lo = $518d
+alt_voice_duration_hi = $5190
+alt_voice_gliss_lo = $5193
+alt_voice_gliss_hi = $5196
 
 music_in_progress_ptr = $547c
 ;Relative offset constants lo/hi for each sound track
@@ -16955,16 +16955,16 @@ start_sound_for_voice:
 .C:4942  9D 72 47    STA sound_id_to_start_on_voice,X
 ;Initialize instruction repeat counter
 .C:4945  A9 00       LDA #$00
-.C:4947  9D AA 47    STA instruction_repeat_counter,X
+.C:4947  9D AA 47    STA voice_instr_repcount,X
 ;-----------------------------------
-;Check if .X < 3 - if so, set voice_in_sid_range_flag to #FF (true)
-;Otherwise, set voice_in_sid_range_flag to #00 (false)
+;Check if .X < 3 - if so, set voice_sid_range_flags to #FF (true)
+;Otherwise, set voice_sid_range_flags to #00 (false)
 .C:494a  A9 FF       LDA #$FF
 .C:494c  E0 03       CPX #$03
-.C:494e  30 02       BMI set_voice_in_sid_range_flag_flag
+.C:494e  30 02       BMI set_voice_sid_range_flags_flag
 .C:4950  A9 00       LDA #$00
-set_voice_in_sid_range_flag_flag:
-.C:4952  8D 11 48    STA voice_in_sid_range_flag
+set_voice_sid_range_flags_flag:
+.C:4952  8D 11 48    STA voice_sid_range_flags
 ;-----------------------------------
 ;Save active voice index
 .C:4955  8E 0D 48    STX active_voice
@@ -16989,7 +16989,7 @@ set_voice_in_sid_range_flag_flag:
 .C:4976  9D F0 47    STA voice_base_addr_lo,X
 .C:4979  18          CLC
 .C:497a  7D FE 47    ADC voice_instr_offset_lo,X
-.C:497d  9D B8 47    STA voice_instr_ptr_lo,X
+.C:497d  9D B8 47    STA voice_instr_pc_lo,X
 .C:4980  85 BA       STA <voice_read_ptr
 ;Check that the hi byte is non-zero - if not, continue with the hi byte
 .C:4982  BD 80 47    LDA voice_data_base_hi,X
@@ -17007,7 +17007,7 @@ set_voice_in_sid_range_flag_flag:
 set_hi_bytes:
 .C:498e  9D F7 47    STA voice_base_addr_hi,X
 .C:4991  7D 05 48    ADC voice_instr_offset_hi,X
-.C:4994  9D BF 47    STA voice_instr_ptr_hi,X
+.C:4994  9D BF 47    STA voice_instr_pc_hi,X
 .C:4997  85 BB       STA >voice_read_ptr
 ;-------------------------------------------
 ;This is an alternate variant of .X > 3 (instead doing .X >= 4)
@@ -17044,7 +17044,7 @@ check_voice_control_change:
 ;---------------------------------------------
 update_voice_control:
 .C:49b6  B1 BA       LDA (voice_read_ptr),Y
-.C:49b8  9D B1 47    STA voice_controls,X
+.C:49b8  9D B1 47    STA voice_ctrl_shadow,X
 ;Read byte from next position
 .C:49bb  C8          INY
 .C:49bc  B1 BA       LDA (voice_read_ptr),Y
@@ -17100,10 +17100,10 @@ update_instruction_ptr_and_offset:
 ;Add read offset to voice_instruction_ptr
 .C:4a00  98          TYA
 .C:4a01  18          CLC
-.C:4a02  7D B8 47    ADC voice_instr_ptr_lo,X
-.C:4a05  9D B8 47    STA voice_instr_ptr_lo,X
+.C:4a02  7D B8 47    ADC voice_instr_pc_lo,X
+.C:4a05  9D B8 47    STA voice_instr_pc_lo,X
 .C:4a08  90 03       BCC update_offset
-.C:4a0a  FE BF 47    INC voice_instr_ptr_hi,X
+.C:4a0a  FE BF 47    INC voice_instr_pc_hi,X
 update_offset:
 ;Add read offset to voice_instruction_offset
 .C:4a0d  98          TYA
@@ -17127,28 +17127,28 @@ x_saved = $480d
 
 update_duration_and_glissando:
 ;-----------------------------------
-;Check if .X < 3 - if so, set voice_in_sid_range_flag to #FF (true)
-;Otherwise, set voice_in_sid_range_flag to #00 (false)
+;Check if .X < 3 - if so, set voice_sid_range_flags to #FF (true)
+;Otherwise, set voice_sid_range_flags to #00 (false)
 .C:4a1b  A9 FF       LDA #$FF
 .C:4a1d  E0 03       CPX #$03
 .C:4a1f  30 02       BMI set_result
 .C:4a21  A9 00       LDA #$00
 set_result:
-.C:4a23  8D 11 48    STA voice_in_sid_range_flag
+.C:4a23  8D 11 48    STA voice_sid_range_flags
 ;-----------------------------------
 ;Save .X so caller can restore it
 .C:4a26  8E 0D 48    STX x_saved
 ;Subtract 1 from duration_lo
-.C:4a29  BD D4 47    LDA sound_duration_lo,X
+.C:4a29  BD D4 47    LDA voice_duration_lo,X
 .C:4a2c  38          SEC
 .C:4a2d  E9 01       SBC #$01
-.C:4a2f  9D D4 47    STA sound_duration_lo,X
+.C:4a2f  9D D4 47    STA voice_duration_lo,X
 ;If carry is set, duration countdown still ongoing
 .C:4a32  B0 11       BCS do_glissando
 ;Carry is clear, so subtract from duration_hi
-.C:4a34  BD DB 47    LDA sound_duration_hi,X
+.C:4a34  BD DB 47    LDA voice_duration_hi,X
 .C:4a37  E9 00       SBC #$00
-.C:4a39  9D DB 47    STA sound_duration_hi,X
+.C:4a39  9D DB 47    STA voice_duration_hi,X
 ;If carry is set, duration countdown still ongoing
 .C:4a3c  B0 07       BCS do_glissando
 ;Duration countdown expired - process next sound instruction
@@ -17158,13 +17158,13 @@ set_result:
 ;-----------------------------------
 do_glissando:
 ;Add glissando to the voice frequency
-.C:4a45  BD C6 47    LDA voice_frequencies_lo,X
+.C:4a45  BD C6 47    LDA voice_freq_lo,X
 .C:4a48  18          CLC
-.C:4a49  7D E2 47    ADC glissando_lo,X
-.C:4a4c  9D C6 47    STA voice_frequencies_lo,X
-.C:4a4f  BD CD 47    LDA voice_frequencies_hi,X
-.C:4a52  7D E9 47    ADC glissando_hi,X
-.C:4a55  9D CD 47    STA voice_frequencies_hi,X
+.C:4a49  7D E2 47    ADC voice_gliss_lo,X
+.C:4a4c  9D C6 47    STA voice_freq_lo,X
+.C:4a4f  BD CD 47    LDA voice_freq_hi,X
+.C:4a52  7D E9 47    ADC voice_gliss_hi,X
+.C:4a55  9D CD 47    STA voice_freq_hi,X
 ;Update voice frequency
 .C:4a58  20 E6 4B    JSR update_voice_freq_and_env
 .C:4a5b  60          RTS
@@ -17175,10 +17175,10 @@ do_glissando:
 ;===========================================
 clear_voice_duration_and_glissando:
 .C:4a5c  A9 00       LDA #$00
-.C:4a5e  9D D4 47    STA sound_duration_lo,X
-.C:4a61  9D DB 47    STA sound_duration_hi,X
-.C:4a64  9D E2 47    STA glissando_lo,X
-.C:4a67  9D E9 47    STA glissando_hi,X
+.C:4a5e  9D D4 47    STA voice_duration_lo,X
+.C:4a61  9D DB 47    STA voice_duration_hi,X
+.C:4a64  9D E2 47    STA voice_gliss_lo,X
+.C:4a67  9D E9 47    STA voice_gliss_hi,X
 .C:4a6a  60          RTS
 ;===========================================
 ; Process voice instructions
@@ -17219,7 +17219,7 @@ clear_voice_duration_and_glissando:
 ;			-Read 2 bytes - set as ADSR
 ;			-Repeat note action (trigger/release)
 ; Bit 4 - change PWM (pulse width modulation), filter cutoff frequency, duration
-;		-Read a byte -> instruction_operand
+;		-Read a byte -> instr_op_flags
 ;			Bit 0 set - set PWM (read 2 bytes as value)
 ;			Bit 1 set - set filter cutoff frequency (read 2 bytes as value)
 ;			Bit 2 set - set duration (read 2 bytes as duration)
@@ -17233,7 +17233,7 @@ clear_voice_duration_and_glissando:
 temp_y = $4813
 voice_index = $480d
 instr_bit_cursor = $480e
-instruction_operand = $480f
+instr_op_flags = $480f
 instruction_original = $4810
 
 process_voice_instructions:
@@ -17248,9 +17248,9 @@ process_voice_instructions:
 ;--------------------------------------------
 sound_in_memory:
 ;Set voice_read_ptr = voice_instruction_ptr
-.C:4a79  BD B8 47    LDA voice_instr_ptr_lo,X
+.C:4a79  BD B8 47    LDA voice_instr_pc_lo,X
 .C:4a7c  85 BA       STA <voice_read_ptr
-.C:4a7e  BD BF 47    LDA voice_instr_ptr_hi,X
+.C:4a7e  BD BF 47    LDA voice_instr_pc_hi,X
 .C:4a81  85 BB       STA >voice_read_ptr
 ;4812 = #FF (not used anywhere in the main code)
 .C:4a83  A9 FF       LDA #$FF
@@ -17265,15 +17265,15 @@ sound_in_memory:
 ;4812 = #00 (not used anywhere in the main code)
 .C:4a8e  8D 12 48    STA $4812
 ;Clear repeat count
-.C:4a91  9D AA 47    STA instruction_repeat_counter,X
+.C:4a91  9D AA 47    STA voice_instr_repcount,X
 .C:4a94  4C BC 4A    JMP cut_voice
 ;--------------------------------------------
 ;Byte not zero
 instruction_present:
-.C:4a97  9D A3 47    STA instruction_for_voice,X
+.C:4a97  9D A3 47    STA voice_instr_header,X
 .C:4a9a  8D 0E 48    STA instr_bit_cursor
 .C:4a9d  8D 10 48    STA instruction_original
-; As voice_in_sid_range_flag is treated as a "boolean", its possible values will be either #00 or #FF.
+; As voice_sid_range_flags is treated as a "boolean", its possible values will be either #00 or #FF.
 ; So either its bits will all be 0 or all 1.
 ; Running the BIT instruction will set the N and V flags according to the operand.
 ; Specifically, if the operand has bit 7 set, N will be set and viceversa.
@@ -17284,17 +17284,17 @@ instruction_present:
 ; The BIT operation will simply set/clear flags N and V.
 ; But the LSR operation might overwrite the N flag, so the only unaffected flag when 
 ; executing BIT followed by LSR will be V. This will be relevant when we test the boolean later.
-.C:4aa0  2C 11 48    BIT voice_in_sid_range_flag
+.C:4aa0  2C 11 48    BIT voice_sid_range_flags
 ;Shift right once - bit 0 will go into carry (N might change)
 .C:4aa3  4E 0E 48    LSR instr_bit_cursor
 ;Now we test for the V flag that was set/cleared before (in the BIT instruction)
-;If voice_in_sid_range_flag is #00 (true), .X < 3, then the trigger/release logic will apply
+;If voice_sid_range_flags is #00 (true), .X < 3, then the trigger/release logic will apply
 .C:4aa6  50 0F       BVC test_bit1
 ;--------------------------------------------
 ; Voice index < 3 - Trigger/release voice
 ;--------------------------------------------
 ;Note: LDA will NOT change the carry, which will still keep the bit shifted before
-.C:4aa8  BD B1 47    LDA voice_controls,X
+.C:4aa8  BD B1 47    LDA voice_ctrl_shadow,X
 ;Branch on carry
 .C:4aab  90 05       BCC release_note
 ;Carry set - set bit 0 of voice control, which triggers a note
@@ -17304,7 +17304,7 @@ instruction_present:
 release_note:
 .C:4ab2  29 FE       AND #$FE
 update_control:
-.C:4ab4  9D B1 47    STA voice_controls,X
+.C:4ab4  9D B1 47    STA voice_ctrl_shadow,X
 ;--------------------------------------------
 test_bit1:
 ;Shift right once - bit 0 will go into carry
@@ -17331,27 +17331,27 @@ test_bit2:
 ;Read 2 bytes - set as frequency
 .C:4acf  C8          INY
 .C:4ad0  B1 BA       LDA (voice_read_ptr),Y
-.C:4ad2  9D C6 47    STA voice_frequencies_lo,X
+.C:4ad2  9D C6 47    STA voice_freq_lo,X
 .C:4ad5  C8          INY
 .C:4ad6  B1 BA       LDA (voice_read_ptr),Y
-.C:4ad8  9D CD 47    STA voice_frequencies_hi,X
+.C:4ad8  9D CD 47    STA voice_freq_hi,X
 ;Test the bit 6 of the original instruction value
 .C:4adb  70 1B       BVS no_duration_or_glissando
 ;Bit 6 clear
 ;Read 2 bytes, set as duration
 .C:4add  C8          INY
 .C:4ade  B1 BA       LDA (voice_read_ptr),Y
-.C:4ae0  9D D4 47    STA sound_duration_lo,X
+.C:4ae0  9D D4 47    STA voice_duration_lo,X
 .C:4ae3  C8          INY
 .C:4ae4  B1 BA       LDA (voice_read_ptr),Y
-.C:4ae6  9D DB 47    STA sound_duration_hi,X
+.C:4ae6  9D DB 47    STA voice_duration_hi,X
 .C:4ae9  C8          INY
 ;Read 2 bytes, set as glissando
 .C:4aea  B1 BA       LDA (voice_read_ptr),Y
-.C:4aec  9D E2 47    STA glissando_lo,X
+.C:4aec  9D E2 47    STA voice_gliss_lo,X
 .C:4aef  C8          INY
 .C:4af0  B1 BA       LDA (voice_read_ptr),Y
-.C:4af2  9D E9 47    STA glissando_hi,X
+.C:4af2  9D E9 47    STA voice_gliss_hi,X
 ;Continue testing bit 3
 .C:4af5  4C 01 4B    JMP test_bit3
 ;Bit 6 set, clear duration/glissando
@@ -17364,7 +17364,7 @@ no_duration_or_glissando_2:
 ;--------------------------------------------
 test_bit3:
 ;Check if .X < 3
-.C:4b01  2C 11 48    BIT voice_in_sid_range_flag
+.C:4b01  2C 11 48    BIT voice_sid_range_flags
 .C:4b04  4E 0E 48    LSR instr_bit_cursor
 ;If .X < 3, the ADSR part doesn't apply
 .C:4b07  50 2D       BVC test_bit4
@@ -17381,9 +17381,9 @@ test_bit3:
 ;Save .Y in stack
 .C:4b0b  8C 13 48    STY temp_y
 ;Release note (clear bit 0 of the voice control)
-.C:4b0e  BD B1 47    LDA voice_controls,X
+.C:4b0e  BD B1 47    LDA voice_ctrl_shadow,X
 .C:4b11  29 FE       AND #$FE
-.C:4b13  9D B1 47    STA voice_controls,X
+.C:4b13  9D B1 47    STA voice_ctrl_shadow,X
 .C:4b16  20 0D 4C    JSR update_voice_control
 ;Restore .Y from stack
 .C:4b19  AC 13 48    LDY temp_y
@@ -17392,18 +17392,18 @@ test_bit3:
 ;Read 2 bytes, set as ADSR envelope for voice
 .C:4b1f  C8          INY
 .C:4b20  B1 BA       LDA (voice_read_ptr),Y
-.C:4b22  9D 6C 47    STA voice_attack_delays,X
+.C:4b22  9D 6C 47    STA voice_adsr_attack_decay,X
 .C:4b25  C8          INY
 .C:4b26  B1 BA       LDA (voice_read_ptr),Y
-.C:4b28  9D 6F 47    STA voice_sustain_releases,X
+.C:4b28  9D 6F 47    STA voice_adsr_sustain_release,X
 ;Read the original instruction value, mask out bit 0
 ;This will represent trigger note (bit set) or release note (bit clear)
-.C:4b2b  BD A3 47    LDA instruction_for_voice,X
+.C:4b2b  BD A3 47    LDA voice_instr_header,X
 .C:4b2e  29 01       AND #$01
 ;OR the bit 0 into voice controls - this repeats the action (trigger or release)
 ;The action now takes place with the new ADSR envelope
-.C:4b30  1D B1 47    ORA voice_controls,X
-.C:4b33  9D B1 47    STA voice_controls,X
+.C:4b30  1D B1 47    ORA voice_ctrl_shadow,X
+.C:4b33  9D B1 47    STA voice_ctrl_shadow,X
 test_bit4:
 .C:4b36  4E 0E 48    LSR instr_bit_cursor
 .C:4b39  90 4C       BCC test_bit5
@@ -17413,11 +17413,11 @@ test_bit4:
 ;Read the operand
 .C:4b3b  C8          INY
 .C:4b3c  B1 BA       LDA (voice_read_ptr),Y
-.C:4b3e  8D 0F 48    STA instruction_operand
+.C:4b3e  8D 0F 48    STA instr_op_flags
 ;Check if .X < 3
-.C:4b41  2C 11 48    BIT voice_in_sid_range_flag
+.C:4b41  2C 11 48    BIT voice_sid_range_flags
 test_operand_bit0:
-.C:4b44  4E 0F 48    LSR instruction_operand
+.C:4b44  4E 0F 48    LSR instr_op_flags
 ;If .X < 3, the PWM part doesn't apply
 .C:4b47  50 15       BVC test_operand_bit1
 ;Test bit 0
@@ -17437,7 +17437,7 @@ test_operand_bit0:
 .C:4b58  9D 01 D4    STA voice1_freq_reg_hi,X
 .C:4b5b  AE 0D 48    LDX voice_index
 test_operand_bit1:
-.C:4b5e  4E 0F 48    LSR instruction_operand
+.C:4b5e  4E 0F 48    LSR instr_op_flags
 .C:4b61  90 10       BCC test_operand_bit2
 ;--------------------------------------------
 ; Operand bit 1 set - set filter cutoff settings
@@ -17451,7 +17451,7 @@ test_operand_bit1:
 .C:4b6e  B1 BA       LDA (voice_read_ptr),Y
 .C:4b70  8D 16 D4    STA filter_cutoff_freq_hi_reg
 test_operand_bit2:
-.C:4b73  4E 0F 48    LSR instruction_operand
+.C:4b73  4E 0F 48    LSR instr_op_flags
 .C:4b76  90 0F       BCC test_bit5
 ;--------------------------------------------
 ; Operand bit 2 set - set duration
@@ -17459,21 +17459,21 @@ test_operand_bit2:
 .C:4b78  20 5C 4A    JSR clear_voice_duration_and_glissando
 .C:4b7b  C8          INY
 .C:4b7c  B1 BA       LDA (voice_read_ptr),Y
-.C:4b7e  9D D4 47    STA sound_duration_lo,X
+.C:4b7e  9D D4 47    STA voice_duration_lo,X
 .C:4b81  C8          INY
 .C:4b82  B1 BA       LDA (voice_read_ptr),Y
-.C:4b84  9D DB 47    STA sound_duration_hi,X
+.C:4b84  9D DB 47    STA voice_duration_hi,X
 test_bit5:
 .C:4b87  4E 0E 48    LSR instr_bit_cursor
 .C:4b8a  90 0B       BCC test_bit7
 ;--------------------------------------------
 ; Bit 5 set - set voice waveform, keep bits 0-3 of voice control unchanged
 ;--------------------------------------------
-.C:4b8c  BD B1 47    LDA voice_controls,X
+.C:4b8c  BD B1 47    LDA voice_ctrl_shadow,X
 .C:4b8f  29 0F       AND #$0F
 .C:4b91  C8          INY
 .C:4b92  11 BA       ORA (voice_read_ptr),Y
-.C:4b94  9D B1 47    STA voice_controls,X
+.C:4b94  9D B1 47    STA voice_ctrl_shadow,X
 test_bit7:
 .C:4b97  4E 0E 48    LSR instr_bit_cursor
 .C:4b9a  4E 0E 48    LSR instr_bit_cursor
@@ -17483,12 +17483,12 @@ test_bit7:
 ;--------------------------------------------
 ;Check if we have reached the last repetition (#01)
 ;If the repetition count is #00, it means we're starting a repeat run
-.C:4b9f  BD AA 47    LDA instruction_repeat_counter,X
+.C:4b9f  BD AA 47    LDA voice_instr_repcount,X
 .C:4ba2  C9 01       CMP #$01
 .C:4ba4  D0 0B       BNE repetitions_pending
 ;--------------------------------------------
 ;Last repetition occurred - decrease the counter (set it to #00)
-.C:4ba6  DE AA 47    DEC instruction_repeat_counter,X
+.C:4ba6  DE AA 47    DEC voice_instr_repcount,X
 ;Skip the 2 bytes which store the repeat offset and repetition count
 .C:4ba9  C8          INY
 .C:4baa  C8          INY
@@ -17497,7 +17497,7 @@ test_bit7:
 .C:4bae  4C DF 4B    JMP process_next_instruction
 ;--------------------------------------------
 repetitions_pending:
-;There are still repetitions pending (including when instruction_repeat_counter is still 0)
+;There are still repetitions pending (including when voice_instr_repcount is still 0)
 ;Repetitions are handled in this manner:
 ;	-Read 1 byte, which constitutes an offset
 ;	-Subtract the offset from the playback pointer (thus going back to a previous point in the sound instructions)
@@ -17507,12 +17507,12 @@ repetitions_pending:
 ;
 ;Read 1 offset byte - subtract offset from voice_instruction_ptr
 .C:4bb1  C8          INY
-.C:4bb2  BD B8 47    LDA voice_instr_ptr_lo,X
+.C:4bb2  BD B8 47    LDA voice_instr_pc_lo,X
 .C:4bb5  38          SEC
 .C:4bb6  F1 BA       SBC (voice_read_ptr),Y
-.C:4bb8  9D B8 47    STA voice_instr_ptr_lo,X
+.C:4bb8  9D B8 47    STA voice_instr_pc_lo,X
 .C:4bbb  B0 03       BCS adjust_voice_instruction_offset
-.C:4bbd  DE BF 47    DEC voice_instr_ptr_hi,X
+.C:4bbd  DE BF 47    DEC voice_instr_pc_hi,X
 adjust_voice_instruction_offset:
 ;Subtract the same offset from voice_instruction_offset
 .C:4bc0  BD FE 47    LDA voice_instr_offset_lo,X
@@ -17524,14 +17524,14 @@ adjust_voice_instruction_offset:
 read_repeat_count:
 .C:4bce  C8          INY
 ;If there's already a repeat count, just count down
-.C:4bcf  BD AA 47    LDA instruction_repeat_counter,X
+.C:4bcf  BD AA 47    LDA voice_instr_repcount,X
 .C:4bd2  D0 08       BNE count_down_repeats
 ;If there's no repeat count yet, read a new repeat count
 .C:4bd4  B1 BA       LDA (voice_read_ptr),Y
-.C:4bd6  9D AA 47    STA instruction_repeat_counter,X
+.C:4bd6  9D AA 47    STA voice_instr_repcount,X
 .C:4bd9  4C DF 4B    JMP process_next_instruction
 count_down_repeats:
-.C:4bdc  DE AA 47    DEC instruction_repeat_counter,X
+.C:4bdc  DE AA 47    DEC voice_instr_repcount,X
 process_next_instruction:
 ;Jump back to the beginning of the routine to process the next instruction
 .C:4bdf  4C 6B 4A    JMP process_voice_instructions
@@ -17559,17 +17559,17 @@ change_enabled:
 .C:4bef  A8          TAY
 ;Copy voice frequency
 ;Note: if the voice index is 3, we're actually copying the filter cutoff frequency
-.C:4bf0  BD C6 47    LDA voice_frequencies_lo,X
+.C:4bf0  BD C6 47    LDA voice_freq_lo,X
 .C:4bf3  99 00 D4    STA voice1_freq_reg_lo,Y
-.C:4bf6  BD CD 47    LDA voice_frequencies_hi,X
+.C:4bf6  BD CD 47    LDA voice_freq_hi,X
 .C:4bf9  99 01 D4    STA voice1_freq_reg_hi,Y
 ;If voice physical index >= 3, exit
 .C:4bfc  E0 03       CPX #$03
 .C:4bfe  10 0C       BPL exit
 ;Copy ADSR envelope for the voice
-.C:4c00  BD 6C 47    LDA voice_attack_delays,X
+.C:4c00  BD 6C 47    LDA voice_adsr_attack_decay,X
 .C:4c03  99 05 D4    STA voice1_attack_delay_reg,Y
-.C:4c06  BD 6F 47    LDA voice_sustain_releases,X
+.C:4c06  BD 6F 47    LDA voice_adsr_sustain_release,X
 .C:4c09  99 06 D4    STA voice1_sustain_release_reg,Y
 exit:
 .C:4c0c  60          RTS
@@ -17586,7 +17586,7 @@ update_voice_control:
 .C:4c11  BD 55 47    LDA voice_freq_reg_ofs_tbl,X
 .C:4c14  A8          TAY
 ;Set the voice control value
-.C:4c15  BD B1 47    LDA voice_controls,X
+.C:4c15  BD B1 47    LDA voice_ctrl_shadow,X
 .C:4c18  99 04 D4    STA voice1_control_register,Y
 exit:
 .C:4c1b  60          RTS
@@ -17648,10 +17648,10 @@ adjust:
 ;Add offsets to recalculate voice_instruction_ptr
 .C:4c63  18          CLC
 .C:4c64  7D FE 47    ADC voice_instr_offset_lo,X		
-.C:4c67  9D B8 47    STA voice_instr_ptr_lo,X
+.C:4c67  9D B8 47    STA voice_instr_pc_lo,X
 .C:4c6a  AD 14 48    LDA >voice_base
 .C:4c6d  7D 05 48    ADC voice_instr_offset_hi,X		
-.C:4c70  9D BF 47    STA voice_instr_ptr_hi,X
+.C:4c70  9D BF 47    STA voice_instr_pc_hi,X
 return_ff:
 .C:4c73  A9 FF       LDA #$FF
 .C:4c75  60          RTS
@@ -18417,9 +18417,9 @@ set_voice_in_use:
 ;Adjust waveform/filter
 .C:4fb0  20 42 53    JSR adjust_waveform_and_filter_for_voice
 ;Start a note (set bit 1 of voice control)
-.C:4fb3  BD B1 47    LDA voice_controls,X
+.C:4fb3  BD B1 47    LDA voice_ctrl_shadow,X
 .C:4fb6  09 01       ORA #$01
-.C:4fb8  9D B1 47    STA voice_controls,X
+.C:4fb8  9D B1 47    STA voice_ctrl_shadow,X
 .C:4fbb  20 0D 4C    JSR update_voice_control
 ;Restore resource index for voice from stack
 .C:4fbe  68          PLA
@@ -18740,7 +18740,7 @@ exit:
 ;===========================================
 clear_waveform_on_full_stop:
 ;Get current voice control value for this voice
-.C:510a  BD B1 47    LDA voice_controls,X
+.C:510a  BD B1 47    LDA voice_ctrl_shadow,X
 ;Save voice control value in stack
 .C:510d  48          PHA
 ;Copy it to .Y as well
@@ -18759,7 +18759,7 @@ clear_waveform_on_full_stop:
 ;Clear waveform bits and the gate bit (which will stop any ongoing note)
 .C:511c  29 0E       AND #$0E
 ;Apply changes
-.C:511e  9D B1 47    STA voice_controls,X
+.C:511e  9D B1 47    STA voice_ctrl_shadow,X
 .C:5121  20 0D 4C    JSR update_voice_control
 exit:
 ;Restore voice control value from stack
@@ -18772,7 +18772,7 @@ exit:
 ;===========================================
 set_voice_to_unused:
 .C:5126  A9 00       LDA #$00
-.C:5128  9D AA 47    STA instruction_repeat_counter,X
+.C:5128  9D AA 47    STA voice_instr_repcount,X
 ;Mark that this voice is no longer executing instructions
 .C:512b  AD 0C 48    LDA voices_executing_instruction
 .C:512e  3D 63 47    AND voice_alloc_clear_mask_tbl,X
@@ -18812,15 +18812,15 @@ set_refcount_of_sounds_1_and_2:
 ;
 ; The settings copied are:
 ;
-;	voice_attack_delays
-;	voice_sustain_releases
+;	voice_adsr_attack_decay
+;	voice_adsr_sustain_release
 ;	voice_data_base_lo
 ;	sound_data_ptrs
 ;	voice_priority_0
 ;	voice_sound_id_tbl
-;	instruction_for_voice
-;	instruction_repeat_counter
-;	voice_controls
+;	voice_instr_header
+;	voice_instr_repcount
+;	voice_ctrl_shadow
 ;	sound_playback_ptr
 ;	voice_frequencies
 ;	sound_duration
@@ -18834,19 +18834,19 @@ swap_voice_settings:
 .C:51a5  E0 03       CPX #$03
 .C:51a7  10 1C       BPL skip_adsr
 ;--------------
-.C:51a9  BD 6C 47    LDA voice_attack_delays,X
+.C:51a9  BD 6C 47    LDA voice_adsr_attack_decay,X
 .C:51ac  48          PHA
-.C:51ad  B9 68 51    LDA alt_voice_attack_delays,Y
-.C:51b0  9D 6C 47    STA voice_attack_delays,X
+.C:51ad  B9 68 51    LDA alt_voice_adsr_attack_decay,Y
+.C:51b0  9D 6C 47    STA voice_adsr_attack_decay,X
 .C:51b3  68          PLA
-.C:51b4  99 68 51    STA alt_voice_attack_delays,Y
+.C:51b4  99 68 51    STA alt_voice_adsr_attack_decay,Y
 ;--------------
-.C:51b7  BD 6F 47    LDA voice_sustain_releases,X
+.C:51b7  BD 6F 47    LDA voice_adsr_sustain_release,X
 .C:51ba  48          PHA
-.C:51bb  B9 6A 51    LDA alt_voice_sustain_releases,Y
-.C:51be  9D 6F 47    STA voice_sustain_releases,X
+.C:51bb  B9 6A 51    LDA alt_voice_adsr_sustain_release,Y
+.C:51be  9D 6F 47    STA voice_adsr_sustain_release,X
 .C:51c1  68          PLA
-.C:51c2  99 6A 51    STA alt_voice_sustain_releases,Y
+.C:51c2  99 6A 51    STA alt_voice_adsr_sustain_release,Y
 ;--------------
 skip_adsr:
 .C:51c5  BD 79 47    LDA voice_data_base_lo,X
@@ -18877,82 +18877,82 @@ skip_adsr:
 .C:51f9  68          PLA
 .C:51fa  99 75 51    STA $5175,Y
 ;--------------
-.C:51fd  BD A3 47    LDA instruction_for_voice,X
+.C:51fd  BD A3 47    LDA voice_instr_header,X
 .C:5200  48          PHA
 .C:5201  B9 78 51    LDA $5178,Y
-.C:5204  9D A3 47    STA instruction_for_voice,X
+.C:5204  9D A3 47    STA voice_instr_header,X
 .C:5207  68          PLA
 .C:5208  99 78 51    STA $5178,Y
 ;--------------
-.C:520b  BD AA 47    LDA instruction_repeat_counter,X
+.C:520b  BD AA 47    LDA voice_instr_repcount,X
 .C:520e  48          PHA
 .C:520f  B9 7B 51    LDA $517B,Y
-.C:5212  9D AA 47    STA instruction_repeat_counter,X
+.C:5212  9D AA 47    STA voice_instr_repcount,X
 .C:5215  68          PLA
 .C:5216  99 7B 51    STA $517B,Y
 ;--------------
-.C:5219  BD B1 47    LDA voice_controls,X
+.C:5219  BD B1 47    LDA voice_ctrl_shadow,X
 .C:521c  48          PHA
-.C:521d  B9 7E 51    LDA alt_voice_controls,Y
-.C:5220  9D B1 47    STA voice_controls,X
+.C:521d  B9 7E 51    LDA alt_voice_ctrl_shadow,Y
+.C:5220  9D B1 47    STA voice_ctrl_shadow,X
 .C:5223  68          PLA
-.C:5224  99 7E 51    STA alt_voice_controls,Y
+.C:5224  99 7E 51    STA alt_voice_ctrl_shadow,Y
 ;--------------
-.C:5227  BD B8 47    LDA voice_instr_ptr_lo,X
+.C:5227  BD B8 47    LDA voice_instr_pc_lo,X
 .C:522a  48          PHA
 .C:522b  B9 81 51    LDA $5181,Y
-.C:522e  9D B8 47    STA voice_instr_ptr_lo,X
+.C:522e  9D B8 47    STA voice_instr_pc_lo,X
 .C:5231  68          PLA
 .C:5232  99 81 51    STA $5181,Y
 ;--------------
-.C:5235  BD BF 47    LDA voice_instr_ptr_hi,X
+.C:5235  BD BF 47    LDA voice_instr_pc_hi,X
 .C:5238  48          PHA
 .C:5239  B9 84 51    LDA $5184,Y
-.C:523c  9D BF 47    STA voice_instr_ptr_hi,X
+.C:523c  9D BF 47    STA voice_instr_pc_hi,X
 .C:523f  68          PLA
 .C:5240  99 84 51    STA $5184,Y
 ;--------------
-.C:5243  BD C6 47    LDA voice_frequencies_lo,X
+.C:5243  BD C6 47    LDA voice_freq_lo,X
 .C:5246  48          PHA
-.C:5247  B9 87 51    LDA alt_voice_frequencies_lo,Y
-.C:524a  9D C6 47    STA voice_frequencies_lo,X
+.C:5247  B9 87 51    LDA alt_voice_freq_lo,Y
+.C:524a  9D C6 47    STA voice_freq_lo,X
 .C:524d  68          PLA
-.C:524e  99 87 51    STA alt_voice_frequencies_lo,Y
+.C:524e  99 87 51    STA alt_voice_freq_lo,Y
 ;--------------
-.C:5251  BD CD 47    LDA voice_frequencies_hi,X
+.C:5251  BD CD 47    LDA voice_freq_hi,X
 .C:5254  48          PHA
-.C:5255  B9 8A 51    LDA alt_voice_frequencies_hi,Y
-.C:5258  9D CD 47    STA voice_frequencies_hi,X
+.C:5255  B9 8A 51    LDA alt_voice_freq_hi,Y
+.C:5258  9D CD 47    STA voice_freq_hi,X
 .C:525b  68          PLA
-.C:525c  99 8A 51    STA alt_voice_frequencies_hi,Y
+.C:525c  99 8A 51    STA alt_voice_freq_hi,Y
 ;--------------
-.C:525f  BD D4 47    LDA sound_duration_lo,X
+.C:525f  BD D4 47    LDA voice_duration_lo,X
 .C:5262  48          PHA
-.C:5263  B9 8D 51    LDA alt_sound_duration_lo,Y
-.C:5266  9D D4 47    STA sound_duration_lo,X
+.C:5263  B9 8D 51    LDA alt_voice_duration_lo,Y
+.C:5266  9D D4 47    STA voice_duration_lo,X
 .C:5269  68          PLA
-.C:526a  99 8D 51    STA alt_sound_duration_lo,Y
+.C:526a  99 8D 51    STA alt_voice_duration_lo,Y
 ;--------------
-.C:526d  BD DB 47    LDA sound_duration_hi,X
+.C:526d  BD DB 47    LDA voice_duration_hi,X
 .C:5270  48          PHA
-.C:5271  B9 90 51    LDA alt_sound_duration_hi,Y
-.C:5274  9D DB 47    STA sound_duration_hi,X
+.C:5271  B9 90 51    LDA alt_voice_duration_hi,Y
+.C:5274  9D DB 47    STA voice_duration_hi,X
 .C:5277  68          PLA
-.C:5278  99 90 51    STA alt_sound_duration_hi,Y
+.C:5278  99 90 51    STA alt_voice_duration_hi,Y
 ;--------------
-.C:527b  BD E2 47    LDA glissando_lo,X
+.C:527b  BD E2 47    LDA voice_gliss_lo,X
 .C:527e  48          PHA
-.C:527f  B9 93 51    LDA alt_glissando_lo,Y
-.C:5282  9D E2 47    STA glissando_lo,X
+.C:527f  B9 93 51    LDA alt_voice_gliss_lo,Y
+.C:5282  9D E2 47    STA voice_gliss_lo,X
 .C:5285  68          PLA
-.C:5286  99 93 51    STA alt_glissando_lo,Y
+.C:5286  99 93 51    STA alt_voice_gliss_lo,Y
 ;--------------
-.C:5289  BD E9 47    LDA glissando_hi,X
+.C:5289  BD E9 47    LDA voice_gliss_hi,X
 .C:528c  48          PHA
-.C:528d  B9 96 51    LDA alt_glissando_hi,Y
-.C:5290  9D E9 47    STA glissando_hi,X
+.C:528d  B9 96 51    LDA alt_voice_gliss_hi,Y
+.C:5290  9D E9 47    STA voice_gliss_hi,X
 .C:5293  68          PLA
-.C:5294  99 96 51    STA alt_glissando_hi,Y
+.C:5294  99 96 51    STA alt_voice_gliss_hi,Y
 ;--------------
 .C:5297  BD F0 47    LDA voice_base_addr_lo,X
 .C:529a  48          PHA
@@ -18996,7 +18996,7 @@ clear_all_alternate_settings:
 .C:52d5  A2 3C       LDX #$3C
 .C:52d7  A9 00       LDA #$00
 clear_loop:
-.C:52d9  9D 68 51    STA alt_voice_attack_delays,X
+.C:52d9  9D 68 51    STA alt_voice_adsr_attack_decay,X
 .C:52dc  CA          DEX
 .C:52dd  10 FA       BPL clear_loop
 ;Restore registers from stack

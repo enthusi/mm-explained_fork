@@ -419,12 +419,12 @@ Global Inputs
         voice_sound_id_tbl            Resource IDs for voices 0–2
         voices_executing_instruction Per-voice instruction-execution mask
         voice_alloc_set_mask_tbl                Per-voice bit masks for OR operations
-        voice_controls              Current control bytes for SID voices 0–2
+        voice_ctrl_shadow              Current control bytes for SID voices 0–2
 
 Global Outputs
         voice3_in_use               Cleared when releasing voice 3 with no arpeggio
         voices_executing_instruction Updated when repurposing a real voice
-        voice_controls              GATE bit set when retriggering a voice
+        voice_ctrl_shadow              GATE bit set when retriggering a voice
         (Additional outputs written by the deallocate_voice tail, including
          priority clearing, allocation mask updates, resource clearing, and
          refcount adjustments.)
@@ -569,9 +569,9 @@ set_voice_in_use:
 
         jsr     adjust_waveform_and_filter_for_voice
 
-        lda     voice_controls,x
+        lda     voice_ctrl_shadow,x
         ora     #$01                            // Set GATE bit
-        sta     voice_controls,x
+        sta     voice_ctrl_shadow,x
         jsr     update_voice_control            // Commit control changes
 
         pla                                     // Restore resource index
