@@ -42,6 +42,7 @@ inlined_music_ptr = $53cb
 #import "globals.inc"
 #import "constants.inc"
 #import "registers.inc"
+#import "sound_engine.asm"
 
 /*
 ================================================================================
