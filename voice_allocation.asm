@@ -37,7 +37,7 @@ Returns
 
 Global Inputs
         voices_allocated          Bitmask of currently allocated real voices (0–2)
-        set_bitmasks              Per-voice bitmasks used to probe allocation bits
+        voice_alloc_set_mask_tbl              Per-voice bitmasks used to probe allocation bits
 
 Global Outputs
         voices_allocated          Updated indirectly via allocate_voice when a
@@ -53,7 +53,7 @@ Description
           return value.
         - Initializes X to 2 and tests voices 2, 1, then 0 in descending order.
         - For each voice, checks the corresponding bit in voices_allocated via
-          set_bitmasks to determine whether the voice is free.
+          voice_alloc_set_mask_tbl to determine whether the voice is free.
         - On the first free voice, calls allocate_voice, which marks the voice
           allocated, updates priority, and increments the sound’s refcount, then
           returns with X still set to that voice index.
@@ -82,7 +82,7 @@ allocate_available_real_voice:
         ldx     #$02                            // Begin scanning from highest real voice (2)
 
 scan_real_voice_slot:
-        and     set_bitmasks,x                  // Test allocation bit for voice X
+        and     voice_alloc_set_mask_tbl,x                  // Test allocation bit for voice X
         bne     step_prev_real_voice_or_fail                      // Non-zero → allocated → try next lower voice
 
         // ------------------------------------------------------------
@@ -227,7 +227,7 @@ Returns
 
 Global Inputs
         voices_allocated          Voice allocation bitmask (bits 0–2 for voices 0–2)
-        set_bitmasks              Per-voice bitmasks used to test voices_allocated
+        voice_alloc_set_mask_tbl              Per-voice bitmasks used to test voices_allocated
         voice_priority_0          Priority values for voices 0–2
         sound_priority            Priority of the sound being considered for start
         voice3_conflict_flag_b           Non-zero → also evaluate comparison vs. voice #3
@@ -264,7 +264,7 @@ count_evictable_voices:
 // Check if voice X is allocated and, if so, whether it is evictable
 check_if_voice_is_allocated:
         lda     voices_allocated               // A := allocation mask
-        and     set_bitmasks,x                 // Mask for this voice
+        and     voice_alloc_set_mask_tbl,x                 // Mask for this voice
         beq     next_voice                     // Bit clear → voice free, skip
 
         lda     voice_priority_0,x             // A := this voice's priority
@@ -418,7 +418,7 @@ Global Inputs
         voice3_in_use               Flag indicating voice 3 use status
         voice_sound_id_tbl            Resource IDs for voices 0–2
         voices_executing_instruction Per-voice instruction-execution mask
-        set_bitmasks                Per-voice bit masks for OR operations
+        voice_alloc_set_mask_tbl                Per-voice bit masks for OR operations
         voice_controls              Current control bytes for SID voices 0–2
 
 Global Outputs
@@ -564,7 +564,7 @@ set_voice_in_use:
         pha                                     // Save for later refcount decrement
 
         lda     voices_executing_instruction
-        ora     set_bitmasks,x                  // Mark this voice as executing
+        ora     voice_alloc_set_mask_tbl,x                  // Mark this voice as executing
         sta     voices_executing_instruction
 
         jsr     adjust_waveform_and_filter_for_voice
@@ -620,7 +620,7 @@ deallocate_voice:
         sta     voice_priority_0,x             // Clear voice priority
 
         lda     voices_allocated               // Clear voice bit in allocation mask
-        and     clear_bitmasks,x
+        and     voice_alloc_clear_mask_tbl,x
         sta     voices_allocated
 
         jsr     count_available_real_voices    // Recompute number of free real voices
@@ -755,7 +755,7 @@ Returns
 
 Global Inputs
         voices_allocated              Bitmask of real-voice allocation (voices 0–2)
-        set_bitmasks                  Per-voice bitmasks for allocation/update
+        voice_alloc_set_mask_tbl                  Per-voice bitmasks for allocation/update
         sound_priority                Priority value for the sound being assigned
         pending_sound_idx                Resource index of sound whose refcount increases
         voice_priority_0              Table of per-voice priorities
@@ -826,7 +826,7 @@ av_dispatch_non3_index:
         // Real voice (X = 0,1,2): mark allocated and update availability count.
         // ------------------------------------------------------------
         lda     voices_allocated
-        ora     set_bitmasks,x                  // Mark this voice as allocated
+        ora     voice_alloc_set_mask_tbl,x                  // Mark this voice as allocated
         sta     voices_allocated
 
         jsr     count_available_real_voices     // Recompute real-voice availability
