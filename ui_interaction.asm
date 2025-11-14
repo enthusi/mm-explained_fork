@@ -24,10 +24,6 @@
 .const  SCREEN_BASE               = $CC00  // Text screen RAM base
 .const  COLOR_BASE                = $D800  // VIC-II color RAM base
 
-// ------------------------------------------------------------
-// Inventory dataset and parsing
-// ------------------------------------------------------------
-.const  INVENTORY_SLOTS           = $2D    // Total logical item slots (45)
 
 // ------------------------------------------------------------
 // Scroll eligibility thresholds
