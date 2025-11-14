@@ -562,7 +562,7 @@ video_update_signal = $8e			;A synchronization flag - NOT to be confused with vs
 room_bg0_shadow = $8f
 room_bg1_shadow = $90
 needs_sentence_rebuild = $95
-raster_irq_init_pending = $96
+raster_irq_init_pending_flag = $96
 voice_read_ptr = $ba
 sound_data_base = $bc
 vic_memory_layout_shadow = $be
@@ -582,7 +582,7 @@ debug_error_code = $dc
 random_1 = $dd
 random_2 = $de
 random_3 = $df
-irq_entry_lock = $e3
+irq_sync_lock = $e3
 
 decomp_dict4 = $0100
 ;Base address for message bar source buffers
@@ -1800,8 +1800,8 @@ game_code_entry:
 reset_game_engine:
 ;Set raster setup as needed
 .C:0413  A9 01       LDA #$01
-.C:0415  85 96       STA raster_irq_init_pending
-.C:0417  20 E0 33    JSR init_sprites_sound
+.C:0415  85 96       STA raster_irq_init_pending_flag
+.C:0417  20 E0 33    JSR init_raster_and_sound_state
 .C:041a  20 F7 48    JSR reset_logical_voices_and_state
 ;Fill "heap" ($7B7B-C800) with #00
 ;Note: this overwrites the setup code in the range 7FFF-85E3
@@ -5581,12 +5581,12 @@ irq_handler1:
 .C:1682  A0 25       LDY #$25
 .C:1684  84 01       STY cpu_port
 ;Check if irq lock is clear - if so, continue
-.C:1686  A5 E3       LDA irq_entry_lock
+.C:1686  A5 E3       LDA irq_sync_lock
 .C:1688  F0 07       BEQ entry_enabled
 ;IRQ lock is set - clear it and return
 ;Another part of the code was waiting for this lock to be cleared
 .C:168a  A9 00       LDA #$00
-.C:168c  85 E3       STA irq_entry_lock
+.C:168c  85 E3       STA irq_sync_lock
 .C:168e  4C 4B 18    JMP exit
 ;--------------------------------------------------
 entry_enabled:
@@ -12467,15 +12467,15 @@ next_actor:
 .C:33dc  8D 14 FD    STA sprite_bank_sel
 .C:33df  60          RTS
 ;===========================================
-init_sprites_sound:
+init_raster_and_sound_state:
 .C:33e0  AD 16 48    LDA music_playback_in_progress
-.C:33e3  F0 01       BEQ check_raster_irq_init_pending
+.C:33e3  F0 01       BEQ check_raster_irq_init_pending_flag
 .C:33e5  60          RTS
-check_raster_irq_init_pending:
+check_raster_irq_init_pending_flag:
 ;Is raster setup needed?
 ;If so, exit, as the next section will lock and wait for a synchronization flag
 ; that only the irq_handler will set. And that will happen only AFTER doing the raster setup.
-.C:33e6  A5 96       LDA raster_irq_init_pending
+.C:33e6  A5 96       LDA raster_irq_init_pending_flag
 .C:33e8  D0 31       BNE exit
 ;map_in_io
 .C:33ea  A0 25       LDY #$25
@@ -12483,9 +12483,9 @@ check_raster_irq_init_pending:
 ;Wait for irq_handler1 to be executed at least once
 ;Set the synchronization flag and wait for the IRQ handler to clear it
 .C:33ee  A9 01       LDA #$01
-.C:33f0  85 E3       STA irq_entry_lock
+.C:33f0  85 E3       STA irq_sync_lock
 wait_for_irq_handler_entry:
-.C:33f2  A5 E3       LDA irq_entry_lock
+.C:33f2  A5 E3       LDA irq_sync_lock
 .C:33f4  D0 FC       BNE wait_for_irq_handler_entry
 ;At this point, we're sure the IRQ handler has just exited
 ;Disable interrupts
@@ -12512,7 +12512,7 @@ io_finished:
 .C:3415  84 01       STY cpu_port
 ;Signal that raster setup is needed
 .C:3417  A9 01       LDA #$01
-.C:3419  85 96       STA raster_irq_init_pending
+.C:3419  85 96       STA raster_irq_init_pending_flag
 exit:
 .C:341b  60          RTS
 ;===========================================
@@ -12520,7 +12520,7 @@ exit:
 ;===========================================
 init_raster_irq_env:
 ;Is raster setup not needed? If so, exit
-.C:341c  A5 96       LDA raster_irq_init_pending
+.C:341c  A5 96       LDA raster_irq_init_pending_flag
 .C:341e  F0 44       BEQ exit
 ;map_in_io
 .C:3420  A0 25       LDY #$25
@@ -12562,7 +12562,7 @@ finalize_setup:
 .C:345f  58          CLI
 ;Raster setup is complete, mark as not needed
 .C:3460  A9 00       LDA #$00
-.C:3462  85 96       STA raster_irq_init_pending
+.C:3462  85 96       STA raster_irq_init_pending_flag
 exit:
 .C:3464  60          RTS
 ;===========================================
@@ -12605,7 +12605,7 @@ next_costume:
 .C:3487  A9 C8       LDA #$C8
 .C:3489  8D 66 06    STA cam_target_pos
 ;Initialize sprites and sound
-.C:348c  20 E0 33    JSR init_sprites_sound
+.C:348c  20 E0 33    JSR init_raster_and_sound_state
 ;Load new room's assets
 .C:348f  20 A4 34    JSR room_switch_load_assets
 ;Execute the room's entry script
@@ -13883,7 +13883,7 @@ print_message_wait_for_button:
 .C:3b15  A0 25       LDY #$25
 .C:3b17  84 01       STY cpu_port
 ;If raster setup is needed, don't change screen and video settings
-.C:3b19  A5 96       LDA raster_irq_init_pending
+.C:3b19  A5 96       LDA raster_irq_init_pending_flag
 .C:3b1b  F0 12       BEQ clear_topbar_text_2
 ;Disable blank screen (set bit 4)
 .C:3b1d  AD 11 D0    LDA vic_screen_control_register_1
@@ -13914,7 +13914,7 @@ wait_for_button_press:
 ;Clear the top bar msg
 .C:3b45  20 57 28    JSR clear_topbar_text
 ;If raster setup is needed, don't turn the screen off
-.C:3b48  A5 96       LDA raster_irq_init_pending
+.C:3b48  A5 96       LDA raster_irq_init_pending_flag
 .C:3b4a  F0 08       BEQ exit
 ;Enable blank screen (clear bit 4)
 .C:3b4c  AD 11 D0    LDA vic_screen_control_register_1
@@ -24291,7 +24291,7 @@ copy_object_name:
 ;===========================================
 destination_variable = $d0
 
-.C:6a04  20 E0 33    JSR init_sprites_sound
+.C:6a04  20 E0 33    JSR init_raster_and_sound_state
 ;Side 0? Save game disk?
 .C:6a07  A9 30       LDA #$30
 .C:6a09  8D 9C FE    STA active_side_id
@@ -24450,7 +24450,7 @@ restart_game:
 ;===========================================
 ;Opcode #6E - setup sprites and sound
 ;===========================================
-.C:6ad1  20 E0 33    JSR init_sprites_sound
+.C:6ad1  20 E0 33    JSR init_raster_and_sound_state
 .C:6ad4  60          RTS
 ;===========================================
 ;Opcode #EE - setup raster interrupts
@@ -26053,7 +26053,7 @@ exit_shutter:
 ;Do raster setup until it's no longer needed
 ensure_raster_irq_ready:
 .C:d7ba  A2 00       LDX #$00
-.C:d7bc  A5 96       LDA raster_irq_init_pending
+.C:d7bc  A5 96       LDA raster_irq_init_pending_flag
 .C:d7be  F0 06       BEQ set_irq_handler1_signal
 .C:d7c0  20 1C 34    JSR init_raster_irq_env
 .C:d7c3  4C BC D7    JMP ensure_raster_irq_ready
