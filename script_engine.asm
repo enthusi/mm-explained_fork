@@ -524,7 +524,6 @@ scan_tasks_for_resource:
 
 		// Task active?
         ldx     task_state_tbl,y                // X := task[Y].state
-        cmp     #$00                            // (preserve A for clarity; state compare uses X)
         cpx     #TASK_STATE_INACTIVE            // inactive already?
         beq     step_prev_task_or_exit          // yes → nothing to do for this task
 
