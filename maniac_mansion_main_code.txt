@@ -2162,7 +2162,7 @@ show_cursor:
 ; Walking sounds generation
 ;--------------------------------------------------
 make_walk_sounds:
-.C:05de  20 14 07    JSR make_walking_sounds
+.C:05de  20 14 07    JSR update_walking_sounds
 ;--------------------------------------------------
 ; Flashlight beam handling
 ;--------------------------------------------------
@@ -2410,7 +2410,7 @@ calculate_visible_edges:
 ;===========================================
 entry_counter = $066f
 
-make_walking_sounds:
+update_walking_sounds:
 ;Are we in room #01 ("Front of mansion")? If so, exit - walking sounds don't apply here
 .C:0714  AD 49 71    LDA current_room
 .C:0717  C9 01       CMP #$01
