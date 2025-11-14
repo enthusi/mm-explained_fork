@@ -105,6 +105,104 @@
 
 /*
 ================================================================================
+  init_raster_and_sound_state
+================================================================================
+Summary
+	Coordinate with the raster IRQ handler, then blank the screen, disable
+	sprites, and conditionally mute SID while establishing a known VIC/SID
+	baseline for subsequent raster-driven effects.
+
+Arguments
+	None (uses global flags and hardware-mapped registers)
+
+Returns
+	None (state changes are applied via globals and hardware registers)
+
+Global Inputs
+	music_playback_in_progress 		Non-zero if music playback is currently active
+	raster_irq_init_pending_flag 	Non-zero if raster IRQ init is already pending
+	irq_sync_lock 					Handshake flag cleared by IRQ handler
+	voice_instr_active_mask 		Bitmask of currently active logical voices
+
+Global Outputs
+	vic_screen_control_reg_1 		Set to CTRL1_BLANK_PRESET baseline
+	vic_sprite_enable_reg 			Cleared to disable all sprites
+	vic_border_color_reg 			Set to COLOR_BLACK
+	voice_active_mask_snapshot 		Snapshot copy of voice_instr_active_mask
+	sid_master_volume 				Set to 0 when any voice is active (mute)
+	raster_irq_init_pending_flag 	Set TRUE to request/mark raster IRQ init
+
+Description
+	- Exits immediately if music is active to avoid disrupting ongoing audio.
+	- Skips initialization if the raster IRQ init flag is already set.
+	- Maps I/O into the CPU address space via cpu_port for VIC/SID access.
+	- Uses irq_sync_lock to wait until the raster IRQ handler has run once.
+	- Disables interrupts and applies a known VIC screen-control preset.
+	- Disables all sprites and forces the border color to black.
+	- Snapshots the current voice-activity mask and, if any voices are
+	active, mutes SID master volume to prevent artifacts during setup.
+	- Restores the normal memory configuration and sets the raster init flag.
+================================================================================
+*/
+* = $33E0
+init_raster_and_sound_state:
+        // Skip if music playback is active
+        lda     music_playback_in_progress
+        beq     check_raster_init_guard
+        rts
+
+check_raster_init_guard:
+        // Skip if raster-IRQ init already pending/in progress
+        lda     raster_irq_init_pending_flag
+        bne     init_raster_and_sound_exit
+
+        // Map I/O in (memory config = $25)
+        ldy     #MAP_IO_IN
+        sty     cpu_port
+
+        // Handshake with IRQ: set lock and wait until IRQ clears it
+        lda     #LOCK_SET
+        sta     irq_sync_lock
+wait_for_irq_entry_unlock:
+        lda     irq_sync_lock
+        bne     wait_for_irq_entry_unlock
+
+        // IRQ has just returned → disable interrupts
+        sei
+
+        // Blank screen / 25 rows / scroll settings
+        lda     #CTRL1_BLANK_PRESET
+        sta     vic_screen_control_reg_1
+
+        // Disable all sprites
+        lda     #SPRITES_DISABLE_ALL
+        sta     vic_sprite_enable_reg
+
+        // Set border color = black
+        lda     #COLOR_BLACK
+        sta     vic_border_color_reg
+
+        // Snapshot voice-activity mask and mute SID if any voices active
+        lda     voice_instr_active_mask
+        sta     voice_active_mask_snapshot
+        beq     restore_memmap_after_io
+        lda     #$00
+        sta     sid_master_volume
+
+restore_memmap_after_io:
+        // Restore normal memory map (I/O out)
+        ldy     #MAP_IO_OUT
+        sty     cpu_port
+
+        // Mark raster-IRQ init as pending
+        lda     #TRUE
+        sta     raster_irq_init_pending_flag
+
+init_raster_and_sound_exit:
+        rts
+
+/*
+================================================================================
   init_memory_sound_and_video
 ================================================================================
 Summary
