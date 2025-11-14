@@ -580,7 +580,7 @@ They were definitely intended as debugging aids.
 .label interrupted_script_index = $fea7
 .label sentence_parts = $fe1f
 
-.label sid_master_volume_saved = $476A
+.label sid_volfilt_reg_shadow = $476A
 
 .label inventory_objects = $7031
 .label room_obj_idx_hi = $7221
@@ -666,7 +666,7 @@ They were definitely intended as debugging aids.
 .label voice_base_addr_hi = $47f7
 .label voice_instr_loop_ofs_lo = $47fe
 .label voice_instr_loop_ofs_hi = $4805
-.label voices_executing_instruction = $480c	//Bitmask that holds which voices are currently executing sound instructions
+.label voice_instr_active_mask = $480c	//Bitmask that holds which voices are currently executing sound instructions
 
 .label voice_sid_range_flags = $4811	//#00 if X < 3, #FF otherwise
 
@@ -706,11 +706,11 @@ They were definitely intended as debugging aids.
 
 //Combine multiple notes in one voice by arpeggio
 .label arpeggio_ongoing = $5160	// #00 = disabled, #FF = enabled
-.label arpeggio2_active_flag = $5161		// #00 = disabled, #FF = enabled
-.label arpeggio1_active_flag = $5162		// #00 = disabled, #FF = enabled
-.label filter_enable_flag = $5164			// #00 = filter voice, #FF = stop filtering voice
-.label filter_pass_select = $5166
-.label all_alt_settings_cleared = $5167	// #00 = false, #FF = true
+.label arpeggio_secondary_active_flag = $5161		// #00 = disabled, #FF = enabled
+.label arpeggio_primary_active_flag = $5162		// #00 = disabled, #FF = enabled
+.label filter_arpeggio_enabled_flag = $5164			// #00 = filter voice, #FF = stop filtering voice
+.label filter_mode_mask = $5166
+.label alt_voice_slots_cleared_flag = $5167	// #00 = false, #FF = true
 
 .label alt_voice_adsr_attack_decay = $5168
 .label alt_voice_adsr_sustain_release = $516a
@@ -723,6 +723,18 @@ They were definitely intended as debugging aids.
 .label alt_voice_duration_hi = $5190
 .label alt_voice_gliss_lo = $5193
 .label alt_voice_gliss_hi = $5196
+.label alt_voice_priority_0         = $5172  // Alternate priority for voice slots 0–2 (indexed by Y)
+.label alt_voice_sound_id_tbl       = $5175  // Alternate sound ID for voice slots 0–2 (indexed by Y)
+.label alt_voice_instr_header       = $5178  // Alternate instruction header byte for voice slots 0–2
+.label alt_voice_instr_repcount     = $517B  // Alternate instruction repetition count for voice slots 0–2
+.label alt_voice_instr_pc_lo        = $5181  // Alternate instruction PC low byte for voice slots 0–2
+.label alt_voice_instr_pc_hi        = $5184  // Alternate instruction PC high byte for voice slots 0–2
+.label alt_voice_base_addr_lo       = $5199  // Alternate base address low byte for voice slots 0–2
+.label alt_voice_base_addr_hi       = $519C  // Alternate base address high byte for voice slots 0–2
+.label alt_voice_instr_loop_ofs_lo  = $519F  // Alternate loop offset low byte for voice instruction for slots 0–2
+.label alt_voice_instr_loop_ofs_hi  = $51A2  // Alternate loop offset high byte for voice instruction for slots 0–2
+.label inlined_music_address = $48d5
+.label inlined_music_ptr = $53cb          
 
 .label music_in_progress_ptr = $547c
 //Relative offset constants lo/hi for each sound track
