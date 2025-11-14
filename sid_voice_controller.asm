@@ -133,7 +133,7 @@ Global Outputs
 	voice_freq_hi     Glissando-adjusted frequency high byte
 
 Returns
-	None (may call process_voice_instructions and update_voice_freq_and_env
+	None (may call decode_voice_instruction and update_voice_freq_and_env
 	as part of expiring the current instruction)
 
 Description
@@ -142,7 +142,7 @@ Description
 	- If the resulting duration is still non-zero, applies one glissando delta 
 	step to the cached 16-bit frequency and then commits the new pitch 
 	via update_voice_freq_and_env.
-	- If the duration underflows to zero, calls	process_voice_instructions to 
+	- If the duration underflows to zero, calls	decode_voice_instruction to 
 	advance the voice script and then refreshes the voice’s frequency/envelope 
 	instead of applying	further glissando.
 	- Records whether X is within the primary SID voice range in voice_sid_range_flags 
@@ -195,7 +195,7 @@ store_voice_index_flag:
 		// recompute/commit its new frequency and envelope to SID; 
 		// no further glissando is applied on this tick.
 		// ------------------------------------------------------------
-		jsr     process_voice_instructions    // Fetch and execute next voice instruction(s)
+		jsr     decode_voice_instruction    // Fetch and execute next voice instruction(s)
 		jsr     update_voice_freq_and_env 	  // Apply new frequency/ADSR after instruction change
 		rts                                   
 

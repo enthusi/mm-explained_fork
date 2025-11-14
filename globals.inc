@@ -664,8 +664,8 @@ They were definitely intended as debugging aids.
 .label voice_gliss_hi = $47e9
 .label voice_base_addr_lo = $47f0
 .label voice_base_addr_hi = $47f7
-.label voice_instr_offset_lo = $47fe
-.label voice_instr_offset_hi = $4805
+.label voice_instr_loop_ofs_lo = $47fe
+.label voice_instr_loop_ofs_hi = $4805
 .label voices_executing_instruction = $480c	//Bitmask that holds which voices are currently executing sound instructions
 
 .label voice_sid_range_flags = $4811	//#00 if X < 3, #FF otherwise

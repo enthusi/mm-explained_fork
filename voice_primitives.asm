@@ -189,11 +189,11 @@ repair_after_relocation:
         // Recalculate voice_instruction_ptr := tmp_voice_sound_base + voice_instruction_offset
         clc
         lda     <tmp_voice_sound_base
-        adc     voice_instr_offset_lo,x
+        adc     voice_instr_loop_ofs_lo,x
         sta     voice_instr_pc_lo,x
 
         lda     >tmp_voice_sound_base
-        adc     voice_instr_offset_hi,x
+        adc     voice_instr_loop_ofs_hi,x
         sta     voice_instr_pc_hi,x
 
         lda     #$ff                       // Return #$FF → relocation occurred, pointers adjusted

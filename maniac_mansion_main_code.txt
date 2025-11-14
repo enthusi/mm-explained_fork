@@ -723,8 +723,8 @@ voice_gliss_lo = $47e2
 voice_gliss_hi = $47e9
 voice_base_addr_lo = $47f0
 voice_base_addr_hi = $47f7
-voice_instr_offset_lo = $47fe
-voice_instr_offset_hi = $4805
+voice_instr_loop_ofs_lo = $47fe
+voice_instr_loop_ofs_hi = $4805
 voices_executing_instruction = $480c	;Bitmask that holds which voices are currently executing sound instructions
 
 voice_sid_range_flags = $4811	;#00 if X < 3, #FF otherwise
@@ -16970,9 +16970,9 @@ set_voice_sid_range_flags_flag:
 .C:4955  8E 0D 48    STX active_voice
 ;Load voice instruction offset from the voice data offsets (which were set up in start_sound)
 .C:4958  BD 8E 47    LDA voice_data_offsets_hi,X
-.C:495b  9D 05 48    STA voice_instr_offset_hi,X
+.C:495b  9D 05 48    STA voice_instr_loop_ofs_hi,X
 .C:495e  BD 87 47    LDA voice_data_offsets_lo,X
-.C:4961  9D FE 47    STA voice_instr_offset_lo,X
+.C:4961  9D FE 47    STA voice_instr_loop_ofs_lo,X
 ;Update voice's base address and instruction pointer
 .C:4964  20 1C 4C    JSR update_voice_base_and_instruction_ptr
 ;-------------------------------------------
@@ -16988,7 +16988,7 @@ set_voice_sid_range_flags_flag:
 .C:4973  BD 79 47    LDA voice_data_base_lo,X
 .C:4976  9D F0 47    STA voice_base_addr_lo,X
 .C:4979  18          CLC
-.C:497a  7D FE 47    ADC voice_instr_offset_lo,X
+.C:497a  7D FE 47    ADC voice_instr_loop_ofs_lo,X
 .C:497d  9D B8 47    STA voice_instr_pc_lo,X
 .C:4980  85 BA       STA <voice_read_ptr
 ;Check that the hi byte is non-zero - if not, continue with the hi byte
@@ -17006,7 +17006,7 @@ set_voice_sid_range_flags_flag:
 ;Finalize the pointer setup, now with the hi byte
 set_hi_bytes:
 .C:498e  9D F7 47    STA voice_base_addr_hi,X
-.C:4991  7D 05 48    ADC voice_instr_offset_hi,X
+.C:4991  7D 05 48    ADC voice_instr_loop_ofs_hi,X
 .C:4994  9D BF 47    STA voice_instr_pc_hi,X
 .C:4997  85 BB       STA >voice_read_ptr
 ;-------------------------------------------
@@ -17070,7 +17070,7 @@ move_pointers:
 .C:49dd  1D 5C 47    ORA voice_alloc_set_mask_tbl,X
 .C:49e0  8D 0C 48    STA voices_executing_instruction
 ;Process instructions for this voice
-.C:49e3  20 6B 4A    JSR process_voice_instructions
+.C:49e3  20 6B 4A    JSR decode_voice_instruction
 .C:49e6  60          RTS
 ;===========================================
 ; Set filter and volume control, by reading 2 bytes
@@ -17108,10 +17108,10 @@ update_offset:
 ;Add read offset to voice_instruction_offset
 .C:4a0d  98          TYA
 .C:4a0e  18          CLC
-.C:4a0f  7D FE 47    ADC voice_instr_offset_lo,X
-.C:4a12  9D FE 47    STA voice_instr_offset_lo,X
+.C:4a0f  7D FE 47    ADC voice_instr_loop_ofs_lo,X
+.C:4a12  9D FE 47    STA voice_instr_loop_ofs_lo,X
 .C:4a15  90 03       BCC exit
-.C:4a17  FE 05 48    INC voice_instr_offset_hi,X
+.C:4a17  FE 05 48    INC voice_instr_loop_ofs_hi,X
 exit:
 .C:4a1a  60          RTS
 ;===========================================
@@ -17152,7 +17152,7 @@ set_result:
 ;If carry is set, duration countdown still ongoing
 .C:4a3c  B0 07       BCS do_glissando
 ;Duration countdown expired - process next sound instruction
-.C:4a3e  20 6B 4A    JSR process_voice_instructions
+.C:4a3e  20 6B 4A    JSR decode_voice_instruction
 .C:4a41  20 E6 4B    JSR update_voice_freq_and_env
 .C:4a44  60          RTS
 ;-----------------------------------
@@ -17236,7 +17236,7 @@ instr_bit_cursor = $480e
 instr_op_flags = $480f
 instruction_original = $4810
 
-process_voice_instructions:
+decode_voice_instruction:
 .C:4a6b  AE 0D 48    LDX voice_index
 .C:4a6e  20 1C 4C    JSR update_voice_base_and_instruction_ptr
 ;Check return value - if it's #01, then sound pointers are not correct (sound evicted? stopped?)
@@ -17515,12 +17515,12 @@ repetitions_pending:
 .C:4bbd  DE BF 47    DEC voice_instr_pc_hi,X
 adjust_voice_instruction_offset:
 ;Subtract the same offset from voice_instruction_offset
-.C:4bc0  BD FE 47    LDA voice_instr_offset_lo,X
+.C:4bc0  BD FE 47    LDA voice_instr_loop_ofs_lo,X
 .C:4bc3  38          SEC
 .C:4bc4  F1 BA       SBC (voice_read_ptr),Y
-.C:4bc6  9D FE 47    STA voice_instr_offset_lo,X
+.C:4bc6  9D FE 47    STA voice_instr_loop_ofs_lo,X
 .C:4bc9  B0 03       BCS read_repeat_count
-.C:4bcb  DE 05 48    DEC voice_instr_offset_hi,X
+.C:4bcb  DE 05 48    DEC voice_instr_loop_ofs_hi,X
 read_repeat_count:
 .C:4bce  C8          INY
 ;If there's already a repeat count, just count down
@@ -17534,7 +17534,7 @@ count_down_repeats:
 .C:4bdc  DE AA 47    DEC voice_instr_repcount,X
 process_next_instruction:
 ;Jump back to the beginning of the routine to process the next instruction
-.C:4bdf  4C 6B 4A    JMP process_voice_instructions
+.C:4bdf  4C 6B 4A    JMP decode_voice_instruction
 ;--------------------------------------------
 ;Bit 7 clear - exit
 ;--------------------------------------------
@@ -17647,10 +17647,10 @@ adjust:
 .C:4c60  9D F0 47    STA voice_base_addr_lo,X
 ;Add offsets to recalculate voice_instruction_ptr
 .C:4c63  18          CLC
-.C:4c64  7D FE 47    ADC voice_instr_offset_lo,X		
+.C:4c64  7D FE 47    ADC voice_instr_loop_ofs_lo,X		
 .C:4c67  9D B8 47    STA voice_instr_pc_lo,X
 .C:4c6a  AD 14 48    LDA >voice_base
-.C:4c6d  7D 05 48    ADC voice_instr_offset_hi,X		
+.C:4c6d  7D 05 48    ADC voice_instr_loop_ofs_hi,X		
 .C:4c70  9D BF 47    STA voice_instr_pc_hi,X
 return_ff:
 .C:4c73  A9 FF       LDA #$FF
@@ -18968,17 +18968,17 @@ skip_adsr:
 .C:52af  68          PLA
 .C:52b0  99 9C 51    STA $519C,Y
 ;--------------
-.C:52b3  BD FE 47    LDA voice_instr_offset_lo,X
+.C:52b3  BD FE 47    LDA voice_instr_loop_ofs_lo,X
 .C:52b6  48          PHA
 .C:52b7  B9 9F 51    LDA $519F,Y
-.C:52ba  9D FE 47    STA voice_instr_offset_lo,X
+.C:52ba  9D FE 47    STA voice_instr_loop_ofs_lo,X
 .C:52bd  68          PLA
 .C:52be  99 9F 51    STA $519F,Y
 ;--------------
-.C:52c1  BD 05 48    LDA voice_instr_offset_hi,X
+.C:52c1  BD 05 48    LDA voice_instr_loop_ofs_hi,X
 .C:52c4  48          PHA
 .C:52c5  B9 A2 51    LDA $51A2,Y
-.C:52c8  9D 05 48    STA voice_instr_offset_hi,X
+.C:52c8  9D 05 48    STA voice_instr_loop_ofs_hi,X
 .C:52cb  68          PLA
 .C:52cc  99 A2 51    STA $51A2,Y
 .C:52cf  60          RTS
