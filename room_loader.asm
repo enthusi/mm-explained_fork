@@ -7,6 +7,7 @@
 #import "room_gfx_rsrc.asm"
 #import "sentence_action.asm"
 #import "irq_handlers.asm"
+#import "init_engine.asm"
 
 
 
@@ -201,7 +202,7 @@ next_costume:
 		sta     cam_target_pos       
 
 		// Re-init sprites/sound engine before loading room assets
-		jsr     init_sprites_sound
+		jsr     init_raster_and_sound_state
 
 		// Switch assets to the new room (updates current_room, loads base data, etc.)
 		jsr     room_switch_load_assets
