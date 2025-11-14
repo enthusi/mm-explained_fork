@@ -160,7 +160,6 @@ Current values: both 7.
 drag_shift_counts:
         .byte $07, $07
 		
-.const CURSOR_Y_BIAS   = $08          // Bias before halving Y
 .const X_RIGHT_LIMIT               = $A0     // compare threshold (valid if < $A0)
 .const X_MAX_CLAMP                 = $9F     // max in-range X after clamp
 .const Y_BOTTOM_LIMIT              = $C0     // compare threshold (valid if < $C0)
