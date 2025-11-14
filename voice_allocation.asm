@@ -6,10 +6,6 @@
 #import "sid_voice_controller.asm"
 #import "voice_primitives.asm"
 
-.label clear_all_alternate_settings = $0
-.label process_arpeggio = $0
-.label adjust_waveform_and_filter_for_voice = $0
-
 .label voice3_priority_is_higher_flag_b        = $4cf7   // Result of comparing sound_priority vs. voice_priority_3 (00 or FF)
 .label min_alloc_voice_priority = $4cfc   // Lowest priority value found among allocated voices 0–2
 .label min_alloc_voice_idx      = $4cfd   // Voice index (0–2) holding the lowest allocated priority
@@ -408,22 +404,22 @@ Returns
 
 Global Inputs
         arpeggio_ongoing            Non-zero if any arpeggio is active
-        arpeggio1_active_flag           Arpeggio-1 activity flag
-        arpeggio2_active_flag           Arpeggio-2 activity flag
+        arpeggio_primary_active_flag           Arpeggio-1 activity flag
+        arpeggio_secondary_active_flag           Arpeggio-2 activity flag
         voice_priority_0            Priority value for voices 0–2
         voice_priority_3            Priority for voice 3
         stop_sound_cleanup_mode             Sound-stop mode selector (#$01 = full-stop)
         lowest_priority_sound_starting_flag  Non-zero if a new sound of priority 1 is starting
-        filter_enable_flag          Global filter enable flag
+        filter_arpeggio_enabled_flag          Global filter enable flag
         voice3_in_use               Flag indicating voice 3 use status
         voice_sound_id_tbl            Resource IDs for voices 0–2
-        voices_executing_instruction Per-voice instruction-execution mask
+        voice_instr_active_mask Per-voice instruction-execution mask
         voice_alloc_set_mask_tbl                Per-voice bit masks for OR operations
         voice_ctrl_shadow              Current control bytes for SID voices 0–2
 
 Global Outputs
         voice3_in_use               Cleared when releasing voice 3 with no arpeggio
-        voices_executing_instruction Updated when repurposing a real voice
+        voice_instr_active_mask Updated when repurposing a real voice
         voice_ctrl_shadow              GATE bit set when retriggering a voice
         (Additional outputs written by the deallocate_voice tail, including
          priority clearing, allocation mask updates, resource clearing, and
@@ -432,8 +428,8 @@ Global Outputs
 Description
         - Saves A, X, Y on the stack.
         - If arpeggio_ongoing is non-zero:
-              • For voice 0: disable arpeggio1_active_flag and clear alternate settings.
-              • Disable arpeggio2_active_flag for all voices.
+              • For voice 0: disable arpeggio_primary_active_flag and clear alternate settings.
+              • Disable arpeggio_secondary_active_flag for all voices.
               • Fully deallocate the voice via dv_clear_voice_resource_id.
         - If no arpeggio:
               • For voice 3 only, clear voice3_in_use.
@@ -443,7 +439,7 @@ Description
                           - Otherwise, clear note for voices 0–2 and deallocate.
                     · If != 1:
                           - Unless lowest_priority_sound_starting_flag and
-                            arpeggio1_active_flag are both active, deallocate.
+                            arpeggio_primary_active_flag are both active, deallocate.
                           - Voice index must be < 3 or deallocate.
                           - If filter disabled, or voice3_in_use is zero,
                                 repurpose the voice:
@@ -478,12 +474,12 @@ release_voice:
 
         cpx     #$00                            // Voice 0 has special handling
         bne     rv_disable_arp2_and_free
-        stx     arpeggio1_active_flag               // Voice 0 → clear arpeggio1_active_flag
+        stx     arpeggio_primary_active_flag               // Voice 0 → clear arpeggio_primary_active_flag
         jsr     clear_all_alternate_settings    // Clear alternate arpeggio settings
 
 rv_disable_arp2_and_free:
         lda     #FALSE
-        sta     arpeggio2_active_flag               // Disable arpeggio #2 globally
+        sta     arpeggio_secondary_active_flag               // Disable arpeggio #2 globally
         jmp     dv_clear_voice_resource_id        // Fully deallocate (via deallocate_voice tail)
 
         // ------------------------------------------------------------
@@ -533,7 +529,7 @@ rv_priority_ne_min_path:
         lda     lowest_priority_sound_starting_flag
         beq     deallocate_voice                // No priority-1 incoming → free voice
 
-        lda     arpeggio1_active_flag
+        lda     arpeggio_primary_active_flag
         beq     deallocate_voice                // No arpeggio-1 active → free voice
 
         cpx     #$03
@@ -543,11 +539,11 @@ rv_priority_ne_min_path:
         // At this point:
         //   - priority != 1
         //   - lowest_priority_sound_starting_flag != 0
-        //   - arpeggio1_active_flag != 0
+        //   - arpeggio_primary_active_flag != 0
         //   - voice index is 0–2
         // Deciding whether to repurpose voice or fully release.
         // ------------------------------------------------------------
-        lda     filter_enable_flag
+        lda     filter_arpeggio_enabled_flag
         beq     set_voice_in_use                // Filter disabled → repurpose this voice
 
         lda     voice3_in_use
@@ -563,11 +559,11 @@ set_voice_in_use:
         lda     voice_sound_id_tbl,x              // Load current resource index
         pha                                     // Save for later refcount decrement
 
-        lda     voices_executing_instruction
+        lda     voice_instr_active_mask
         ora     voice_alloc_set_mask_tbl,x                  // Mark this voice as executing
-        sta     voices_executing_instruction
+        sta     voice_instr_active_mask
 
-        jsr     adjust_waveform_and_filter_for_voice
+        jsr     apply_arpeggio_and_filter_for_voice
 
         lda     voice_ctrl_shadow,x
         ora     #$01                            // Set GATE bit
