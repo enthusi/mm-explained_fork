@@ -132,7 +132,7 @@ Description
 * = $5F2B
 refresh_inventory_io_guarded:
         lda     control_mode                 // load current control mode
-        cmp     CUTSCENE_CONTROL_MODE        // are we already in cutscene mode?
+        cmp     #CUTSCENE_CONTROL_MODE        // are we already in cutscene mode?
         beq     return_early_if_cutscene     // yes → nothing to redraw safely here
 
         lda     control_mode                 // save previous control mode
@@ -153,7 +153,6 @@ refresh_inventory_io_guarded:
 
 return_early_if_cutscene:
         rts                                   
-
 /*
 ================================================================================
 step_cursor_and_dispatch_hotspot
@@ -283,7 +282,7 @@ handle_click:
 
         ldx     hotspot_entry_ofs
         cpx     #HOTSPOT_END
-        beq     exit_hotspot_handler
+        beq     register_press_and_exit
 
         lda     hotspot_type,x
         asl
@@ -294,11 +293,10 @@ handle_click:
         sta     inlined_click_handler+1
 
         jsr     $0000                  // invoke click handler
+register_press_and_exit:		
         inc     button_presses
-
 exit_hotspot_handler:
         rts
-
 /*
 ================================================================================
 render_all_hotspots
@@ -394,7 +392,6 @@ next_region:
         // Done drawing all regions → update cursor physics from hotspot
         // ------------------------------------------------------------
         jmp     update_cursor_physics_from_hotspot
-
 /*
 ================================================================================
 compute_corrected_cursor_pos
@@ -493,7 +490,6 @@ compute_corrected_cursor_pos:
 * = $F3E8
 dummy_handler:
 		rts
-
 /*
 ================================================================================
 apply_highlight_color_and_fill
@@ -542,7 +538,6 @@ apply_highlight_color_and_fill:
         lda     hotspot_apply_highlight_color_and_fill,y
         sta     hotspot_text_color
         jmp     fill_hotspot_color_span
-
 /*
 ================================================================================
 apply_normal_color_and_fill
@@ -593,7 +588,6 @@ apply_normal_color_and_fill:
         lda     hotspot_normal_colors,y
         sta     hotspot_text_color
         jmp     fill_hotspot_color_span
-
 /*
 ================================================================================
 enter_verb_hotspot_render
@@ -631,8 +625,6 @@ enter_verb_hotspot_render:
         // ------------------------------------------------------------
         jsr     render_verb_label
         jmp     apply_normal_color_and_fill
-
-
 /*
 ================================================================================
 enter_item_hotspot_render
@@ -665,7 +657,6 @@ enter_item_hotspot_render:
         // ------------------------------------------------------------
         jsr     render_item_name_if_owned
         jmp     apply_normal_color_and_fill
-
 /*
 ================================================================================
 enter_scroll_hotspot_render
@@ -698,7 +689,6 @@ enter_scroll_hotspot_render:
         // ------------------------------------------------------------
         jsr     render_scroll_arrow_if_eligible
         jmp     apply_normal_color_and_fill
-
 /*
 ================================================================================
 enter_sentence_bar_render
@@ -736,7 +726,6 @@ enter_sentence_bar_render:
         sta     src_ptr + 1                           // >src_ptr := $F609 (hi)
         jsr     blit_text_to_hotspot_row
         jmp     apply_normal_color_and_fill
-
 /*
 ================================================================================
 click_room_scene_mark
@@ -773,8 +762,6 @@ click_room_scene_mark:
         lda     #TRUE
         sta     room_scene_clicked_flag
         rts
-
-
 /*
 ================================================================================
 click_set_verb_and_refresh
@@ -857,7 +844,6 @@ mark_sentence_bar_refresh:
         lda     #TRUE
         sta     sentence_bar_needs_refresh
         rts
-
 /*
 ================================================================================
 click_sentence_bar_rebuild
@@ -891,7 +877,6 @@ click_sentence_bar_rebuild:
         lda     #TRUE
         sta     needs_sentence_rebuild
         rts
-
 /*
 ================================================================================
 click_inventory_item_set_do_or_io
@@ -1007,7 +992,6 @@ return_refresh_bar:
         lda     #TRUE
         sta     sentence_bar_needs_refresh
         rts
-
 /*
 ================================================================================
 click_inventory_scroll_page
@@ -1082,8 +1066,7 @@ scroll_page_up:
         lda     #$00
 commit_display_offset:
         sta     inv_display_item_offset
-        // Fall through to next routine
-		
+        // Fall through to next routine	
 /*
 ================================================================================
 refresh_inventory_regions
@@ -1193,10 +1176,6 @@ advance_region_or_finish:
         pla
         sta     hotspot_entry_ofs
         rts
-
-
-
-
 /*
 ================================================================================
 render_scroll_arrow_if_eligible
@@ -1279,7 +1258,7 @@ decide_arrow_display:
         sta     src_ptr
         lda     inv_arrow_ptr_hi,y
         sta     src_ptr+1
-        jmp     blit_text_to_hotspot_row
+        jmp     rsaie_trampoline
 
 no_arrow:
         // ------------------------------------------------------------
@@ -1289,10 +1268,8 @@ no_arrow:
         sta     src_ptr
         lda     #>empty_string
         sta     src_ptr+1
+rsaie_trampoline:		
         jmp     blit_text_to_hotspot_row
-
-
-
 /*
 ================================================================================
 render_verb_label
@@ -1350,7 +1327,6 @@ render_verb_label:
         // Render the verb text into the hotspot row
         // ------------------------------------------------------------
         jmp     blit_text_to_hotspot_row
-
 /*
 ================================================================================
 render_item_name_if_owned
@@ -1412,7 +1388,7 @@ render_item_name_if_owned:
         sta     src_ptr
         lda     #>empty_string
         sta     src_ptr+1
-        jmp     blit_text_to_hotspot_row
+        jmp     blit_text_trampoline
 
 resolve_name_ptr_and_blit:
         // ------------------------------------------------------------
@@ -1436,7 +1412,6 @@ resolve_name_ptr_and_blit:
 
 blit_text_trampoline:
         jmp     blit_text_to_hotspot_row
-
 /*
 ================================================================================
 find_owned_slot_for_display
@@ -1570,7 +1545,6 @@ Notes
     - Empty slots are encoded as $00 in inventory_objects.
 ================================================================================
 */
-
 * = $F599
 count_active_kid_inventory_items:
         // ------------------------------------------------------------
@@ -1617,8 +1591,6 @@ advance_slot_or_exit:
         // ------------------------------------------------------------
         lda     inv_count_accum
         rts
-
-
 /*
 ================================================================================
 blit_text_to_hotspot_row
@@ -1662,7 +1634,6 @@ Notes
     - SCREEN_BASE is fixed elsewhere; this routine only builds the offset.
 ================================================================================
 */
-
 * = $F5BB
 blit_text_to_hotspot_row:
         // ------------------------------------------------------------
@@ -1738,7 +1709,6 @@ emit_char_to_screen:
         cpy     #$FF                           // patched with col_end_ex
         bne     copy_or_fill_loop
         rts
-
 /*
 ================================================================================
 fill_hotspot_color_span
@@ -1784,7 +1754,6 @@ Notes
     - COLOR_BASE is assumed fixed by the calling context.
 ================================================================================
 */
-
 * = $F60A
 fill_hotspot_color_span:
         // ------------------------------------------------------------
@@ -1848,9 +1817,6 @@ fill_row_colors_loop:
         cpy     #$FF                         // patched with row_end_ex
         bne     row_begin_compute_color_ptr
         rts
-
-
-
 /*
 ================================================================================
 find_hotspot_at_cursor
@@ -1967,4 +1933,4 @@ advance_to_next_hotspot:
         // No matching hotspot → return with .X = HOTSPOT_END
         // ------------------------------------------------------------
         rts
-
+		
