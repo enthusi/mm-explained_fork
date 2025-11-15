@@ -208,7 +208,6 @@ kbd_keymap:
 // Filler bytes to match original - unused
 .byte $20, $44, $22, $F0, $FB, $60
 
-* = $2062
 /*
  * ===========================================
  * Keyboard scan
@@ -277,6 +276,7 @@ kbd_keymap:
  * 	Otherwise it writes the key into kbd_keycode and asserts kbd_key_ready.
  * ===========================================
  */
+* = $2062
 kbd_scan:
        ldy #$FF
        sty kbd_cols           	// clear cached column snapshot to “no activity” (all 1s = pulled-up idle)
@@ -573,6 +573,7 @@ kbd_exit_2:
  * 	row/column indices.
  * ===========================================
  */
+* = $2168
 kbd_apply_shift_masks:
        /*
         * ----------------------------------------
@@ -648,6 +649,7 @@ count_bits_2:
  *   kbd_lsb0_idx					Index (0..7) of least-significant zero bit if any.
  * ===========================================
  */
+* = $2194
 kbd_count_zero_bits:
        // Y = bit index (7..0), X = zero-counter
        ldy #$07
@@ -698,6 +700,7 @@ next_bit_index:
  *
  * ===========================================
  */
+* = $21A6
 joy_latch:
        /*
         * ----------------------------------------
@@ -743,9 +746,6 @@ joy_latch:
        and #JOY2_MASK
        cmp #JOY2_MASK
        rts
-       brk
-
-
 /*
  * ===========================================
  * Process a key
