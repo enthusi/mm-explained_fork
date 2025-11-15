@@ -26493,10 +26493,10 @@ inlined_highlight_handler = $f366
 ;Handle button click
 check_for_click:
 .C:f368  20 CB F7    JSR detect_fire_press_edge
-.C:f36b  F0 1E       BEQ exit
+.C:f36b  F0 1E       BEQ exit_hotspot_handler
 .C:f36d  AE 88 CB    LDX hotspot_entry_ofs
 .C:f370  E0 8A       CPX OUT_OF_BOUNDS_REGION
-.C:f372  F0 14       BEQ exit
+.C:f372  F0 14       BEQ register_press_and_exit
 .C:f374  BD 47 F2    LDA hotspot_type,X
 .C:f377  0A          ASL A
 .C:f378  A8          TAY
@@ -26507,8 +26507,9 @@ check_for_click:
 .C:f382  8D 87 F3    STA >inlined_click_handler		
 inlined_click_handler = $f386
 .C:f385  20 00 00    JSR $0000	;Inlined address
+register_press_and_exit:
 .C:f388  EE 8A CB    INC button_presses
-exit:
+exit_hotspot_handler:
 .C:f38b  60          RTS
 ;===========================================
 ; Invokes the draw/entry region handler
@@ -27047,7 +27048,7 @@ set_region_text_color:
 .C:f63b  C8          INY
 ;Check if we reached the max column. If not, loop
 inlined_max_column = $f63d
-.C:f63c  C0 0F       CPY #$FF		;Inlined argument
+.C:f63c  C0 FF       CPY #$FF		;Inlined argument
 .C:f63e  D0 F9       BNE set_region_text_color
 ;Move to the next row
 .C:f640  AC 8C CB    LDY $cb8c
@@ -27056,7 +27057,7 @@ inlined_max_row = $f645
 ;Check if we reached the max row. If not, loop.
 ;Note: all regions below the graphics area are only 1 row long
 ;So the comparison below will always be equal in those cases
-.C:f644  C0 15       CPY #$FF		;Inlined argument
+.C:f644  C0 FF       CPY #$FF		;Inlined argument
 .C:f646  D0 D9       BNE set_color_in_row
 .C:f648  60          RTS
 ;===================================================
