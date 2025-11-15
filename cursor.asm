@@ -356,16 +356,16 @@ cursor_physics_step:
         // Drag for X: drag := speed >> 1 using 7×(ASL/ROL), signed subtract
         // ------------------------------------------------------------
         lda     cursor_x_vel_frac
-        sta     <drag
+        sta     drag
         lda     cursor_x_vel_int
-        sta     >drag
+        sta     drag + 1
 
         ldx     drag_shift_count                // Load shift counter (normally 7 for ½-speed calc)
         beq     drag_x_finalize_sign            // Skip loop if zero (no shift needed)
 
 drag_x_shift_loop:
-        asl     <drag                           // Shift low byte left, bit7 → carry
-        rol     >drag                           // Rotate carry into high byte (16-bit shift)
+        asl     drag                            // Shift low byte left, bit7 → carry
+        rol     drag + 1                        // Rotate carry into high byte (16-bit shift)
         dex                                     // Decrement shift counter
         bne     drag_x_shift_loop               // Repeat until all 7 shifts completed
 
@@ -376,7 +376,7 @@ drag_x_finalize_sign:
         jmp     store_drag_hi_sub_x             // Use $FF as the high subtract byte
 
 drag_x_nonnegative:
-        cpx     <drag                           // With X=0: set C=1 iff drag_lo==0 (avoid borrow on SBC)
+        cpx     drag                            // With X=0: set C=1 iff drag_lo==0 (avoid borrow on SBC)
 
 store_drag_hi_sub_x:
         stx     drag_sub_hi                     // Store high subtract byte: $00 (non-neg) or $FF (neg)
@@ -386,7 +386,7 @@ store_drag_hi_sub_x:
         //  - Low byte subtracts (>drag) which equals (orig lo >> 1).
         //  - High byte subtracts sign-extend byte ($00 or $FF) to keep sign.
         lda     cursor_x_vel_frac              // A := X velocity fractional byte
-        sbc     >drag                          // A := A − (>drag)  (borrow per C)
+        sbc     drag + 1                       // A := A − (>drag)  (borrow per C)
         sta     cursor_x_vel_frac              // commit new fractional velocity
 
         lda     cursor_x_vel_int               // A := X velocity integer byte
@@ -397,16 +397,16 @@ store_drag_hi_sub_x:
         // Drag for Y: same procedure
         // ------------------------------------------------------------
         lda     cursor_y_vel_frac
-        sta     <drag
+        sta     drag
         lda     cursor_y_vel_int
-        sta     >drag
+        sta     drag + 1
 
         ldx     drag_shift_count
         beq     drag_y_finalize_sign
 
 drag_y_shift_loop:
-        asl     <drag
-        rol     >drag
+        asl     drag
+        rol     drag + 1
         dex
         bne     drag_y_shift_loop
 
@@ -417,13 +417,13 @@ drag_y_finalize_sign:
         jmp     store_drag_hi_sub_y
 
 drag_y_nonnegative:
-        cpx     <drag
+        cpx     drag
 
 store_drag_hi_sub_y:
         stx     drag_sub_hi
 
         lda     cursor_y_vel_frac
-        sbc     >drag
+        sbc     drag + 1
         sta     cursor_y_vel_frac
         lda     cursor_y_vel_int
         sbc     drag_sub_hi
@@ -501,7 +501,8 @@ integrate_x_velocity:
 
         bpl     clamp_x_right_edge              // If prior vel_int ≥ 0 → we were moving right → clamp to right edge
         lda     #$00                            // Else moving left → clamp X to left boundary (0)
-        bne     commit_x_clamped                // Unconditional branch (A≠0) to store clamped X
+//F785		
+        jmp		commit_x_in_range
 
 clamp_x_right_edge:
         lda     #X_MAX_CLAMP                    // Right boundary: max in-range X ($9F)
@@ -535,7 +536,7 @@ commit_x_in_range:
 
         bpl     clamp_y_bottom_edge
         lda     #$00
-        bne     commit_y_clamped
+		jmp		commit_y_in_range
 
 clamp_y_bottom_edge:
         lda     #Y_MAX_CLAMP
@@ -558,8 +559,7 @@ commit_y_in_range:
         sta     cursor_y_pos
 
 drag_exit:
-        rts
-		
+        rts		
 /*
 ================================================================================
 detect_fire_press_edge
@@ -665,7 +665,7 @@ update_cursor_physics_from_hotspot:
         cpx     #OUT_OF_BOUNDS_REGION           // Compare: is region OOB (outside any zone)?
         bne     fetch_handler_index             // No → look up handler → profile via tables
         ldx     #$00                            // Yes → force default profile index 0
-        bne     load_constants                  // Always branch (X≠0); skip table lookup
+        jmp     load_constants                  
 
 fetch_handler_index:
         ldy     hotspot_type,x  // Y := handler index for this region
