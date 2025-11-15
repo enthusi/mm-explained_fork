@@ -132,24 +132,24 @@ update_flashlight_window:
 
 frame_buffer_01:
         lda     #<FRAMEBUF1_BASE
-        sta     <flashlight_dest
+        sta     flashlight_dest
         lda     #>FRAMEBUF1_BASE
-        sta     >flashlight_dest
+        sta     flashlight_dest + 1
         lda     #<FRAMEBUF2_BASE
-        sta     <flashlight_src
+        sta     flashlight_src
         lda     #>FRAMEBUF2_BASE
-        sta     >flashlight_src
+        sta     flashlight_src + 1
         jmp     clamp_x_low
 
 frame_buffer_02:
         lda     #<FRAMEBUF1_BASE
-        sta     <flashlight_src
+        sta     flashlight_src
         lda     #>FRAMEBUF1_BASE
-        sta     >flashlight_src
+        sta     flashlight_src + 1
         lda     #<FRAMEBUF2_BASE
-        sta     <flashlight_dest
+        sta     flashlight_dest
         lda     #>FRAMEBUF2_BASE
-        sta     >flashlight_dest
+        sta     flashlight_dest + 1
 
         // ------------------------------------------------------------
         // Clamp beam coordinates to valid window bounds
@@ -198,35 +198,35 @@ clamp_y_high:
 patch_row_base_addresses:
         lda     screen_row_offsets_lo,y
         clc
-        adc     <flashlight_dest
-        sta     <inlined_dest_addr
+        adc     flashlight_dest
+        sta     inlined_dest_addr
         lda     screen_row_offsets_hi,y
-        adc     >flashlight_dest
-        sta     >inlined_dest_addr
+        adc     flashlight_dest + 1
+        sta     inlined_dest_addr + 1
 
         lda     screen_row_offsets_lo,y
         clc
-        adc     <flashlight_src
-        sta     <inlined_src_addr
+        adc     flashlight_src
+        sta     inlined_src_addr
         lda     screen_row_offsets_hi,y
-        adc     >flashlight_src
-        sta     >inlined_src_addr
+        adc     flashlight_src + 1
+        sta     inlined_src_addr + 1
 
         // Add X column to both patched pointers
         txa
         clc
-        adc     <inlined_src_addr
-        sta     <inlined_src_addr
+        adc     inlined_src_addr
+        sta     inlined_src_addr
         bcc     add_x_to_dest_base
-        inc     >inlined_src_addr
+        inc     inlined_src_addr + 1
 
 add_x_to_dest_base:
         txa
         clc
-        adc     <inlined_dest_addr
-        sta     <inlined_dest_addr
+        adc     inlined_dest_addr
+        sta     inlined_dest_addr
         bcc     blit_window_rows
-        inc     >inlined_dest_addr
+        inc     inlined_dest_addr + 1
 
 		// ------------------------------------------------------------
 		// Copy or clear a 4×6 flashlight window.
@@ -265,20 +265,20 @@ blit_store_to_dst:
 
         // Next row: advance both src and dest by 40 columns
         clc
-        lda     <inlined_src_addr
+        lda     inlined_src_addr
         adc     #<SCREEN_COLS_PER_ROW
-        sta     <inlined_src_addr
-        lda     >inlined_src_addr
+        sta     inlined_src_addr
+        lda     inlined_src_addr + 1
         adc     #>SCREEN_COLS_PER_ROW
-        sta     >inlined_src_addr
+        sta     inlined_src_addr + 1
 
         clc
-        lda     <inlined_dest_addr
+        lda     inlined_dest_addr
         adc     #<SCREEN_COLS_PER_ROW
-        sta     <inlined_dest_addr
-        lda     >inlined_dest_addr
+        sta     inlined_dest_addr
+        lda     inlined_dest_addr + 1
         adc     #>SCREEN_COLS_PER_ROW
-        sta     >inlined_dest_addr
+        sta     inlined_dest_addr + 1
 
         // Row countdown
         dey
