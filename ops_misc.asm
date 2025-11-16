@@ -86,8 +86,6 @@ Notes
 #import "view.asm"
 #import "save_game.asm"
 
-.label  dest_var = $5f76         // Destination game-var index
-.label  destination_variable = $d0            // Destination game-var index
 /*
 ================================================================================
   op_get_new_random - Opcode #$16

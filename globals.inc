@@ -46,6 +46,7 @@ Values observed
 .label needs_sentence_rebuild = $95
 .label raster_irq_init_pending_flag = $96
 .label vic_memory_layout_shadow = $be
+.label destination_variable = $d0
 .label actor = $D8
 .label irq_entry_count = $d9
 .label print_msg_ptr	   = $DA	// ZP: 16-bit pointer to message to be printed (print_message_wait_for_button)
@@ -745,3 +746,5 @@ They were definitely intended as debugging aids.
 .label  filter_control_reg_copy   = $476B    // Shadow copy of SID filter control register (software mirror)
 .label  x_saved                   = $480D    // Scratch storage for last logical voice index processed
 .label voice_active_mask_snapshot = $3465
+
+.label  dest_var = $5f76         // Destination game-var index

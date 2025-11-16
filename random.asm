@@ -93,6 +93,7 @@ Characteristics
 	* Quality suitable for gameplay randomness, not cryptography.
 ================================================================================
 */
+#importonce
 
 .label rng_state_hi   = $dd    // 24-bit LFSR state: high byte
 .label rng_state_mid  = $de    // 24-bit LFSR state: mid byte

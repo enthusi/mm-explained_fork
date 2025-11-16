@@ -67,8 +67,6 @@ Description
 #import "script_primitives.asm"
 #import "ops_primitives.asm"
 
-.label destination_variable = $d0        // ZP temp: destination game-var index
-.label dest_var            = $5f76       // Workspace: destination game-var index
 .label reference_costume   = $17         // Reference actor/costume index for tests
 .label current_costume     = $19         // Candidate actor/costume index (descending scan)
 .label closest_distance    = $5f77       // Best distance found so far
