@@ -126,9 +126,9 @@ start_game:
         lda     #FRAMEBUFFER_INIT
         sta     frame_buffer
         lda     #<VIEW_FRAME_BUF_1
-        sta     <frame_buffer_base
+        sta     frame_buffer_base
         lda     #>VIEW_FRAME_BUF_1
-        sta     >frame_buffer_base
+        sta     frame_buffer_base + 1
 
         // Current kid := Dave
         lda     #COSTUME_INDEX_DAVE

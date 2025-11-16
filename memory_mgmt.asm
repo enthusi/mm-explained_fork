@@ -290,8 +290,8 @@ mem_alloc:
          * Preserve caller’s requested size:
          *   X/Y = payload size (bytes) — needed for retries below.
          */
-        stx <mem_req_size
-        sty >mem_req_size
+        stx mem_req_size
+        sty mem_req_size + 1
 
         /*
          * First attempt: allocate by best-fit over current free list.
@@ -311,8 +311,8 @@ mem_alloc:
         jsr rsrc_unlock_or_unassign_costume
 
         // Restore original request size into X/Y and loop back to first attempt.
-        ldx <mem_req_size
-        ldy >mem_req_size
+        ldx mem_req_size
+        ldy mem_req_size + 1
         jmp mem_alloc
 
 mem_alloc_ok:

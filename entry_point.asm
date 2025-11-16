@@ -78,13 +78,13 @@ reset_game_engine:
         // Fill "heap" ($7B7B–$C800) with #$00
         // Note: this overwrites setup code in the range $7FFF–$85E3
         lda     #<HEAP_FREE_HDR_ADDR
-        sta     <fill_dest_ptr
+        sta     fill_dest_ptr
         lda     #>HEAP_FREE_HDR_ADDR
-        sta     >fill_dest_ptr
+        sta     fill_dest_ptr + 1
         lda     #<HEAP_INIT_SIZE_BYTES
-        sta     <fill_byte_cnt
+        sta     fill_byte_cnt
         lda     #>HEAP_INIT_SIZE_BYTES
-        sta     >fill_byte_cnt
+        sta     fill_byte_cnt + 1
         ldx     #$00
         jsr     mem_fill_x_1
 

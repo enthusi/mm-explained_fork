@@ -88,6 +88,56 @@ Notes
 
 /*
 ================================================================================
+  op_interrupt_script - Opcode #58
+================================================================================
+
+Summary
+        Compute the interrupted script’s program-counter relative to the script
+        base, save it, then record which script was interrupted. Discard the
+        next three bytes from the stream (operand + offset).
+
+Global Inputs
+        task_pc_lo          Current script PC (lo), for computing interruption
+        task_pc_hi          Current script PC (hi)
+        script_base_lo      Script base address (lo), used for PC relocation
+        script_base_hi      Script base address (hi)
+        task_cur_idx        Active script index (which script was interrupted)
+
+Global Outputs
+        interrupted_pc_lo       Stored interrupted PC (lo), relocated
+        interrupted_pc_hi       Stored interrupted PC (hi), relocated
+        interrupted_script_index    Script index that was interrupted
+
+Description
+        - Subtract script_base from task_pc to obtain a relocatable interrupt PC.
+        - Store the resulting low and high bytes.
+        - Save the script index that was executing at interruption time.
+        - Consume and discard the next three bytes in the script stream:
+          • one raw byte
+          • a two-byte offset (via script_skip_offset)
+================================================================================
+*/
+* = $60B6
+op_interrupt_script:
+		lda     task_pc_lo
+		sec
+		sbc     script_base_lo
+		sta     interrupted_pc_lo
+
+		lda     task_pc_hi
+		sbc     script_base_hi
+		sta     interrupted_pc_hi
+
+		// Save the interrupted script index
+		lda     task_cur_idx
+		sta     interrupted_script_index
+
+		// The next 3 bytes are read and discarded
+		jsr     script_read_byte
+		jsr     script_skip_offset
+		rts
+/*
+================================================================================
   op_get_new_random - Opcode #$16
 ================================================================================
 Summary

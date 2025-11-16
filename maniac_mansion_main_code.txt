@@ -14590,7 +14590,7 @@ screen_row_offsets_hi:
 00 00 00 00 00 00 00 
 01 01 01 01 01 01 02
 02 02 02 02 02 02 03
-03 03 03 03 03
+03 03 03 03 
 
 screen_row_offsets_lo = $3eba
 screen_row_offsets_lo:
@@ -18278,10 +18278,10 @@ set_result_to_ff:
 set_result_to_00:
 .C:4f15  A2 00       LDX #$00
 ;These 4 lines of code should have no net effect
-;.C:4f17  AD FD 4C    LDA lowest_priority_voice
-;.C:4f1a  CD 98 47    CMP voice_priority_3
-;.C:4f1d  10 03       BPL set_result
-;.C:4f1f  8D FD 4C    STA lowest_priority_voice
+.C:4f17  AD FD 4C    LDA lowest_priority_voice
+.C:4f1a  CD 98 47    CMP voice_priority_3
+.C:4f1d  10 03       BPL set_result
+.C:4f1f  8D FD 4C    STA lowest_priority_voice
 set_result:
 .C:4f22  8E F7 4C    STX voice3_priority_is_higher_flag_b
 exit:

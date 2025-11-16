@@ -170,6 +170,14 @@ Notes
 #import "script_primitives.asm"
 #import "sound_engine.asm"
 
+* = $166F
+cursor_color_period:
+	.byte $06
+	
+* = $1670
+cursor_color_idx_first:
+	.byte $05
+	
 * = $1671
 // ------------------------------------------------------------
 // Cursor color cycling table

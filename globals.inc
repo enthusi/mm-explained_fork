@@ -157,10 +157,10 @@ Values observed
 .label cursor_color_idx               = $166E
 
 // Reload value for wait counter (ticks per color step). Example: #$06.
-.label cursor_color_period            = $166F
+//.label cursor_color_period            = $166F
 
 // Initial color index used when resetting the cursor color cycle.
-.label cursor_color_idx_first         = $1670
+//.label cursor_color_idx_first         = $1670
 //===========================================================
 // Cursor physics
 //===========================================================
