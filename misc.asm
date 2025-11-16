@@ -487,8 +487,8 @@ Description
 * = $3A7D
 execute_room_entry_script:
         // Entry script pointer nonzero?
-        lda     <room_entry_script_ptr
-        ora     >room_entry_script_ptr
+        lda     room_entry_script_ptr
+        ora     room_entry_script_ptr + 1
         bne     entry_script_present
         rts                                     // none → exit
 
@@ -498,9 +498,9 @@ entry_script_present:
         sta     task_type_tbl
 
         // Load script PC offset into task 0
-        lda     <room_entry_script_ptr
+        lda     room_entry_script_ptr
         sta     task_pc_ofs_lo_tbl
-        lda     >room_entry_script_ptr
+        lda     room_entry_script_ptr + 1
         sta     task_pc_ofs_hi_tbl
 
         // Launch script in task 0, then resume parent
@@ -541,8 +541,8 @@ Description
 * = $3A9D		
 execute_room_exit_script:
         // Check if an exit script pointer is nonzero
-        lda     <room_exit_script_ptr
-        ora     >room_exit_script_ptr
+        lda     room_exit_script_ptr
+        ora     room_exit_script_ptr + 1
         bne     exit_script_present
         rts                                     // none → return
 
@@ -552,9 +552,9 @@ exit_script_present:
         sta     task_type_tbl
 
         // Load script PC offset into task 0
-        lda     <room_exit_script_ptr
+        lda     room_exit_script_ptr
         sta     task_pc_ofs_lo_tbl
-        lda     >room_exit_script_ptr
+        lda     room_exit_script_ptr + 1
         sta     task_pc_ofs_hi_tbl
 
         // Launch the script in task 0, then resume parent

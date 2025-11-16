@@ -112,12 +112,12 @@
  *        - Save costume index; X := costume_room_res_idx[index]; jsr room_disk_chain_prepare.
  *        - X := 2*index; set rsrc_read_offset (offset-in-sector) and rsrc_sector_step (sector index).
  *        - resource_type := #$02 (COSTUME); jsr rsrc_load_from_disk → X:Y pointer.
- *        - Publish pointer into costume tables at resource_index; rts.
+ *        - Publish pointer into costume tables at rsrc_resource_index; rts.
  *===========================================*/
 * = $38A8
 rsrc_ensure_costume_resident:
         // Stash the incoming costume index (X) so we can publish the pointer later.
-        stx     resource_index
+        stx     rsrc_resource_index
 
         // Fast-path residency check:
         //   costume_ptr_hi_tbl[X] != 0  ⇒ already resident in RAM.

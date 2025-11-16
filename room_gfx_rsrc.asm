@@ -296,12 +296,12 @@ setup_room_columns_with_decode_snapshots:
 			
            - Build width × 4 as a 16-bit product using shifts and carry propagation:
              • ASL shifts A left by 1 (×2). Any bit7 overflow becomes C.
-             • ROL >width_x8 rotates C into the high byte’s bit0, extending precision.
+             • ROL width_x8 + 1 rotates C into the high byte’s bit0, extending precision.
              • Repeating ASL+ROL a second time multiplies by 2 again (overall ×4)
-               while accumulating any new overflow into >width_x8.
+               while accumulating any new overflow into width_x8 + 1.
              • Result after two ASL/ROL pairs:
-                 <width_x8 = low byte of (width × 4)
-                 >width_x8 = high byte of (width × 4)
+                 width_x8 = low byte of (width × 4)
+                 width_x8 + 1 = high byte of (width × 4)
 				 
            - Cache width × 4 into width_x4, then double to get width × 8. 
 		   Finally sum (×8) + (×4) → width × 12 in width_x12.
@@ -311,57 +311,57 @@ calculate_rsrc_size:
            - Derive width × 4 (but store it in width_x8 temporarily)
          * --------------------------------------- */
         lda     #$00                          // clear high byte accumulator for upcoming 16-bit products
-        sta     >width_x8
+        sta     width_x8 + 1
 
         lda     room_width                    
         asl                                   // form width × 2 (carry feeds next ROL)
-        rol     >width_x8                     // propagate carry into high byte
+        rol     width_x8 + 1                     // propagate carry into high byte
         asl                                   // width × 4
-        rol     >width_x8                     // accumulate high byte of (width × 4)
-        sta     <width_x8                     // low byte of width × 4
+        rol     width_x8 + 1                     // accumulate high byte of (width × 4)
+        sta     width_x8                     // low byte of width × 4
 
 		/*----------------------------------------
            - Copy the 16-bit ×4 value from width_x8 into width_x4
          * --------------------------------------- */        
-		sta     <width_x4                     // cache ×4: low
-        lda     >width_x8
-        sta     >width_x4                     // cache ×4: high
+		sta     width_x4                     // cache ×4: low
+        lda     width_x8 + 1
+        sta     width_x4 + 1                     // cache ×4: high
 
         /*----------------------------------------
            Derive the width × 8 term in place from the ×4 product
          * --------------------------------------- */
-		asl     <width_x8                     // double ×4 → ×8 (low)
-        rol     >width_x8                     // …and its high via carry
+		asl     width_x8                     // double ×4 → ×8 (low)
+        rol     width_x8 + 1                     // …and its high via carry
 
         /*----------------------------------------
            Combine ×8 and ×4 terms to produce width × 12
          * --------------------------------------- */
         clc                                   // clear carry before 16-bit addition
-        lda     <width_x8                     // low byte of ×8
-        adc     <width_x4                     // + low byte of ×4 → low byte of ×12 (C may set)
-        sta     <width_x12                    // store low byte result
-        lda     >width_x8                     // high byte of ×8
-        adc     >width_x4                     // + high byte of ×4 (+carry) → high byte of ×12
-        sta     >width_x12                    // store high byte result
+        lda     width_x8                     // low byte of ×8
+        adc     width_x4                     // + low byte of ×4 → low byte of ×12 (C may set)
+        sta     width_x12                    // store low byte result
+        lda     width_x8 + 1                     // high byte of ×8
+        adc     width_x4 + 1                     // + high byte of ×4 (+carry) → high byte of ×12
+        sta     width_x12 + 1                    // store high byte result
 		
         /*----------------------------------------
            Add resource header length to payload size
          * --------------------------------------- */
         clc                                   // prepare for 16-bit add
-        lda     <width_x12                    // payload size: low byte
+        lda     width_x12                    // payload size: low byte
         adc     #MEM_HDR_LEN                  // + header length (low)
-        sta     <rsrc_total_bytes_local       // total size: low byte
-        lda     >width_x12                    // payload size: high byte
+        sta     rsrc_total_bytes_local       // total size: low byte
+        lda     width_x12 + 1                    // payload size: high byte
         adc     #$00                          // include carry from low-byte add
-        sta     >rsrc_total_bytes_local       // total size: high byte
+        sta     rsrc_total_bytes_local + 1       // total size: high byte
 
         /*----------------------------------------
            Allocate heap block for room-layers resource
            - Request size computed in rsrc_total_bytes_local (X:lo, Y:hi)
            - mem_alloc returns base address in X:lo, Y:hi
          * --------------------------------------- */
-        ldx     <rsrc_total_bytes_local       // allocation size (low)
-        ldy     >rsrc_total_bytes_local       // allocation size (high)
+        ldx     rsrc_total_bytes_local       // allocation size (low)
+        ldy     rsrc_total_bytes_local + 1      // allocation size (high)
         jsr     mem_alloc                     // allocate; returns base in X:lo, Y:hi
 
         /*------------------------------------------------------------
@@ -369,8 +369,8 @@ calculate_rsrc_size:
            - Cache mem_alloc’s return (X:lo, Y:hi) into alloc_base
            - Subsequent code uses alloc_base to initialize/publish the resource
         ------------------------------------------------------------*/
-        stx     <alloc_base
-        sty     >alloc_base
+        stx     alloc_base
+        sty     alloc_base + 1
 
         /*------------------------------------------------------------
            Initialize and write standard 4-byte resource header
@@ -387,8 +387,8 @@ calculate_rsrc_size:
            Publish newly allocated block as the active gfx-layers resource
            - Copy alloc_base (X:lo, Y:hi) into the public room_gfx_layers pointer
         ------------------------------------------------------------*/
-        ldx     <alloc_base                    // X := block base (low)
-        ldy     >alloc_base                    // Y := block base (high)
+        ldx     alloc_base                    // X := block base (low)
+        ldy     alloc_base + 1                    // Y := block base (high)
         stx     room_gfx_layers_lo            // publish low byte
         sty     room_gfx_layers_hi            // publish high byte
 
@@ -397,10 +397,10 @@ calculate_rsrc_size:
            - Mirror alloc_base into room_gfx_layers_active_ptr (for “still current?” tests)
            - Initialize rsrc_write_ptr to the start of the allocated block
         ------------------------------------------------------------*/
-        stx     <room_gfx_layers_active_ptr    // active_ptr.lo := base.lo
-        sty     >room_gfx_layers_active_ptr    // active_ptr.hi := base.hi
-        stx     <rsrc_write_ptr                // write_ptr.lo := base.lo
-        sty     >rsrc_write_ptr                // write_ptr.hi := base.hi
+        stx     room_gfx_layers_active_ptr    // active_ptr.lo := base.lo
+        sty     room_gfx_layers_active_ptr + 1    // active_ptr.hi := base.hi
+        stx     rsrc_write_ptr                // write_ptr.lo := base.lo
+        sty     rsrc_write_ptr + 1                // write_ptr.hi := base.hi
 
         // Advance output pointer past the resource header.
         /*------------------------------------------------------------
@@ -409,21 +409,21 @@ calculate_rsrc_size:
            - Use CLC/ADC to propagate carry from low to high byte
         ------------------------------------------------------------*/
         clc                                   // prepare for 16-bit addition
-        lda     <rsrc_write_ptr               // load write_ptr low
+        lda     rsrc_write_ptr               // load write_ptr low
         adc     #<MEM_HDR_LEN                 // + header length (low)
-        sta     <rsrc_write_ptr               // commit updated low
-        lda     >rsrc_write_ptr               // load write_ptr high
+        sta     rsrc_write_ptr               // commit updated low
+        lda     rsrc_write_ptr + 1               // load write_ptr high
         adc     #>MEM_HDR_LEN                 // + header length (high) + carry from low
-        sta     >rsrc_write_ptr               // commit updated high
+        sta     rsrc_write_ptr + 1               // commit updated high
 
         /*------------------------------------------------------------
            Prepare room_width as a 16-bit value for address arithmetic
            - Store low byte, clear high byte (width fits in 8 bits here)
         ------------------------------------------------------------*/
         lda     room_width                    
-        sta     <room_width_16bit             // width.low := A
+        sta     room_width_16bit             // width.low := A
         lda     #$00                          // zero high byte
-        sta     >room_width_16bit             // width.high := 0
+        sta     room_width_16bit + 1             // width.high := 0
 
         /*------------------------------------------------------------
            Lay out directory of 12 pointer-list bases and mirror them
@@ -442,10 +442,10 @@ calculate_rsrc_size:
         ------------------------------------------------------------*/
         ldy     #$00                          // start at first list (pair index 0)
 compute_pointer_list_start:
-        lda     <rsrc_write_ptr               // current list base: low byte
+        lda     rsrc_write_ptr               // current list base: low byte
         sta.a   column_decode_snapshot_bases,y   // canonical table low byte at offset Y
         sta     mirrored_bases,y           // mirror low byte (legacy/debug)
-        lda     >rsrc_write_ptr               // current list base: high byte
+        lda     rsrc_write_ptr + 1               // current list base: high byte
         sta.a   column_decode_snapshot_bases+1,y // canonical table high byte at offset Y+1
         sta     mirrored_bases+1,y         // mirror high byte
 
@@ -454,12 +454,12 @@ compute_pointer_list_start:
            - Moves rsrc_write_ptr to the next list’s data region
         ------------------------------------------------------------*/
         clc                                   // prepare for 16-bit addition
-        lda     <rsrc_write_ptr               // low: base
-        adc     <room_width_16bit             // + low(width) → next base low
-        sta     <rsrc_write_ptr               // commit low
-        lda     >rsrc_write_ptr               // high: base
-        adc     >room_width_16bit             // + high(width) + carry → next base high
-        sta     >rsrc_write_ptr               // commit high
+        lda     rsrc_write_ptr               // low: base
+        adc     room_width_16bit             // + low(width) → next base low
+        sta     rsrc_write_ptr               // commit low
+        lda     rsrc_write_ptr + 1               // high: base
+        adc     room_width_16bit + 1             // + high(width) + carry → next base high
+        sta     rsrc_write_ptr + 1               // commit high
 
         /*------------------------------------------------------------
            Step to next pointer-list pair and loop over all 12 lists
@@ -478,9 +478,9 @@ compute_pointer_list_start:
         ------------------------------------------------------------*/
         ldx     current_room                  // X := active room index
         lda     room_ptr_lo_tbl,x             // fetch room base low byte
-        sta     <room_data_ptr                // room_data_ptr.lo := low
+        sta     room_data_ptr                // room_data_ptr.lo := low
         lda     room_ptr_hi_tbl,x             // fetch room base high byte
-        sta     >room_data_ptr                // room_data_ptr.hi := high
+        sta     room_data_ptr + 1                // room_data_ptr.hi := high
 
         /*------------------------------------------------------------
            Prepare TILE layer: bind source, bind list bases, snapshot state
@@ -495,12 +495,12 @@ compute_pointer_list_start:
            - Result placed in decomp_src_ptr (decoder will read from here)
         ------------------------------------------------------------*/
         clc                                   // prepare for 16-bit addition
-        lda     <room_data_ptr                // base: room data low
-        adc     <tile_matrix_ofs              // + tile layer offset low
-        sta     <decomp_src_ptr               // src.low := sum
-        lda     >room_data_ptr                // base: room data high
-        adc     >tile_matrix_ofs              // + tile layer offset high (+carry)
-        sta     >decomp_src_ptr               // src.high := sum
+        lda     room_data_ptr                // base: room data low
+        adc     tile_matrix_ofs              // + tile layer offset low
+        sta     decomp_src_ptr               // src.low := sum
+        lda     room_data_ptr + 1                // base: room data high
+        adc     tile_matrix_ofs + 1              // + tile layer offset high (+carry)
+        sta     decomp_src_ptr + 1               // src.high := sum
 
         /*------------------------------------------------------------
            Bind TILE layer pointer lists from the directory
@@ -508,24 +508,24 @@ compute_pointer_list_start:
              src_lo, src_hi, mode+count, run_symbol (each lo/hi)
         ------------------------------------------------------------*/
         lda     column_decode_snapshot_bases+0    // TILE lists: bind src_lo list base (low)
-        sta     <col_src_lo_list
+        sta     col_src_lo_list
         lda     column_decode_snapshot_bases+1    // …src_lo list base (high)
-        sta     >col_src_lo_list
+        sta     col_src_lo_list + 1
 
         lda     column_decode_snapshot_bases+2    // bind src_hi list base (low)
-        sta     <col_src_hi_list
+        sta     col_src_hi_list
         lda     column_decode_snapshot_bases+3    // …src_hi list base (high)
-        sta     >col_src_hi_list
+        sta     col_src_hi_list + 1
 
         lda     column_decode_snapshot_bases+4    // bind mode+count list base (low)
-        sta     <col_emit_rem_list
+        sta     col_emit_rem_list
         lda     column_decode_snapshot_bases+5    // …mode+count list base (high)
-        sta     >col_emit_rem_list
+        sta     col_emit_rem_list + 1
 
         lda     column_decode_snapshot_bases+6    // bind run_symbol list base (low)
-        sta     <col_run_symbol_list
+        sta     col_run_symbol_list
         lda     column_decode_snapshot_bases+7    // …run_symbol list base (high)
-        sta     >col_run_symbol_list
+        sta     col_run_symbol_list + 1
 
         /*------------------------------------------------------------
            Snapshot per-column decoder state for the TILE layer
@@ -545,30 +545,30 @@ compute_pointer_list_start:
          *  - Precompute per-column initial decoder state.
          *--------------------------------------*/
         clc
-        lda     <room_data_ptr
-        adc     <color_layer_ofs
-        sta     <decomp_src_ptr              // src base.lo
-        lda     >room_data_ptr
-        adc     >color_layer_ofs
-        sta     >decomp_src_ptr              // src base.hi
+        lda     room_data_ptr
+        adc     color_layer_ofs
+        sta     decomp_src_ptr              // src base.lo
+        lda     room_data_ptr + 1
+        adc     color_layer_ofs + 1
+        sta     decomp_src_ptr + 1              // src base.hi
 
         // Bind list bases for COLOR layer
         lda     column_decode_snapshot_bases+8
-        sta     <col_src_lo_list       // src_lo list
+        sta     col_src_lo_list       // src_lo list
         lda     column_decode_snapshot_bases+9
-        sta     >col_src_lo_list
+        sta     col_src_lo_list + 1
         lda     column_decode_snapshot_bases+10
-        sta     <col_src_hi_list       // src_hi list
+        sta     col_src_hi_list       // src_hi list
         lda     column_decode_snapshot_bases+11
-        sta     >col_src_hi_list
+        sta     col_src_hi_list + 1
         lda     column_decode_snapshot_bases+12
-        sta     <col_emit_rem_list             // mode-counter list
+        sta     col_emit_rem_list             // mode-counter list
         lda     column_decode_snapshot_bases+13
-        sta     >col_emit_rem_list
+        sta     col_emit_rem_list + 1
         lda     column_decode_snapshot_bases+14
-        sta     <col_run_symbol_list         // repeat-symbol list
+        sta     col_run_symbol_list         // repeat-symbol list
         lda     column_decode_snapshot_bases+15
-        sta     >col_run_symbol_list
+        sta     col_run_symbol_list + 1
 
         // Generate the per-column initial state for COLOR layer decoding
         jsr     snapshot_column_decoder_state
@@ -584,30 +584,30 @@ compute_pointer_list_start:
          *  - Precompute per-column initial decoder state.
          *--------------------------------------*/
         clc
-        lda     <room_data_ptr
-        adc     <mask_layer_ofs
-        sta     <decomp_src_ptr              // src base.lo
-        lda     >room_data_ptr
-        adc     >mask_layer_ofs
-        sta     >decomp_src_ptr              // src base.hi
+        lda     room_data_ptr
+        adc     mask_layer_ofs
+        sta     decomp_src_ptr              // src base.lo
+        lda     room_data_ptr + 1
+        adc     mask_layer_ofs + 1
+        sta     decomp_src_ptr + 1              // src base.hi
 
         // Bind list bases for MASK layer
         lda     column_decode_snapshot_bases+16
-        sta     <col_src_lo_list       // src_lo list
+        sta     col_src_lo_list       // src_lo list
         lda     column_decode_snapshot_bases+17
-        sta     >col_src_lo_list
+        sta     col_src_lo_list + 1
         lda     column_decode_snapshot_bases+18
-        sta     <col_src_hi_list       // src_hi list
+        sta     col_src_hi_list       // src_hi list
         lda     column_decode_snapshot_bases+19
-        sta     >col_src_hi_list
+        sta     col_src_hi_list + 1
         lda     column_decode_snapshot_bases+20
-        sta     <col_emit_rem_list             // mode-counter list
+        sta     col_emit_rem_list             // mode-counter list
         lda     column_decode_snapshot_bases+21
-        sta     >col_emit_rem_list
+        sta     col_emit_rem_list + 1
         lda     column_decode_snapshot_bases+22
-        sta     <col_run_symbol_list         // repeat-symbol list
+        sta     col_run_symbol_list         // repeat-symbol list
         lda     column_decode_snapshot_bases+23
-        sta     >col_run_symbol_list
+        sta     col_run_symbol_list + 1
 
         // Generate the per-column initial state for MASK layer decoding
         jsr     snapshot_column_decoder_state
@@ -705,9 +705,9 @@ snapshot_column_decoder_state:
 snapshot_this_column:
         // Capture decoder source at the start of this column’s payload
         // (little-endian pointer split across two parallel lists)
-        lda     <decomp_src_ptr
+        lda     decomp_src_ptr
         sta     (col_src_lo_list),y       // write low byte of src to list[y]
-        lda     >decomp_src_ptr
+        lda     decomp_src_ptr + 1
         sta     (col_src_hi_list),y       // write high byte of src to list[y]
 
 		 
@@ -720,7 +720,7 @@ snapshot_this_column:
         // Literal (direct) mode: set the mode flag (bit7=1) and keep the low 7 bits as the count
         lda     #$80
         ora     decomp_emit_rem            // bit7:=1 | count(6..0)
-        bne     commit_mode_counter        // unconditional (result is never zero)
+        jmp     commit_mode_counter        // unconditional (result is never zero)
 
 handle_run_mode:
         // Run mode: store the count as-is (bit7 remains 0 → run)

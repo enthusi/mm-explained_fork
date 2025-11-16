@@ -264,6 +264,7 @@ Values observed
 .label mask_bit_patterns_hi = $7B78		
 .label mask_bit_patterns_lo = $7B7A
 .label mask_base_ptr = $fd6d
+.label room_metadata_base = $7139
 .label room_width = $7139
 .label room_height = $713a
 .label room_bg0 = $713b
@@ -303,7 +304,7 @@ Values observed
 .label dest_x = $fde6
 .label dest_y = $fde7
 
-.label current_room_rsrc = $715B	//Used by draw_room_scene to ensure residence of the room resources
+.label current_room_rsrc = $715A	//Used by draw_room_scene to ensure residence of the room resources
 
 
 /*

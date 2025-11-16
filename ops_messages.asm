@@ -114,9 +114,9 @@ print_costume_msg_inline:
 		// Copy current task PC into message_ptr
 		// ------------------------------------------------------------
 		lda     task_pc_lo          
-		sta     <message_ptr        
+		sta     message_ptr        
 		lda     task_pc_hi          
-		sta     >message_ptr        
+		sta     message_ptr + 1
 
 		// ------------------------------------------------------------
 		// Print the message and advance message_ptr accordingly
@@ -126,9 +126,9 @@ print_costume_msg_inline:
 		// ------------------------------------------------------------
 		// Update task_pc to point past message data
 		// ------------------------------------------------------------
-		lda     <message_ptr                    
+		lda     message_ptr                    
 		sta     task_pc_lo          
-		lda     >message_ptr                    
+		lda     message_ptr + 1
 		sta     task_pc_hi          
 		rts                                     
 
@@ -196,30 +196,30 @@ print_costume_msg_at_offset:
 		// Read 16-bit offset and compute message pointer
 		// ------------------------------------------------------------
 		jsr     script_read_byte               
-		sta     <message_ptr                   
+		sta     message_ptr                   
 		jsr     script_read_byte               
-		sta     >message_ptr                   
+		sta     message_ptr + 1
 
 		// ------------------------------------------------------------
 		// Compute message_ptr := task_pc + offset (16-bit add).
 		// ------------------------------------------------------------
 		clc                                    
-		lda     <message_ptr                   
+		lda     message_ptr                   
 		adc     task_pc_lo                     
-		sta     <message_ptr                   
-		lda     >message_ptr                   
+		sta     message_ptr                   
+		lda     message_ptr + 1
 		adc     task_pc_hi                     
-		sta     >message_ptr                   
+		sta     message_ptr + 1
 
 		// ------------------------------------------------------------
 		// Subtract 1 from message_ptr (align for print routine’s first read)
 		// ------------------------------------------------------------
-		lda     <message_ptr                   
+		lda     message_ptr                   
 		bne     dec_message_ptr_lo             // if lo≠0 → only DEC lo
-		dec     >message_ptr                   
+		dec     message_ptr + 1
 
 dec_message_ptr_lo:
-		dec     <message_ptr                   
+		dec     message_ptr                   
 
 		// ------------------------------------------------------------
 		// Print message at computed address

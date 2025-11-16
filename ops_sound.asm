@@ -180,11 +180,11 @@ start_selected_music:
         lda     sound_ptr_lo_tbl,x           // A := lo byte of music base
         clc                                  
         adc     #MEM_HDR_LEN                 // skip resource header
-        sta     <music_init_code_ptr         // music_init_code_ptr.lo := low part of init entry point
+        sta     music_init_code_ptr         // music_init_code_ptr.lo := low part of init entry point
 		
         lda     sound_ptr_hi_tbl,x           
         adc     #$00                         
-        sta     >music_init_code_ptr         
+        sta     music_init_code_ptr + 1
 
         // ------------------------------------------------------------
         // Map in I/O, run music startup code via inlined JSR, then
@@ -196,7 +196,7 @@ start_selected_music:
         ldy     #MAP_IO_IN                   
         sty     cpu_port                     
 
-        jsr     music_init_code_ptr          // Call per-music initialization routine at computed entry (inlined)
+        jsr     $FFFF // music_init_code_ptr - Call per-music initialization routine at computed entry (inlined)
 
 		// Map I/O out
         ldy     #MAP_IO_OUT                  

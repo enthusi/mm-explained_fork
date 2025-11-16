@@ -148,6 +148,7 @@ copy_sentence_parts_loop:
 		
 		lda     #$00
 		sta     interrupted_pc_lo
+		lda     #$00
 		sta     interrupted_pc_hi
 		rts
 /*
@@ -205,9 +206,13 @@ op_exit_cutscene:
 		// ------------------------------------------------------------
 		lda     #$00
 		sta     var_destination_x
+		lda     #$00
 		sta     saved_task_idx
+		lda     #$00
 		sta     interrupted_script_index
+		lda     #$00
 		sta     interrupted_pc_lo
+		lda     #$00
 		sta     interrupted_pc_hi
 
 		// ------------------------------------------------------------
@@ -316,13 +321,13 @@ setup_cutscene:
 		sta     sentence_bar_needs_refresh
 		
 		lda     #<SENTENCE_BAR_BASE
-		sta     <fill_dest_ptr
+		sta     fill_dest_ptr
 		lda     #>SENTENCE_BAR_BASE
-		sta     >fill_dest_ptr
+		sta     fill_dest_ptr + 1
 		lda     #<INTERACTION_AREA_LEN
-		sta     <fill_byte_cnt
+		sta     fill_byte_cnt
 		lda     #>INTERACTION_AREA_LEN
-		sta     >fill_byte_cnt
+		sta     fill_byte_cnt + 1
 		ldx     #$20
 		jsr     mem_fill_x
 		

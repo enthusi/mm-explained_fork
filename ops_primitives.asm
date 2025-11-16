@@ -216,19 +216,19 @@ Description
 op_displace_pointer:
 		// Read 16-bit relative offset
 		jsr     script_read_byte               // A := offset.lo
-		sta     <relative_offset               // save lo
+		sta     relative_offset               // save lo
 
 		jsr     script_read_byte               // A := offset.hi
-		sta     >relative_offset               // save hi
+		sta     relative_offset + 1               // save hi
 
 		// Add offset to PC
 		lda     task_pc_lo                     
 		clc                                    
-		adc     <relative_offset               // A := PC.lo + ofs.lo
+		adc     relative_offset               // A := PC.lo + ofs.lo
 		sta     task_pc_lo                     // write PC.lo
 
 		lda     task_pc_hi                     
-		adc     >relative_offset               // A := PC.hi + ofs.hi + C
+		adc     relative_offset + 1               // A := PC.hi + ofs.hi + C
 		sta     task_pc_hi                     // write PC.hi
 		rts                                    
 /*
@@ -930,9 +930,9 @@ op_test_var_bitmask:
         // Set up base pointer → $FEAC (engine variables)
         // ------------------------------------------------------------
         lda     #<engine_vars
-        sta     <pointer
+        sta     pointer
         lda     #>engine_vars
-        sta     >pointer
+        sta     pointer + 1
 
         // ------------------------------------------------------------
         // Tail-call shared tester (AND with mask → boolean result)

@@ -490,7 +490,7 @@ room_read_metadata:
 		ldy     #ROOM_META_8_START_OFS
 copy_meta_loop:
 		lda     (read_ptr),y
-		sta     room_data_ptr_local,y
+		sta     room_metadata_base,y
 		iny
 		cpy     #ROOM_META_8_END_EXCL            
 		bne     copy_meta_loop
@@ -504,10 +504,10 @@ copy_meta_loop:
 		ldy     #ROOM_META_16_START_OFS
 copy_gfx_ofs_loop:
 		lda     (read_ptr),y
-		sta     room_data_ptr_local,y
+		sta     room_metadata_base,y
 		iny
 		lda     (read_ptr),y
-		sta     room_data_ptr_local,y
+		sta     room_metadata_base,y
 		iny
 		cpy     #ROOM_META_16_END_EXCL
 		bne     copy_gfx_ofs_loop
@@ -1194,6 +1194,12 @@ setup_mask_patterns_load:
         sta     bytes_left
         lda     payload_len + 1
         sta     bytes_left + 1
+
+		ldx 	current_room
+		lda 	room_ptr_lo_tbl,X
+		sta 	room_base
+		lda 	room_ptr_hi_tbl,X
+		sta 	room_base + 1
 
         /*---------------------------------------
          Reacquire stream base for mask-index section:

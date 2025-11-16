@@ -112,7 +112,7 @@ Notes:
 
 .const FILL_VALUE               = $00    // mem_fill_x pattern used to clear framebuffers
 
-.const COLS_PER_ROW             = VIEW_COLS - 1  // copy width used by scroll cores (39 when VIEW_COLS=40)
+.const COLS_PER_ROW             = VIEW_COLS  // copy width used by scroll cores (39 when VIEW_COLS=40)
 
 .const COLOR_LAYER_COL_1        = COLOR_LAYER_COL_0 + 1  // COLOR layer column 1 base
 .const MASK_LAYER_COL_1         = MASK_LAYER_COL_0 + 1  // MASK  layer column 1 base
@@ -171,17 +171,17 @@ render_room_view:
         ldx     current_room                  // select table slot for the active room
 
         lda     room_ptr_lo_tbl,x             // verify cached room resource base: low byte must match expected
-        cmp     <current_room_rsrc
+        cmp     current_room_rsrc
         bne     refresh_room_resources_and_snapshots // mismatch → resource stale/missing → rebuild
         lda     room_ptr_hi_tbl,x             // verify cached room resource base: high byte must match expected
-        cmp     >current_room_rsrc
+        cmp     current_room_rsrc + 1
         bne     refresh_room_resources_and_snapshots // mismatch → resource stale/missing → rebuild
 
         lda     room_gfx_layers_lo            // verify published gfx-layers pointer (low) matches active_ptr.low
-        cmp     <room_gfx_layers_active_ptr
+        cmp     room_gfx_layers_active_ptr
         bne     refresh_room_resources_and_snapshots // mismatch → layers resource not the current one → rebuild
         lda     room_gfx_layers_hi            // verify published gfx-layers pointer (high) matches active_ptr.high
-        cmp     >room_gfx_layers_active_ptr
+        cmp     room_gfx_layers_active_ptr + 1
         bne     refresh_room_resources_and_snapshots // mismatch → layers resource not the current one → rebuild
 
 		// Resources are resident, proceed to check scroll flag
@@ -193,9 +193,9 @@ refresh_room_resources_and_snapshots:
            per-column decode snapshots (src pointer, mode+count, run symbol)
         ------------------------------------------------------------*/
         lda     room_ptr_lo_tbl,x
-        sta     <current_room_rsrc
+        sta     current_room_rsrc
         lda     room_ptr_hi_tbl,x
-        sta     >current_room_rsrc
+        sta     current_room_rsrc + 1
         jsr     setup_room_columns_with_decode_snapshots
 
 test_scroll_right:
@@ -217,30 +217,30 @@ test_scroll_right:
 
         /*  tile_matrix_ptr := frame_buffer_base + 39 (target last visible column) */
         clc
-        lda     <frame_buffer_base            // base of tile layer column 0 in active FB
+        lda     frame_buffer_base            // base of tile layer column 0 in active FB
         adc     #<VIEW_LAST_COL                          // +39 columns → column 39 base (low)
-        sta     <tile_matrix_ptr
-        lda     >frame_buffer_base
+        sta     tile_matrix_ptr
+        lda     frame_buffer_base + 1
         adc     #>VIEW_LAST_COL
-        sta     >tile_matrix_ptr
+        sta     tile_matrix_ptr + 1
 
         /*  color_layer_ptr := COLOR_LAYER_COL_0 + 39 (last visible column) */
         clc
         lda     #<COLOR_LAYER_COL_0           // color layer column 0 base
         adc     #<VIEW_LAST_COL                 // +39 → column 39 base (low)
-        sta     <color_layer_ptr
+        sta     color_layer_ptr
         lda     #>COLOR_LAYER_COL_0
         adc     #>VIEW_LAST_COL
-        sta     >color_layer_ptr
+        sta     color_layer_ptr + 1
 
         /*  mask_layer_ptr := MASK_LAYER_COL_0 + 39 (last visible column) */
         clc
         lda     #<MASK_LAYER_COL_0            // mask layer column 0 base
         adc     #<VIEW_LAST_COL                          // +39 → column 39 base (low)
-        sta     <mask_layer_ptr
+        sta     mask_layer_ptr
         lda     #>MASK_LAYER_COL_0
         adc     #>VIEW_LAST_COL
-        sta     >mask_layer_ptr
+        sta     mask_layer_ptr + 1
 
         /*------------------------------------------------------------
            Decode visible columns starting at new right edge
@@ -270,22 +270,22 @@ test_scroll_left:
         jsr     scroll_view_left             // shift layers right; reveal new leftmost column
 
         /*  tile_matrix_ptr := frame_buffer_base (leftmost column base) */
-        lda     <frame_buffer_base            // tile layer column 0 base (active FB)
-        sta     <tile_matrix_ptr
-        lda     >frame_buffer_base
-        sta     >tile_matrix_ptr
+        lda     frame_buffer_base            // tile layer column 0 base (active FB)
+        sta     tile_matrix_ptr
+        lda     frame_buffer_base + 1
+        sta     tile_matrix_ptr + 1
 
         /*  color_layer_ptr := COLOR_LAYER_COL_0 (leftmost color column base) */
         lda     #<COLOR_LAYER_COL_0           // color layer column 0 base
-        sta     <color_layer_ptr
+        sta     color_layer_ptr
         lda     #>COLOR_LAYER_COL_0
-        sta     >color_layer_ptr
+        sta     color_layer_ptr + 1
 
         /*  mask_layer_ptr := MASK_LAYER_COL_0 (leftmost mask column base) */
         lda     #<MASK_LAYER_COL_0            // mask layer column 0 base
-        sta     <mask_layer_ptr
+        sta     mask_layer_ptr
         lda     #>MASK_LAYER_COL_0
-        sta     >mask_layer_ptr
+        sta     mask_layer_ptr + 1
 
         /*------------------------------------------------------------
            Decode visible columns starting at new left edge
@@ -304,22 +304,22 @@ initial_full_redraw:
         sta     decode_scope
 
         /*  tile_matrix_ptr := frame_buffer_base (start at leftmost tile column) */
-        lda     <frame_buffer_base            // tile layer column 0 base (active FB)
-        sta     <tile_matrix_ptr
-        lda     >frame_buffer_base
-        sta     >tile_matrix_ptr
+        lda     frame_buffer_base            // tile layer column 0 base (active FB)
+        sta     tile_matrix_ptr
+        lda     frame_buffer_base + 1
+        sta     tile_matrix_ptr + 1
 
         /*  color_layer_ptr := COLOR_LAYER_COL_0 (leftmost color column base) */
         lda     #<COLOR_LAYER_COL_0           // color layer column 0 base
-        sta     <color_layer_ptr
+        sta     color_layer_ptr
         lda     #>COLOR_LAYER_COL_0
-        sta     >color_layer_ptr
+        sta     color_layer_ptr + 1
 
         /*  mask_layer_ptr := MASK_LAYER_COL_0 (leftmost mask column base) */
         lda     #<MASK_LAYER_COL_0            // mask layer column 0 base
-        sta     <mask_layer_ptr
+        sta     mask_layer_ptr
         lda     #>MASK_LAYER_COL_0
-        sta     >mask_layer_ptr
+        sta     mask_layer_ptr + 1
 
         lda     viewport_left_col          // load leftmost visible column index for decode
                                               // fall through to decode_visible_window
@@ -383,20 +383,20 @@ decode_visible_window:
         /*------------------------------------------------------------
            TILE layer: bind destination buffer for decode output
         ------------------------------------------------------------*/
-        lda     <tile_matrix_ptr              // set dest_ptr := tile_matrix_ptr (lo)
-        sta     <dest_ptr
-        lda     >tile_matrix_ptr              // ...and high byte
-        sta     >dest_ptr
+        lda     tile_matrix_ptr              // set dest_ptr := tile_matrix_ptr (lo)
+        sta     dest_ptr
+        lda     tile_matrix_ptr + 1              // ...and high byte
+        sta     dest_ptr + 1
 
         lda     #<tile_dict4                   // point inline 4-byte dict to tile_dict4 (lo)
-        sta     <dict4_base_ptr
+        sta     dict4_base_ptr
         lda     #>tile_dict4                   // ...and its high byte
-        sta     >dict4_base_ptr
+        sta     dict4_base_ptr + 1
 
         lda     (tile_src_tbl_lo),y // load per-column src pointer (lo) from snapshot[Y]
-        sta     <decomp_src_ptr
+        sta     decomp_src_ptr
         lda     (tile_src_tbl_hi),y // ...src pointer (hi)
-        sta     >decomp_src_ptr
+        sta     decomp_src_ptr + 1
 
         lda     (tile_run_symbol_tbl),y   // per-column run symbol (byte to emit in run mode)
         sta     decomp_run_symbol                   // seed decoder’s repeat value
@@ -407,20 +407,20 @@ decode_visible_window:
         /*------------------------------------------------------------
            COLOR layer: bind destination buffer and select color dict
         ------------------------------------------------------------*/
-        lda     <color_layer_ptr              // dest_ptr := color_layer_ptr (lo)
-        sta     <dest_ptr
-        lda     >color_layer_ptr              // ...high byte
-        sta     >dest_ptr
+        lda     color_layer_ptr              // dest_ptr := color_layer_ptr (lo)
+        sta     dest_ptr
+        lda     color_layer_ptr + 1              // ...high byte
+        sta     dest_ptr + 1
 
         lda     #<color_dict4                  // retarget inline 4-byte dict → color_dict4 (lo)
-        sta     <dict4_base_ptr
+        sta     dict4_base_ptr
         lda     #>color_dict4                  // ...high byte
-        sta     >dict4_base_ptr
+        sta     dict4_base_ptr + 1
 
         lda     (color_src_tbl_lo),y   // load per-column src pointer (low) from snapshot[Y]
-        sta     <decomp_src_ptr
+        sta     decomp_src_ptr
         lda     (color_src_tbl_hi),y   // ...and high byte of src pointer
-        sta     >decomp_src_ptr
+        sta     decomp_src_ptr + 1
 
         lda     (color_run_symbol_tbl),y   // per-column run symbol for COLOR (byte repeated in run mode)
         sta     decomp_run_symbol                   // seed decoder’s repeat value
@@ -431,20 +431,20 @@ decode_visible_window:
         /*------------------------------------------------------------
            MASK layer: bind destination buffer and select mask dict
         ------------------------------------------------------------*/
-        lda     <mask_layer_ptr              // dest_ptr := mask_layer_ptr (lo)
-        sta     <dest_ptr
-        lda     >mask_layer_ptr              // ...high byte
-        sta     >dest_ptr
+        lda     mask_layer_ptr              // dest_ptr := mask_layer_ptr (lo)
+        sta     dest_ptr
+        lda     mask_layer_ptr + 1              // ...high byte
+        sta     dest_ptr + 1
 
         lda     #<mask_dict4                  // retarget inline 4-byte dict → mask_dict4 (lo)
-        sta     <dict4_base_ptr
+        sta     dict4_base_ptr
         lda     #>mask_dict4                  // ...high byte
-        sta     >dict4_base_ptr
+        sta     dict4_base_ptr + 1
 
         lda     (mask_src_tbl_lo),y   // per-column src pointer (low) from snapshot[Y]
-        sta     <decomp_src_ptr
+        sta     decomp_src_ptr
         lda     (mask_src_tbl_hi),y   // ...src pointer (high)
-        sta     >decomp_src_ptr
+        sta     decomp_src_ptr + 1
 
         lda     (mask_run_symbol_tbl),y // per-column run symbol for MASK
         sta     decomp_run_symbol					// seed decoder’s repeat value
@@ -625,10 +625,10 @@ decode_room_all_columns:
            Preserve caller’s Y and seed column_ptr := dest_ptr
         ------------------------------------------------------------*/
         sty     view_y_saved_2
-        lda     <dest_ptr
-        sta     <column_ptr
-        lda     >dest_ptr
-        sta     >column_ptr
+        lda     dest_ptr
+        sta     column_ptr
+        lda     dest_ptr + 1
+        sta     column_ptr + 1
 
         /*------------------------------------------------------------
            Decode columns: Y := $27 .. $00  (40 columns total)
@@ -640,17 +640,17 @@ decode_col_loop:
         /*------------------------------------------------------------
            column_ptr := column_ptr + 1  (advance to next column base)
         ------------------------------------------------------------*/
-        inc     <column_ptr
+        inc     column_ptr
         bne     set_col_base_next
-        inc     >column_ptr
+        inc     column_ptr + 1
 set_col_base_next:
         /*------------------------------------------------------------
            dest_ptr := column_ptr  (set base for next column decode)
         ------------------------------------------------------------*/
-        lda     <column_ptr
-        sta     <dest_ptr
-        lda     >column_ptr
-        sta     >dest_ptr
+        lda     column_ptr
+        sta     dest_ptr
+        lda     column_ptr + 1
+        sta     dest_ptr + 1
 
         /*------------------------------------------------------------
            Next column until Y becomes -1 (BPL falls through when done)
@@ -760,9 +760,9 @@ scroll_view_left:
            - Destination will be set to the active frame buffer next
         ------------------------------------------------------------*/
         lda     #<VIEW_FRAME_BUF_0
-        sta     <scroll_src
+        sta     scroll_src
         lda     #>VIEW_FRAME_BUF_0
-        sta     >scroll_src
+        sta     scroll_src + 1
         jmp     lscroll_set_dest_to_active_fb
 
         /*------------------------------------------------------------
@@ -771,18 +771,18 @@ scroll_view_left:
         ------------------------------------------------------------*/
 frame_buffer_2:
         lda     #<VIEW_FRAME_BUF_1
-        sta     <scroll_src
+        sta     scroll_src
         lda     #>VIEW_FRAME_BUF_1
-        sta     >scroll_src
+        sta     scroll_src + 1
 
 lscroll_set_dest_to_active_fb:
         /*------------------------------------------------------------
            Set destination to the active frame buffer base
         ------------------------------------------------------------*/
-        lda     <frame_buffer_base
-        sta     <scroll_dest
-        lda     >frame_buffer_base
-        sta     >scroll_dest
+        lda     frame_buffer_base
+        sta     scroll_dest
+        lda     frame_buffer_base + 1
+        sta     scroll_dest + 1
 
         /*------------------------------------------------------------
            If flashlight-only, switch to in-place copy (scroll_src := scroll_dest)
@@ -790,19 +790,19 @@ lscroll_set_dest_to_active_fb:
         lda     global_lights_state
         cmp     #$01
         bne     move_one_column_left
-        lda     <frame_buffer_base
-        sta     <scroll_src
-        lda     >frame_buffer_base
-        sta     >scroll_src
+        lda     frame_buffer_base
+        sta     scroll_src
+        lda     frame_buffer_base + 1
+        sta     scroll_src + 1
 
 move_one_column_left:
         /*------------------------------------------------------------
            Start writing at column #1: scroll_dest := scroll_dest + 1
            - Copy will run right→left (39 bytes) into columns 0..38
         ------------------------------------------------------------*/
-        inc     <scroll_dest
+        inc     scroll_dest
         bne     lscroll_copy_tiles_block
-        inc     >scroll_dest
+        inc     scroll_dest + 1
 
 lscroll_copy_tiles_block:
         /*------------------------------------------------------------
@@ -817,26 +817,26 @@ lscroll_copy_tiles_block:
            - We incremented scroll_dest in TILE path; for fixed layers we set both explicitly
         ------------------------------------------------------------*/
         lda     #<COLOR_LAYER_COL_0           // scroll_src at column 0 base
-        sta     <scroll_src
+        sta     scroll_src
         lda     #>COLOR_LAYER_COL_0
-        sta     >scroll_src
+        sta     scroll_src + 1
         lda     #<COLOR_LAYER_COL_1           // scroll_dest at column 1 base
-        sta     <scroll_dest
+        sta     scroll_dest
         lda     #>COLOR_LAYER_COL_1
-        sta     >scroll_dest
+        sta     scroll_dest + 1
         jsr     scroll_left_copy
 
         /*------------------------------------------------------------
            Copy MASK layer: columns 1.. → 0..
         ------------------------------------------------------------*/
         lda     #<MASK_LAYER_COL_0            // scroll_src at column 0 base
-        sta     <scroll_src
+        sta     scroll_src
         lda     #>MASK_LAYER_COL_0
-        sta     >scroll_src
+        sta     scroll_src + 1
         lda     #<MASK_LAYER_COL_1            // scroll_dest at column 1 base
-        sta     <scroll_dest
+        sta     scroll_dest
         lda     #>MASK_LAYER_COL_1
-        sta     >scroll_dest
+        sta     scroll_dest + 1
         jsr     scroll_left_copy
 
         rts
@@ -926,9 +926,9 @@ scroll_view_right:
            - Destination will be set to the active frame buffer next
         ------------------------------------------------------------*/
         lda     #<VIEW_FRAME_BUF_0
-        sta     <scroll_src
+        sta     scroll_src
         lda     #>VIEW_FRAME_BUF_0
-        sta     >scroll_src
+        sta     scroll_src + 1
         jmp     set_dest_to_active_fb
 
         /*------------------------------------------------------------
@@ -937,19 +937,19 @@ scroll_view_right:
         ------------------------------------------------------------*/
 pick_other_fb_when_fb0:
         lda     #<VIEW_FRAME_BUF_1
-        sta     <scroll_src
+        sta     scroll_src
         lda     #>VIEW_FRAME_BUF_1
-        sta     >scroll_src
+        sta     scroll_src + 1
 
 set_dest_to_active_fb:
         /*------------------------------------------------------------
            Set destination to the active frame buffer base
            - Copy frame_buffer_base (lo/hi) into scroll_dest
         ------------------------------------------------------------*/
-        lda     <frame_buffer_base            // dest.lo := active FB low
-        sta     <scroll_dest
-        lda     >frame_buffer_base            // dest.hi := active FB high
-        sta     >scroll_dest
+        lda     frame_buffer_base            // dest.lo := active FB low
+        sta     scroll_dest
+        lda     frame_buffer_base + 1            // dest.hi := active FB high
+        sta     scroll_dest + 1
 
         /*------------------------------------------------------------
            If flashlight-only, switch to in-place copy (src := dest)
@@ -960,18 +960,18 @@ set_dest_to_active_fb:
         cmp     #$01                          // 1 → flashlight-only
         bne     offset_src_to_col1            // not flashlight-only → keep double-buffer source
 
-        lda     <frame_buffer_base            // src.lo := active FB low
-        sta     <scroll_src
-        lda     >frame_buffer_base            // src.hi := active FB high
-        sta     >scroll_src
+        lda     frame_buffer_base            // src.lo := active FB low
+        sta     scroll_src
+        lda     frame_buffer_base + 1            // src.hi := active FB high
+        sta     scroll_src + 1
 
 offset_src_to_col1:
         /*------------------------------------------------------------
            Shift by one column: start reading at column #1 (scroll_src += 1)
         ------------------------------------------------------------*/
-        inc     <scroll_src
+        inc     scroll_src
         bne     copy_tiles_block
-        inc     >scroll_src
+        inc     scroll_src + 1
 
 copy_tiles_block:
         /*------------------------------------------------------------
@@ -986,13 +986,13 @@ copy_tiles_block:
            - Copy 40×17 block left→right (safe with src = dest+1)
         ------------------------------------------------------------*/
         lda     #<COLOR_LAYER_COL_1           // src.lo := color layer col #1 low
-        sta     <scroll_src
+        sta     scroll_src
         lda     #>COLOR_LAYER_COL_1           // src.hi := color layer col #1 high
-        sta     >scroll_src
+        sta     scroll_src + 1
         lda     #<COLOR_LAYER_COL_0           // dest.lo := color layer col #0 low
-        sta     <scroll_dest
+        sta     scroll_dest
         lda     #>COLOR_LAYER_COL_0           // dest.hi := color layer col #0 high
-        sta     >scroll_dest
+        sta     scroll_dest + 1
         jsr     scroll_right_copy             // perform 40×17 left-shift copy
 
         /*------------------------------------------------------------
@@ -1002,13 +1002,13 @@ copy_tiles_block:
            - Copy 40×17 block left→right (safe with src = dest+1)
         ------------------------------------------------------------*/
         lda     #<MASK_LAYER_COL_1            // src.lo := mask layer col #1 low
-        sta     <scroll_src
+        sta     scroll_src
         lda     #>MASK_LAYER_COL_1            // src.hi := mask layer col #1 high
-        sta     >scroll_src
+        sta     scroll_src + 1
         lda     #<MASK_LAYER_COL_0            // dest.lo := mask layer col #0 low
-        sta     <scroll_dest
+        sta     scroll_dest
         lda     #>MASK_LAYER_COL_0            // dest.hi := mask layer col #0 high
-        sta     >scroll_dest
+        sta     scroll_dest + 1
         jsr     scroll_right_copy             // perform 40×17 left-shift copy
 
         rts
@@ -1054,23 +1054,23 @@ left_copy_next_col:
            Advance source pointer to next row (scroll_src += 40)
         ------------------------------------------------------------*/
         clc
-        lda     <scroll_src
+        lda     scroll_src
         adc     #<COLS_PER_ROW
-        sta     <scroll_src
-        lda     >scroll_src
+        sta     scroll_src
+        lda     scroll_src + 1
         adc     #>COLS_PER_ROW
-        sta     >scroll_src
+        sta     scroll_src + 1
 
         /*------------------------------------------------------------
            Advance destination pointer to next row (scroll_dest += 40)
         ------------------------------------------------------------*/
         clc
-        lda     <scroll_dest
+        lda     scroll_dest
         adc     #<COLS_PER_ROW
-        sta     <scroll_dest
-        lda     >scroll_dest
+        sta     scroll_dest
+        lda     scroll_dest + 1
         adc     #>COLS_PER_ROW
-        sta     >scroll_dest
+        sta     scroll_dest + 1
 
         /*------------------------------------------------------------
            Next row until X becomes -1 (BPL falls through when done)
@@ -1131,23 +1131,23 @@ right_copy_next_col:
            Advance scroll_src pointer to next row (scroll_src += 40)
         ------------------------------------------------------------*/
         clc
-        lda     <scroll_src
+        lda     scroll_src
         adc     #<COLS_PER_ROW
-        sta     <scroll_src
-        lda     >scroll_src
+        sta     scroll_src
+        lda     scroll_src + 1
         adc     #>COLS_PER_ROW
-        sta     >scroll_src
+        sta     scroll_src + 1
 
         /*------------------------------------------------------------
            Advance destination pointer to next row (scroll_dest += 40)
         ------------------------------------------------------------*/
         clc
-        lda     <scroll_dest
+        lda     scroll_dest
         adc     #<COLS_PER_ROW
-        sta     <scroll_dest
-        lda     >scroll_dest
+        sta     scroll_dest
+        lda     scroll_dest + 1
         adc     #>COLS_PER_ROW
-        sta     >scroll_dest
+        sta     scroll_dest + 1
 
         /*------------------------------------------------------------
            Next row until X becomes -1 (BPL falls through when done)

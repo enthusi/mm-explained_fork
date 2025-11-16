@@ -189,7 +189,7 @@ op_load_room_with_ego:
 		// ------------------------------------------------------------
         ldx     current_kid_idx               // X := index of active kid (ego)
         lda     actor_vars,x                  // A := status flags for that kid
-        and     ACTOR_IS_FROZEN               // isolate FROZEN bit; Z=1 → not frozen, Z=0 → frozen
+        and     #ACTOR_IS_FROZEN              // isolate FROZEN bit; Z=1 → not frozen, Z=0 → frozen
         beq     start_load_path               // not frozen → continue normal load path
 
 		// Kid frozen - terminate task immediately
@@ -346,7 +346,7 @@ op_load_room_for_subresource:
 		// ------------------------------------------------------------
 		jsr     script_load_operand_bit7       		// A := room index 
 		tax                                     	// X := room index
-		jsr     load_room              				// load room into cache
+		jsr     room_ensure_resident   				// load room into cache
 		jsr     refresh_script_addresses_if_moved   // adjust relocated script pointers
 		rts                                     
 /*
