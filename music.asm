@@ -5,6 +5,13 @@
 #import "registers.inc"
 #import "voice_allocation.asm"
 
+* = $5455
+voice_offsets_in_music_resource:
+.byte $06, $08, $0A, $00
+* = $5459
+sound_resource_index_for_music_voice:
+.byte $03, $04, $05, $00
+
 * = $4C76
 setup_music_pointers:
         // ------------------------------------------------------------

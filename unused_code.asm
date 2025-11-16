@@ -59,3 +59,137 @@ unused_dummy_1:
     tax
     pla
     rts
+
+* = $4752
+.byte $00
+.byte $45, $49
+
+* = $476B
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $FF, $FF, $FF
+.byte $FF, $FF, $FF
+.byte $FF, $00, $00
+.byte $00
+
+* = $4819
+.byte $00
+.byte $00
+
+* = $53CD
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $7F, $01, $19
+.byte $00
+.byte $00
+.byte $00
+.byte $2D, $00, $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $F0, $40
+.byte $10, $04
+.byte $00
+.byte $00
+.byte $00
+.byte $04, $27
+.byte $03, $FF
+.byte $FF, $01, $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $7F, $01, $19
+.byte $00
+.byte $00
+.byte $00
+.byte $2D, $00, $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $F0, $20
+.byte $10, $04
+.byte $00
+.byte $00
+.byte $00
+.byte $04, $27
+.byte $03, $FF
+.byte $FF, $02, $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $7F, $01, $19
+.byte $00
+.byte $00
+.byte $00
+.byte $2D, $00, $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $F0, $20
+.byte $10, $04
+.byte $00
+.byte $00
+.byte $00
+.byte $04, $27
+.byte $03, $FF
+.byte $FF, $02, $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+.byte $00
+
+* = $5F76
+.byte $00
+.byte $00
+.byte $00

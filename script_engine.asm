@@ -3,9 +3,8 @@
 #import "constants.inc"
 #import "registers.inc"
 #import "rsrc_mgmt.asm"
+#import "opcode_handlers.inc"
 
-.label opcode_handlers_lo = $d000        // Table of low bytes for opcode handler addresses
-.label opcode_handlers_hi = $d100        // Table of high bytes for opcode handler addresses
 .label inlined_handler   = $5dab        // Indirect JSR target patched to handler address at runtime
 .label debug_semaphore   = $2F          // Debug flag and synchronization byte (bit7 = skip wait)
 .label inlined_script_pc = $5E15        // Temporary storage for inlined script PC (current read pointer)
