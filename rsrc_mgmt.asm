@@ -6,6 +6,7 @@
 #import "disk_high_level.asm"
 #import "pause.asm"
 #import "actor.asm"
+#import "misc.asm"
 
 /*===========================================
  * Private variables & constants
@@ -151,17 +152,17 @@ costume_cache_miss:
         sta     rsrc_sector_idx
 
         // Identify resource class and perform the load:
-        //   resource_type := COSTUME (#$02)
+        //   rsrc_resource_type := COSTUME (#$02)
         //   rsrc_load_from_disk → returns X=ptr.lo, Y=ptr.hi (payload start)
         lda     #RSRC_TYPE_COSTUME                    
-        sta     resource_type
+        sta     rsrc_resource_type
         jsr     rsrc_load_from_disk
 
         // Publish the returned pointer into the costume tables at the original index.
         // Stash X/Y temporarily so we can use Y as the table index (resource_index).
         stx     tmp_ptr_lo                  // tmp_ptr_lo := ptr.lo
         sty     tmp_ptr_hi                  // tmp_ptr_hi := ptr.hi
-        ldy     resource_index          // Y := costume index for table write
+        ldy     rsrc_resource_index          // Y := costume index for table write
         lda     tmp_ptr_lo
         sta     costume_ptr_lo_tbl,y    // table[Y].lo := ptr.lo
         lda     tmp_ptr_hi
@@ -211,9 +212,9 @@ rsrc_ensure_sound_resident:
         sty saved_y
 
         // Resource index arrives in A:
-        //   - keep a copy for later publishes (resource_index)
+        //   - keep a copy for later publishes ( rsrc_resource_index)
         //   - X := index for table lookups (sound_ptr_*_tbl[])
-        sta resource_index
+        sta  rsrc_resource_index
         tax
 
         // Fast-path residency check:
@@ -251,14 +252,14 @@ sound_cache_miss:
         //   resource_type := 06 (SOUND)
         //   rsrc_load_from_disk → X=ptr.lo, Y=ptr.hi (payload pointer)
         lda #RSRC_TYPE_SOUND                          
-        sta resource_type
+        sta rsrc_resource_type
         jsr rsrc_load_from_disk
 
         // Publish the returned pointer into the sound tables at the original index.
         // Stash X/Y temporarily because we need Y to address by resource_index.
         stx rsrc_ptr_lo_tmp                         // rsrc_ptr_lo_tmp := ptr.lo
         sty rsrc_ptr_hi_tmp                         // rsrc_ptr_hi_tmp := ptr.hi
-        ldy resource_index                 // Y := sound index used for tables
+        ldy rsrc_resource_index                 // Y := sound index used for tables
         lda rsrc_ptr_lo_tmp
         sta sound_ptr_lo_tbl,y             // table[Y].lo := ptr.lo
         lda rsrc_ptr_hi_tmp
@@ -312,7 +313,7 @@ rsrc_ensure_script_resident:
          *  - If resident, return immediately (note: Y is NOT restored on this path).
          *---------------------------------------*/
         sty saved_y                        // Save caller's Y for the slow path; may not be restored on early return
-        sta resource_index                 // Remember script index for the later publish step after load
+        sta rsrc_resource_index                 // Remember script index for the later publish step after load
         tax                                // X := script index (for table lookups below)
         lda script_ptr_hi_tbl,x            // Load hi byte of script data pointer; Z=1 iff value == 0 (not resident)
         beq script_cache_miss              // Not resident → take slow path
@@ -362,13 +363,13 @@ load_script_from_disk:
          *  - Publish that pointer into script_ptr_*_tbl[resource_index]
          *---------------------------------------*/
         lda #RSRC_TYPE_SCRIPT              // Select resource class for the loader
-        sta resource_type
+        sta rsrc_resource_type
         jsr rsrc_load_from_disk            // → X=payload.lo, Y=payload.hi (A/flags clobbered)
 
         // Stash returned pointer bytes before reusing Y as an index
         stx rsrc_ptr_lo_tmp              // save lo
         sty rsrc_ptr_hi_tmp              // save hi
-        ldy resource_index                 // Y := original script index (table row)
+        ldy rsrc_resource_index                 // Y := original script index (table row)
 
         // Publish pointer to tables[script_index]
         lda rsrc_ptr_lo_tmp
@@ -505,7 +506,7 @@ rsrc_load_from_disk:
          */
         ldx #<rsrc_hdr_scratch
         ldy #>rsrc_hdr_scratch
-        lda RSRC_DHDR_BYTES
+        lda #RSRC_DHDR_BYTES
         sta disk_copy_count_lo
         lda #$00
         sta disk_copy_count_hi
@@ -518,7 +519,7 @@ rsrc_load_from_disk:
          */
         lda rsrc_hdr_scratch + RSRC_DHDR_OFF_SENTINEL
         beq allocate_payload
-        jsr disk_ensure_side
+        jsr disk_id_check
         jmp rsrc_load_from_disk
 
 		/* ----------------------------------------
@@ -530,8 +531,8 @@ allocate_payload:
          * Prepare allocator arguments:
          *   X/Y = rsrc_total_bytes
          */
-        ldx <rsrc_total_bytes
-        ldy >rsrc_total_bytes
+        ldx rsrc_total_bytes
+        ldy rsrc_total_bytes + 1
 
         /*
          * Request a block large enough for the payload (+ header handled by allocator path).
@@ -544,8 +545,8 @@ allocate_payload:
          * Publish the destination payload pointer for subsequent copies:
          *   rsrc_data_ptr := returned X/Y (lo/hi)
          */
-        stx <rsrc_data_ptr
-        sty >rsrc_data_ptr
+        stx rsrc_data_ptr
+        sty rsrc_data_ptr + 1
 
         // Mark that we have at least one retry opportunity for this load sequence.
         lda #$01
@@ -553,23 +554,19 @@ allocate_payload:
 
 copy_payload_from_disk:
         /*
-         * Stream position: seek to the first sector that contains this resource data.
-         *   X = rsrc_read_offset          (byte offset within the resource stream)
-         *   Y = rsrc_sector_idx   (index in the physical sector chain)
-         */
-        jsr disk_seek_read
-
-        /*
          * Copy the entire payload from the disk stream into the allocated destination.
          *   dest    = rsrc_data_ptr (lo/hi)
          *   count   = rsrc_total_bytes (lo/hi)
          *   effect  = advances both stream position and dest pointer by count bytes
          */
-        ldx <rsrc_data_ptr
-        ldy >rsrc_data_ptr
-        lda <rsrc_total_bytes
+		ldx rsrc_read_offset 
+		ldy rsrc_sector_idx
+		jsr disk_seek_read		
+        ldx rsrc_data_ptr
+        ldy rsrc_data_ptr + 1
+        lda rsrc_total_bytes
         sta disk_copy_count_lo
-        lda >rsrc_total_bytes
+        lda rsrc_total_bytes + 1
         sta disk_copy_count_hi
         jsr disk_stream_copy
 
@@ -580,10 +577,10 @@ copy_payload_from_disk:
 		 * Seed rsrc_hdr_ptr with the start of the on-memory resource (header at +0).
 		 *   rsrc_hdr_ptr := rsrc_data_ptr
 		 */
-        lda <rsrc_data_ptr
-        sta <rsrc_hdr_ptr
-        lda >rsrc_data_ptr
-        sta >rsrc_hdr_ptr
+        lda rsrc_data_ptr
+        sta rsrc_hdr_ptr
+        lda rsrc_data_ptr + 1
+        sta rsrc_hdr_ptr + 1
 
         /*
          * Compute payload byte count (exclude header bytes):
@@ -591,12 +588,12 @@ copy_payload_from_disk:
          * Little-endian subtract; C=1 before SBC means “no borrow” baseline.
          */
         sec
-        lda <rsrc_total_bytes
+        lda rsrc_total_bytes
         sbc #RSRC_DHDR_BYTES
-        sta <rsrc_payload_len
-        lda >rsrc_total_bytes
+        sta rsrc_payload_len
+        lda rsrc_total_bytes + 1
         sbc #$00
-        sta >rsrc_payload_len
+        sta rsrc_payload_len + 1
 
         /*
          * Point rsrc_payload_ptr at the first byte after the header:
@@ -604,12 +601,12 @@ copy_payload_from_disk:
          * Little-endian add; C cleared so ADC adds carry-in=0.
          */
         clc
-        lda <rsrc_data_ptr
+        lda rsrc_data_ptr
         adc #RSRC_DHDR_BYTES
-        sta <rsrc_payload_ptr
-        lda >rsrc_data_ptr
+        sta rsrc_payload_ptr
+        lda rsrc_data_ptr + 1
         adc #$00
-        sta >rsrc_payload_ptr
+        sta rsrc_payload_ptr + 1
 
         /*
          * Load the expected checksum from the header:
@@ -638,27 +635,27 @@ rsrc_chk_step:
         sta rsrc_chk_accum
 
         // Advance source pointer: ++rsrc_payload_ptr (little-endian)
-        inc <rsrc_payload_ptr
+        inc rsrc_payload_ptr
         bne dec_rem_count        		// no wrap → skip hi-byte increment
-        inc >rsrc_payload_ptr           // wrapped lo → carry into hi
+        inc rsrc_payload_ptr + 1           // wrapped lo → carry into hi
 
 dec_rem_count:
         /*
          * Decrement remaining byte count (16-bit):
          *   if lo==0 then borrow from hi
          */
-        lda <rsrc_payload_len
+        lda rsrc_payload_len
         bne dec_rem_lo
-        dec >rsrc_payload_len
+        dec rsrc_payload_len + 1
 dec_rem_lo:
-        dec <rsrc_payload_len
+        dec rsrc_payload_len
 
         /*
          * Loop if any bytes remain:
          *   test (lo | hi) != 0  → more data pending
          */
-        lda <rsrc_payload_len
-        ora >rsrc_payload_len
+        lda rsrc_payload_len
+        ora rsrc_payload_len + 1
         bne rsrc_chk_step       // Z=0 → continue; Z=1 → done
 
 		/*
@@ -691,9 +688,9 @@ dec_rem_lo:
          * Show disk error and wait for user to acknowledge (e.g., joystick button).
          */
         lda #<DISK_ERROR_MSG
-        sta <print_msg_ptr
+        sta print_msg_ptr
         lda #>DISK_ERROR_MSG
-        sta >print_msg_ptr
+        sta print_msg_ptr + 1
         jsr print_message_wait_for_button
 
 retry_copy:
@@ -730,10 +727,10 @@ retry_copy:
 rsrc_hdr_init:
 		// Store raw data size
         ldy #$00
-        lda <rsrc_raw_size
+        lda rsrc_raw_size
         sta (rsrc_hdr_ptr),Y
         iny
-        lda >rsrc_raw_size
+        lda rsrc_raw_size + 1
         sta (rsrc_hdr_ptr),Y
 		
 		// Store resource type 
@@ -747,8 +744,8 @@ rsrc_hdr_init:
         sta (rsrc_hdr_ptr),Y
 		
 		// Return the resource data pointer via .X and .Y
-        ldx <rsrc_data_ptr
-        ldy >rsrc_data_ptr
+        ldx rsrc_data_ptr
+        ldy rsrc_data_ptr + 1
 		
 		// Unpause game
         jsr unpause_game
@@ -796,7 +793,7 @@ rsrc_hdr_init:
  *===========================================*/
 * = $567B
 rsrc_unlock_or_unassign_costume:
-        ldx COSTUME_MAX_INDEX            // start at the highest costume index; scan downward one-by-one
+        ldx #COSTUME_MAX_INDEX            // start at the highest costume index; scan downward one-by-one
 
 scan_locked_costumes:
         // Read attributes for costume X. Bit7 encodes "locked":
@@ -925,9 +922,9 @@ rsrc_update_ptr:
         bne test_type_room_layers
 
         // type 3: room — publish pointer for room X
-        lda <rsrc_ptr             // lo byte (little-endian)
+        lda rsrc_ptr             // lo byte (little-endian)
         sta room_ptr_lo_tbl,x
-        lda >rsrc_ptr             // hi byte
+        lda rsrc_ptr + 1             // hi byte
         sta room_ptr_hi_tbl,x
         rts
 
@@ -936,9 +933,9 @@ test_type_room_layers:
         bne test_type_costume
 
         // type 4: room scene layers — publish pointer for layer set X
-        lda <rsrc_ptr
+        lda rsrc_ptr
         sta room_gfx_layers_lo,x
-        lda >rsrc_ptr
+        lda rsrc_ptr + 1
         sta room_gfx_layers_hi,x
         rts
 
@@ -947,9 +944,9 @@ test_type_costume:
         bne test_type_object
 
         // type 2: costume — publish pointer for costume X
-        lda <rsrc_ptr
+        lda rsrc_ptr
         sta costume_ptr_lo_tbl,x
-        lda >rsrc_ptr
+        lda rsrc_ptr + 1
         sta costume_ptr_hi_tbl,x
         rts
 
@@ -958,9 +955,9 @@ test_type_object:
         bne test_type_script
 
         // type 1: object — publish pointer for object X
-        lda <rsrc_ptr
+        lda rsrc_ptr
         sta object_ptr_lo_tbl,x
-        lda >rsrc_ptr
+        lda rsrc_ptr + 1
         sta object_ptr_hi_tbl,x
         rts
 
@@ -969,9 +966,9 @@ test_type_script:
         bne test_type_sound
 
         // type 5: script — publish pointer for script X
-        lda <rsrc_ptr
+        lda rsrc_ptr
         sta script_ptr_lo_tbl,x
-        lda >rsrc_ptr
+        lda rsrc_ptr + 1
         sta script_ptr_hi_tbl,x
         rts
 
@@ -980,9 +977,9 @@ test_type_sound:
         bne rsrc_evict_one_by_priority // BUG - it shouldn't fall through but hang up instead
 
         // type 6: sound — publish pointer for sound X
-        lda <rsrc_ptr
+        lda rsrc_ptr
         sta sound_ptr_lo_tbl,x
-        lda >rsrc_ptr
+        lda rsrc_ptr + 1
         sta sound_ptr_hi_tbl,x
         rts
 /*===========================================

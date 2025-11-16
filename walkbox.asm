@@ -349,14 +349,14 @@ build_walkbox_path:
         jsr     get_walkboxes_for_costume
 
         // Point adj_list_ptr two bytes before walkbox list start
-        lda     >box_ptr
-        sta     >adj_list_ptr
-        lda     <box_ptr
+        lda     box_ptr + 1
+        sta     adj_list_ptr + 1
+        lda     box_ptr
         sec
         sbc     #ADJ_PTR_OFFSET_BIAS
-        sta     <adj_list_ptr
+        sta     adj_list_ptr
         bcs     adjust_adj_list_ptr
-        dec     >adj_list_ptr
+        dec     adj_list_ptr + 1
 
 adjust_adj_list_ptr:
         // ------------------------------------------------------------
@@ -365,9 +365,9 @@ adjust_adj_list_ptr:
         ldy     #$00
         clc
         adc     (adj_list_ptr),y
-        sta     <adj_list_ptr
+        sta     adj_list_ptr
         bcc     init_search_state
-        inc     >adj_list_ptr
+        inc     adj_list_ptr + 1
 
 init_search_state:
         // ------------------------------------------------------------
@@ -402,6 +402,7 @@ search_loop:
         lda     #RESULT_PATH_OK
         sta     return_value
         rts
+		jmp		dummy_label
 
 explore_or_backtrack:
         // ------------------------------------------------------------
@@ -430,6 +431,7 @@ loop_if_continue:
         // ------------------------------------------------------------
         beq     explore_or_backtrack
 
+dummy_label:
         lda     #$00
         jmp     test_continue_and_dispatch
 
@@ -729,7 +731,8 @@ scan_next_adjacent:
         bne     check_adjacent_seen_state
         lda     #ALL_KNOWN
         rts
-
+		jmp		loop_if_box_seen		//Unreachable code
+		
 check_adjacent_seen_state:
         // ------------------------------------------------------------
         // Test this adjacent: if unseen → return ONE_UNKNOWN.
@@ -740,7 +743,6 @@ check_adjacent_seen_state:
         cmp     #BOX_NOT_SEEN                 // Z=1 when unseen
         bne     loop_if_box_seen           // A=$00 (seen) → keep scanning
         lda     #ONE_UNKNOWN
-        rts
 
 loop_if_box_seen:
         // ------------------------------------------------------------
@@ -1360,17 +1362,17 @@ Description
 */
 * = $2DC0
 get_walkboxes_ptr:
-        sta     >box_ptr                // Set HI of box_ptr from A (room base HI; Y=room index)
+        sta     box_ptr + 1                // Set HI of box_ptr from A (room base HI; Y=room index)
         lda     room_ptr_lo_tbl,y            // Load LO byte of room base from table[Y]
-        sta     <box_ptr                // Set LO of box_ptr to complete base pointer
+        sta     box_ptr                // Set LO of box_ptr to complete base pointer
 
         ldy     #OFS_WALKBOX              // Y := offset-of-walkbox byte within block ($15)
         lda     (box_ptr),y          // A := 8-bit walkbox offset at base+$15
         clc                               // clear carry for 8-bit addition
-        adc     <box_ptr             // add offset to LO; C=1 if wrap occurred
-        sta     <box_ptr             // commit updated LO
+        adc     box_ptr             // add offset to LO; C=1 if wrap occurred
+        sta     box_ptr             // commit updated LO
         bcc     exit_gwp                      // no carry → HI unchanged
-        inc     >box_ptr             // carry → increment HI to complete pointer
+        inc     box_ptr + 1             // carry → increment HI to complete pointer
 exit_gwp:
         lda     #$00                      // success sentinel in A
         rts                               // return to caller with box_ptr valid

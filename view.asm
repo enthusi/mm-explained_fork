@@ -1176,13 +1176,13 @@ clear_view_buffers:
            Clear VIEW_FRAME_BUF_0 with FILL_VALUE for VIEW_FRAME_BUF_SIZE bytes
         ------------------------------------------------------------*/
         lda     #<VIEW_FRAME_BUF_0           // dest.lo := base low
-        sta     <fill_dest_ptr
+        sta     fill_dest_ptr
         lda     #>VIEW_FRAME_BUF_0           // dest.hi := base high
-        sta     >fill_dest_ptr
+        sta     fill_dest_ptr + 1
         lda     #<VIEW_FRAME_BUF_SIZE        // count.lo := size low
-        sta     <fill_byte_cnt
+        sta     fill_byte_cnt
         lda     #>VIEW_FRAME_BUF_SIZE        // count.hi := size high
-        sta     >fill_byte_cnt
+        sta     fill_byte_cnt + 1
         ldx     #FILL_VALUE                   // X := fill byte
         jsr     mem_fill_x                    // fill [dest, dest+size)
 
@@ -1190,13 +1190,13 @@ clear_view_buffers:
            Clear VIEW_FRAME_BUF_1 with FILL_VALUE for VIEW_FRAME_BUF_SIZE bytes
         ------------------------------------------------------------*/
         lda     #<VIEW_FRAME_BUF_1           // dest.lo := base low
-        sta     <fill_dest_ptr
+        sta     fill_dest_ptr
         lda     #>VIEW_FRAME_BUF_1           // dest.hi := base high
-        sta     >fill_dest_ptr
+        sta     fill_dest_ptr + 1
         lda     #<VIEW_FRAME_BUF_SIZE        // count.lo := size low
-        sta     <fill_byte_cnt
+        sta     fill_byte_cnt
         lda     #>VIEW_FRAME_BUF_SIZE        // count.hi := size high
-        sta     >fill_byte_cnt
+        sta     fill_byte_cnt + 1 
         ldx     #FILL_VALUE                   // X := fill byte
         jsr     mem_fill_x                    // fill [dest, dest+size)
         rts

@@ -81,6 +81,7 @@ Notes
 #import "constants.inc"
 #import "script_primitives.asm"
 #import "ops_primitives.asm"
+#import "entry_point.asm"
 #import "random.asm"
 #import "view.asm"
 #import "save_game.asm"

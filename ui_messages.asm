@@ -252,10 +252,10 @@ check_eos_then_loop:
         iny                                 // Y := Y + 1 to include the terminator in advance
         tya                                 // A := Y (byte count including #$00)
         clc                                 // clear carry before 16-bit add
-        adc     <src_msg_ptr                // add to message pointer low byte
-        sta     <src_msg_ptr                // commit updated low byte
+        adc     src_msg_ptr                // add to message pointer low byte
+        sta     src_msg_ptr                // commit updated low byte
         bcc     maybe_apply_topbar_color    // no carry → high byte unchanged
-        inc     >src_msg_ptr                // carry → increment high byte of pointer
+        inc     src_msg_ptr + 1                // carry → increment high byte of pointer
 
         // ------------------------------------------------------------
         // Conditional color update
@@ -312,9 +312,9 @@ fill_topbar_color_loop:
         sta     var_message_length          // debug: reset printed-char counter
 
         lda     #<INITIAL_MSG_COUNTDOWN     // A := low byte of initial countdown
-        sta     <cur_msg_countdown          // set countdown low byte
+        sta     cur_msg_countdown          // set countdown low byte
         lda     #>INITIAL_MSG_COUNTDOWN     // A := high byte of initial countdown
-        sta     >cur_msg_countdown          // set countdown high byte
+        sta     cur_msg_countdown + 1          // set countdown high byte
 
 prep_msg_exit:
         rts
@@ -356,8 +356,8 @@ shutdown_topbar_talking:
         // ------------------------------------------------------------
         lda     #TOP_BAR_MODE_IDLE
         sta     topbar_mode
-        sta     <cur_msg_countdown
-        sta     >cur_msg_countdown
+        sta     cur_msg_countdown
+        sta     cur_msg_countdown + 1
 
         // ------------------------------------------------------------
         // If there is a message owner, possibly close mouth
@@ -397,7 +397,7 @@ clear_topbar_text:
         // ------------------------------------------------------------
         // Y := last index; A := CLEAR_CHAR; clear [Y..0]
         // ------------------------------------------------------------
-        ldy     TOP_BAR_LAST_IDX
+        ldy     #TOP_BAR_LAST_IDX
         lda     #CLEAR_CHAR
 clear_text_loop:
         sta     topbar_text_base,y
@@ -453,26 +453,26 @@ tick_topbar_message:
         // ------------------------------------------------------------
         // Exit if countdown timer is zero
         // ------------------------------------------------------------
-        lda     <cur_msg_countdown             // load low byte of countdown
-        ora     >cur_msg_countdown             // OR with high byte → check if both zero
+        lda     cur_msg_countdown              // load low byte of countdown
+        ora     cur_msg_countdown + 1          // OR with high byte → check if both zero
         beq     tick_topbar_msg_exit           // if 0 → no countdown active, exit
 
         // ------------------------------------------------------------
         // Decrement 16-bit countdown
         // ------------------------------------------------------------
-        lda     <cur_msg_countdown             // reload low byte
+        lda     cur_msg_countdown              // reload low byte
         bne     dec_delay_lo_byte          	   // if not zero → skip high-byte borrow
-        dec     >cur_msg_countdown             // low byte was zero → borrow from high
+        dec     cur_msg_countdown + 1          // low byte was zero → borrow from high
 dec_delay_lo_byte:
-        dec     <cur_msg_countdown             // decrement low byte of countdown
+        dec     cur_msg_countdown              // decrement low byte of countdown
 
         // ------------------------------------------------------------
         // Check if countdown still active
 		//
         // If any byte nonzero, the countdown is ongoing and routine exits.
         // ------------------------------------------------------------
-        lda     <cur_msg_countdown             // load low byte of countdown
-        ora     >cur_msg_countdown             // combine with high byte to test both
+        lda     cur_msg_countdown              // load low byte of countdown
+        ora     cur_msg_countdown + 1          // combine with high byte to test both
         bne     tick_topbar_msg_exit           // nonzero → countdown active, skip printing
 
         // ------------------------------------------------------------
@@ -488,10 +488,10 @@ dec_delay_lo_byte:
         // ------------------------------------------------------------
         jsr     clear_topbar_text           // clear visible bar before writing this batch
 
-        lda     <std_msg_countdown          // load standard countdown
-        sta     <cur_msg_countdown          // store as new countdown
-        lda     >std_msg_countdown              
-        sta     >cur_msg_countdown              
+        lda     std_msg_countdown           // load standard countdown
+        sta     cur_msg_countdown           // store as new countdown
+        lda     std_msg_countdown + 1
+        sta     cur_msg_countdown + 1              
 
         // ------------------------------------------------------------
         // Copy characters from source to topbar this run
@@ -543,12 +543,12 @@ regular_character:
         inc     var_message_length          // debug counter: track number of chars printed
 
         // Per-character: extend countdown by text_delay_factor
-        lda     <cur_msg_countdown          // load current countdown low byte
+        lda     cur_msg_countdown           // load current countdown low byte
         clc                                 // clear carry before addition
         adc     text_delay_factor           // add per-character countdown increment
-        sta     <cur_msg_countdown          // update low byte of countdown
+        sta     cur_msg_countdown           // update low byte of countdown
         bcc     end_of_bar_check            // if no carry → high byte unchanged
-        inc     >cur_msg_countdown          // if carry → increment high byte
+        inc     cur_msg_countdown + 1       // if carry → increment high byte
 
         // ------------------------------------------------------------
         // Check bar width and pause at end of line
@@ -563,6 +563,7 @@ end_of_bar_check:
 
         // Bar full → treat as a line break and pause printing
         jmp     commit_line_break_and_pause // save offset, schedule next batch
+		jmp 	tick_topbar_msg_exit		// Unreachable code
 
         // ------------------------------------------------------------
         // Finalize and exit

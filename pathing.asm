@@ -377,7 +377,8 @@ Caveats
 .label rel_axis_coord           = $CAD5  // scratch: actor coordinate on the axis being evaluated (X or Y)
 .label box_relpos_code          = $CAD6  // REL_* code from classify_box_relation (bit1=axis, bit0=near-origin)
 .label tgt_box_idx              = $FC3B  // walkbox index selected for target at final BFS depth
-.label actor_axis_class         = $FC3C  // axis test vs target: $00 below/left, $01 above/right, $02 inside
+//.label actor_axis_class         = $FC3C  // axis test vs target: $00 below/left, $01 above/right, $02 inside
+.label actor_axis_class         = $FC3B  // axis test vs target: $00 below/left, $01 above/right, $02 inside
 .label dest_other_axis          = $FC3F  // temp: destination coordinate on the axis opposite to the hall axis
 .label nearest_box_index        = $FDAC    // current walkbox index
 .label candidate_x              = $FE72    // candidate X
@@ -649,7 +650,7 @@ snap_and_stage_path_update:
         // 
         // Adjust destination to nearest walkbox; return if none found.
         // 
-        jsr     snap_coords_to_walkbox
+        jsr     adjust_actor_destination
         ldx     actor
         lda     nearest_box_idx
         cmp     #NO_BOX_FOUND
@@ -866,6 +867,8 @@ index_from_depth:
 		asl
 		clc
 		adc     #DISCOVERED_LIST_STRIDE
+		tay
+		
 		clc
 		adc     tgt_box_idx
 		tay
@@ -901,21 +904,21 @@ point_to_target_box:
 		// 
 		// Derive target_box_ptr from current_box_ptr + (target_idx * 5)
 		// 
-		lda     <current_box_ptr
+		lda     current_box_ptr
 		sta     $1b                                   // unused temp in original
-		lda     >current_box_ptr
+		lda     current_box_ptr + 1
 		sta     $1c                                   // unused temp in original
-		lda     >current_box_ptr
-		sta     >target_box_ptr
+		lda     current_box_ptr + 1
+		sta     target_box_ptr + 1
 		lda     tgt_box_idx
 		asl
 		asl
 		clc
 		adc     tgt_box_idx
-		adc     <current_box_ptr
-		sta     <target_box_ptr
+		adc     current_box_ptr
+		sta     target_box_ptr
 		bcc     point_to_current_box
-		inc     >target_box_ptr
+		inc     target_box_ptr + 1
 
 point_to_current_box:
 		// 
@@ -926,10 +929,10 @@ point_to_current_box:
 		asl
 		clc
 		adc     actor_box_cur,x
-		adc     <current_box_ptr
-		sta     <current_box_ptr
+		adc     current_box_ptr
+		sta     current_box_ptr
 		bcc     classify_box_relation_2
-		inc     >current_box_ptr
+		inc     current_box_ptr + 1
 
 classify_box_relation_2:
 		// 
@@ -1394,8 +1397,9 @@ return_PATH_NO_ADJUST_alt:
 check_closest_box_edge:
 		lda     dest_other_axis
 		cmp     (current_box_ptr),y
-		beq     return_PATH_NO_ADJUST                      // OK: on edge allowed in this case
+		beq     return_PATH_ADJUST                      
 		bcs     return_PATH_NO_ADJUST                      // OK: other ≥ current.first
+return_PATH_ADJUST:		
 		lda     #PATH_ADJUST_REQUIRED                           // below edge → adjust
 		rts
 

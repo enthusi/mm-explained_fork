@@ -561,9 +561,9 @@ h1_check_case_c800:
         lda     #VIC_LAYOUT_C800
         sta     vic_memory_layout_shadow
         lda     #<SPRITE_SHAPE_SET1_ADDR
-        sta     <sprite_shape_data_ptr
+        sta     sprite_shape_data_ptr
         lda     #>SPRITE_SHAPE_SET1_ADDR
-        sta     >sprite_shape_data_ptr
+        sta     sprite_shape_data_ptr + 1
         jsr     copy_vic_color_ram
         jmp     h1_layout_complete
 
@@ -578,9 +578,9 @@ h1_case_cc00:
         lda     #VIC_LAYOUT_CC00
         sta     vic_memory_layout_shadow
         lda     #<SPRITE_SHAPE_SET2_ADDR
-        sta     <sprite_shape_data_ptr
+        sta     sprite_shape_data_ptr
         lda     #>SPRITE_SHAPE_SET2_ADDR
-        sta     >sprite_shape_data_ptr
+        sta     sprite_shape_data_ptr + 1 
         jsr     copy_vic_color_ram
 
         // ------------------------------------------------------------
@@ -716,9 +716,9 @@ h1_sound:
 
         ldx     selected_music_idx                   // X := current music selection
         lda     sound_ptr_hi_tbl,x            // A := high byte of music start address
-        sta     <music_to_start_ptr           // store into pointer (engine’s chosen slot for HI)
+        sta     music_to_start_ptr_hi           // store into pointer (engine’s chosen slot for HI)
         lda     sound_ptr_lo_tbl,x            // A := low byte of music start address
-        sta     >music_to_start_ptr           // store into pointer (engine’s chosen slot for LO)
+        sta     music_to_start_ptr_lo           // store into pointer (engine’s chosen slot for LO)
 
         jsr     sound_irq_handler             // kick per-frame sound IRQ with updated music pointer
 
@@ -980,10 +980,10 @@ set_cursor_color:
         ldy     cia1_irq_status_reg                  // dummy read → clear pending CIA1 IRQ edge latch
 
 		//Set next IRQ handler as irq_handler3
-        ldy.zp  <irq_handler3                        
-        sty     <irq_handler                         
-        ldy.zp  >irq_handler3                        
-        sty     >irq_handler                         
+        ldy  #<irq_handler3                        
+        sty     irq_handler                         
+        ldy  #>irq_handler3                        
+        sty     irq_handler + 1
 
         // ------------------------------------------------------------
         // Restore cpu_port and A/X/Y; return from interrupt
@@ -1103,10 +1103,10 @@ irq_handler3:
         // ------------------------------------------------------------
         // Install next handler: irq_handler4
         // ------------------------------------------------------------
-        ldy.zp  <irq_handler4
-        sty     <irq_handler
-        ldy.zp  >irq_handler4
-        sty     >irq_handler
+        ldy  #<irq_handler4
+        sty     irq_handler
+        ldy  #>irq_handler4
+        sty     irq_handler + 1
 
         // ------------------------------------------------------------
         // Restore cpu_port and registers; return from interrupt
@@ -1203,10 +1203,10 @@ irq_handler4:
         ldy     #NEXT_RASTER_LINE_H5
         sty     vic_raster_line_reg
 
-        ldy.zp  <irq_handler5
-        sty     <irq_handler
-        ldy.zp  >irq_handler5
-        sty     >irq_handler
+        ldy  #<irq_handler5
+        sty     irq_handler
+        ldy  #>irq_handler5
+        sty     irq_handler + 1
 
         // ------------------------------------------------------------
         // Acknowledge raster IRQ and clear CIA1 edge latch
@@ -1268,10 +1268,10 @@ irq_handler5:
         // ------------------------------------------------------------
         ldy     #NEXT_RASTER_LINE_H6
         sty     vic_raster_line_reg
-        ldy.zp  <irq_handler6
-        sty     <irq_handler
-        ldy.zp  >irq_handler6
-        sty     >irq_handler
+        ldy  #<irq_handler6
+        sty     irq_handler
+        ldy  #>irq_handler6
+        sty     irq_handler + 1
 
         // ------------------------------------------------------------
         // Acknowledge raster IRQ and clear CIA1 edge latch
@@ -1348,10 +1348,10 @@ irq_handler6:
         ldy     #NEXT_RASTER_LINE_H7
         sty     vic_raster_line_reg
 
-        ldy.zp  <irq_handler7
-        sty     <irq_handler
-        ldy.zp  >irq_handler7
-        sty     >irq_handler
+        ldy  #<irq_handler7
+        sty     irq_handler
+        ldy  #>irq_handler7
+        sty     irq_handler + 1
 
         // ------------------------------------------------------------
         // Acknowledge raster IRQ and clear CIA1 edge latch
@@ -1410,10 +1410,10 @@ irq_handler7:
         // ------------------------------------------------------------
         ldy     #NEXT_RASTER_LINE_H8
         sty     vic_raster_line_reg
-        ldy.zp  <irq_handler8
-        sty     <irq_handler
-        ldy.zp  >irq_handler8
-        sty     >irq_handler
+        ldy  #<irq_handler8
+        sty     irq_handler
+        ldy  #>irq_handler8
+        sty     irq_handler + 1
 
         // ------------------------------------------------------------
         // Acknowledge raster IRQ and clear CIA1 edge latch
@@ -1490,10 +1490,10 @@ irq_handler8:
         ldy     #NEXT_RASTER_LINE_H9
         sty     vic_raster_line_reg
 
-        ldy.zp  <irq_handler9
-        sty     <irq_handler
-        ldy.zp  >irq_handler9
-        sty     >irq_handler
+        ldy  #<irq_handler9
+        sty     irq_handler
+        ldy  #>irq_handler9
+        sty     irq_handler + 1
 
         // ------------------------------------------------------------
         // Acknowledge raster IRQ and clear CIA1 edge latch
@@ -1552,10 +1552,10 @@ irq_handler9:
         // ------------------------------------------------------------
         ldy     #NEXT_RASTER_LINE_H10
         sty     vic_raster_line_reg
-        ldy.zp  <irq_handler10
-        sty     <irq_handler
-        ldy.zp  >irq_handler10
-        sty     >irq_handler
+        ldy  #<irq_handler10
+        sty     irq_handler
+        ldy  #>irq_handler10
+        sty     irq_handler + 1
 
         // ------------------------------------------------------------
         // Acknowledge raster IRQ and clear CIA1 edge latch
@@ -1633,10 +1633,10 @@ irq_handler10:
         ldy     #NEXT_RASTER_LINE_H11
         sty     vic_raster_line_reg
 
-        ldy.zp  <irq_handler11
-        sty     <irq_handler
-        ldy.zp  >irq_handler11
-        sty     >irq_handler
+        ldy  #<irq_handler11
+        sty     irq_handler
+        ldy  #>irq_handler11
+        sty     irq_handler + 1
 
         // ------------------------------------------------------------
         // Acknowledge raster IRQ and clear CIA1 edge latch
@@ -1695,10 +1695,10 @@ irq_handler11:
         // ------------------------------------------------------------
         ldy     #NEXT_RASTER_LINE_H12
         sty     vic_raster_line_reg
-        ldy.zp  <irq_handler12
-        sty     <irq_handler
-        ldy.zp  >irq_handler12
-        sty     >irq_handler
+        ldy  #<irq_handler12
+        sty     irq_handler
+        ldy  #>irq_handler12
+        sty     irq_handler + 1
 
         // ------------------------------------------------------------
         // Acknowledge raster IRQ and clear CIA1 edge latch
@@ -1774,10 +1774,10 @@ irq_handler12:
         // ------------------------------------------------------------
         ldy     #NEXT_RASTER_LINE_H13
         sty     vic_raster_line_reg
-        ldy.zp  <irq_handler13
-        sty     <irq_handler
-        ldy.zp  >irq_handler13
-        sty     >irq_handler
+        ldy  #<irq_handler13
+        sty     irq_handler
+        ldy  #>irq_handler13
+        sty     irq_handler + 1
 
         // ------------------------------------------------------------
         // Acknowledge raster IRQ and clear CIA1 edge latch
@@ -1836,10 +1836,10 @@ irq_handler13:
         // ------------------------------------------------------------
         ldy     #NEXT_RASTER_LINE_H14
         sty     vic_raster_line_reg
-        ldy.zp  <irq_handler14
-        sty     <irq_handler
-        ldy.zp  >irq_handler14
-        sty     >irq_handler
+        ldy  #<irq_handler14
+        sty     irq_handler
+        ldy  #>irq_handler14
+        sty     irq_handler + 1
 
         // ------------------------------------------------------------
         // Acknowledge raster IRQ and clear CIA1 edge latch
@@ -1915,10 +1915,10 @@ irq_handler14:
         // ------------------------------------------------------------
         ldy     #NEXT_RASTER_LINE_H15
         sty     vic_raster_line_reg
-        ldy.zp  <irq_handler15
-        sty     <irq_handler
-        ldy.zp  >irq_handler15
-        sty     >irq_handler
+        ldy  #<irq_handler15
+        sty     irq_handler
+        ldy  #>irq_handler15
+        sty     irq_handler + 1
 
         // ------------------------------------------------------------
         // Acknowledge raster IRQ and clear CIA1 edge latch
@@ -1977,10 +1977,10 @@ irq_handler15:
         // ------------------------------------------------------------
         ldy     #NEXT_RASTER_LINE_H16
         sty     vic_raster_line_reg
-        ldy.zp  <irq_handler16
-        sty     <irq_handler
-        ldy.zp  >irq_handler16
-        sty     >irq_handler
+        ldy  #<irq_handler16
+        sty     irq_handler
+        ldy  #>irq_handler16
+        sty     irq_handler + 1
 
         // ------------------------------------------------------------
         // Acknowledge raster IRQ and clear CIA1 edge latch
@@ -2056,10 +2056,10 @@ irq_handler16:
         // ------------------------------------------------------------
         ldy     #NEXT_RASTER_LINE_H17
         sty     vic_raster_line_reg
-        ldy.zp  <irq_handler17
-        sty     <irq_handler
-        ldy.zp  >irq_handler17
-        sty     >irq_handler
+        ldy  #<irq_handler17
+        sty     irq_handler
+        ldy  #>irq_handler17
+        sty     irq_handler + 1
 
         // ------------------------------------------------------------
         // Acknowledge raster IRQ and clear CIA1 edge latch
@@ -2165,10 +2165,10 @@ irq_handler17:
         // ------------------------------------------------------------
         // Return to start of chain: install irq_handler1
         // ------------------------------------------------------------
-        ldy.zp  <irq_handler1
-        sty     <irq_handler
-        ldy.zp  >irq_handler1
-        sty     >irq_handler
+        ldy  #<irq_handler1
+        sty     irq_handler
+        ldy  #>irq_handler1
+        sty     irq_handler + 1
 
         // ------------------------------------------------------------
         // Restore cpu_port and registers; return from interrupt
@@ -2355,10 +2355,10 @@ finalize_sprite_mask:
         // ----------------------------------------------------
         // Chain to next raster IRQ handler
         // ----------------------------------------------------
-        ldy     <irq_handler2
-        sty     <irq_handler
-        ldy     >irq_handler2
-        sty     >irq_handler
+        ldy     #<irq_handler2
+        sty     irq_handler
+        ldy     #>irq_handler2
+        sty     irq_handler + 1
 
         rts
 

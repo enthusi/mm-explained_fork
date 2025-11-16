@@ -260,9 +260,9 @@ check_sound_resource_loaded:
 
 // Set the resource memory address as the sound data base address
 init_sound_read_pointer:
-        sta     >sound_data_base
+        sta     sound_data_base + 1
         lda     sound_ptr_lo_tbl,y
-        sta     <sound_data_base
+        sta     sound_data_base
 
         // Set offset to #$04 (to skip the resource header)
         ldy     #MEM_HDR_LEN
@@ -555,9 +555,9 @@ finalize_primary_voice_base_and_offset:
         ldx     first_voice_index
 
         // Set base address for this voice’s data
-        lda     <sound_data_base
+        lda     sound_data_base
         sta     voice_data_base_lo,x
-        lda     >sound_data_base
+        lda     sound_data_base + 1
         sta     voice_data_base_hi,x
 
         // Set offset: low := Y (current read offset), high := 0
@@ -609,9 +609,9 @@ set_voice_data_base_and_offset:
         // ----------------------------------------------------------------------
         pha                                     // Preserve A for caller
 
-        lda     <sound_data_base                 // Base pointer → per-voice storage
+        lda     sound_data_base                 // Base pointer → per-voice storage
         sta     voice_data_base_lo,x
-        lda     >sound_data_base
+        lda     sound_data_base + 1
         sta     voice_data_base_hi,x
 
         lda     (sound_data_base),y              // Read offset low byte
@@ -682,7 +682,7 @@ stop_sound_core:
 
         lda     stop_sound_cleanup_mode
         cmp     #STOP_SOUND_MODE_FULL_CLEANUP
-        bne     ssp_exit                    // If != STOP_SOUND_MODE_FULL_CLEANUP → done
+        bne     ssp_exit_2                    // If != STOP_SOUND_MODE_FULL_CLEANUP → done
 
         // ------------------------------------------------------------
         // stop_sound_cleanup_mode == STOP_SOUND_MODE_FULL_CLEANUP AND this is the starting sound.
@@ -699,6 +699,7 @@ stop_sound_core:
         sta     arpeggio_secondary_active_flag
 
         jsr     clear_all_alternate_settings
+ssp_exit_2:		
         jmp     ssp_exit
 
 ssp_nonstarting_sound:

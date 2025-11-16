@@ -18,20 +18,20 @@
 Summary
 	Sweep script tasks from the current index to TASK_TOTAL-1. For each task in
 	RUNNING state, set base/PC and dispatch exactly one opcode via the handler
-	table. After the sweep, wrap task_cur_idx to #$01 and return.
+	table. After the sweep, wrap cur_script_slot to #$01 and return.
 	
 Global Inputs
-	task_cur_idx   	starting task index for this sweep
+	cur_script_slot   	starting task index for this sweep
 	task_state_tbl  per-task state array used to test RUNNING
 
 Global Outputs
-	task_cur_idx   incremented during sweep; set to #$01 at end
+	cur_script_slot   incremented during sweep; set to #$01 at end
 
 Description
-	* Read X := task_cur_idx and test task_state_tbl[X] for RUNNING.
+	* Read X := cur_script_slot and test task_state_tbl[X] for RUNNING.
 	* If RUNNING, set script base, compute task PC, and dispatch one opcode.
-	* Increment task_cur_idx and repeat until it equals TASK_TOTAL.
-	* On completion, set task_cur_idx := #$01 and return.
+	* Increment cur_script_slot and repeat until it equals TASK_TOTAL.
+	* On completion, set cur_script_slot := #$01 and return.
 
 Notes
 	* Handlers must yield after one opcode to prevent starvation.
@@ -39,7 +39,7 @@ Notes
 */
 * = $5D71
 execute_running_tasks:
-		ldx     task_cur_idx                    // X := current task index
+		ldx     cur_script_slot                    // X := current task index
 
 		// ------------------------------------------------------------
 		// Skip non-running tasks
@@ -60,8 +60,8 @@ next_task:
 		// ------------------------------------------------------------
 		// Advance to next task or finish sweep
 		// ------------------------------------------------------------
-		inc     task_cur_idx                    // task_cur_idx := task_cur_idx + 1
-		lda     task_cur_idx
+		inc     cur_script_slot                    // cur_script_slot := cur_script_slot + 1
+		lda     cur_script_slot
 		cmp     #TASK_TOTAL                     // reached end?
 		bne     execute_running_tasks         // no → continue sweep
 
@@ -69,7 +69,7 @@ next_task:
 		// Wrap to task #$01 and return
 		// ------------------------------------------------------------
 		lda     #$01                            // first valid task index
-		sta     task_cur_idx
+		sta     cur_script_slot
 		rts
 /*
 ================================================================================
@@ -112,9 +112,9 @@ dispatch_script_ops_loop:
 		// Resolve handler entry point into the inlined call site ($5DAB)
 		tax                                     // X := opcode (table index)
 		lda     opcode_handlers_lo,x            // A := handler LO
-		sta     <inlined_handler                // write call-site LO
+		sta     inlined_handler                // write call-site LO
 		lda     opcode_handlers_hi,x            // A := handler HI
-		sta     >inlined_handler                // write call-site HI
+		sta     inlined_handler + 1              // write call-site HI
 
 		// Tail-call the resolved handler via the inlined JSR target
 		jsr     $0000                           // jumps to handler at inlined_handler
@@ -390,7 +390,7 @@ Description:
 */
 * = $5E14
 script_read_byte:
-        lda     inlined_script_pc              // A := *(script_base + PC)
+        lda     $FFFF // inlined_script_pc ; A := *(script_base + PC)
         inc     task_pc_lo                     // PC.lo++
         bne     read_done                      // if no wrap, done
         inc     task_pc_hi                     // wrap → PC.hi++

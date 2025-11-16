@@ -2028,6 +2028,7 @@ init_heap_free_list:
 		// ------------------------------------------------------------
         lda     #$00                             
         sta     HEAP_FREE_HDR_ADDR + 2           // header[+2] := next_lo = NULL
+        lda     #$00                             
         sta     HEAP_FREE_HDR_ADDR + 3           // header[+3] := next_hi = NULL
 
 		// ------------------------------------------------------------
@@ -2036,12 +2037,12 @@ init_heap_free_list:
 		// establishing a single-node free list at startup.
 		// ------------------------------------------------------------
         lda     #<HEAP_FREE_HDR_ADDR             
-        sta     <mem_free_head                   
-        sta     <mem_free_tail                   
+        sta     mem_free_head                   
+        sta     mem_free_tail                   
 
         lda     #>HEAP_FREE_HDR_ADDR             
-        sta     >mem_free_head                   
-        sta     >mem_free_tail                   
+        sta     mem_free_head + 1
+        sta     mem_free_tail + 1
 
         rts                                      // return with a 1-node free list
 

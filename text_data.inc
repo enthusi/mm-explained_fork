@@ -75,7 +75,7 @@ verb_pointers_lo:
 .byte $AC,$B1,$B7,$BC
 .byte $C4,$CD,$D1,$D9
 .byte $E0,$E5,$EA,$EE
-.byte $F3,$FB,$03,$F2
+.byte $F3,$FB,$03
 
 * = $F1AC
   .byte $4F,$70,$65,$6E,$00                              // "Open"
@@ -94,11 +94,11 @@ verb_pointers_lo:
   .byte $50,$69,$63,$6B,$20,$75,$70,$00                  // "Pick up"
   .byte $57,$68,$61,$74,$20,$69,$73,$00                  // "What is"
 
-* = $F22B	
+* = $F22A
 preposition_pointers_hi:
 .byte $F2,$F2,$F2,$F2
 
-* = $F22F
+* = $F22E
 preposition_pointers_lo:
 .byte $33,$36,$3B,$3E
 

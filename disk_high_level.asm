@@ -1133,9 +1133,9 @@ read_side_id:
 side_id_mismatch:
         // Show the prompt (now patched with the digit) and wait for acknowledgment.
         lda #<SIDE_ID_MSG
-        sta <print_msg_ptr
+        sta print_msg_ptr
         lda #>SIDE_ID_MSG
-        sta >print_msg_ptr
+        sta print_msg_ptr + 1
         jsr print_message_wait_for_button     // user swaps disk side, then presses button
 
         // Retry reading the side ID until it matches the desired digit.

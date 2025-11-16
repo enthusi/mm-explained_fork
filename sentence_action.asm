@@ -738,7 +738,7 @@ run_sentence_if_complete:
 
 		//Clear the sentence rebuild flag if it's still set
         lda     needs_sentence_rebuild           
-        beq     check_verb_validity              		
+        beq     refresh_sentence_bar   //FIX           		
         lda     #FALSE                           
         sta     needs_sentence_rebuild           
 
@@ -783,6 +783,9 @@ require_direct_object_or_refresh:
         lda     direct_object_idx_lo            // load DO low index
         bne     resolve_preposition_and_io      // DO present → proceed
         jmp     refresh_sentence_bar_trampoline // no DO → update UI and return
+		
+		//Unreachable code - replicated from original
+		jmp		refresh_sentence_bar
 
 resolve_preposition_and_io:
         // ------------------------------------------------------------
@@ -794,18 +797,23 @@ resolve_preposition_and_io:
         lda     current_preposition                  	
         beq     select_preposition_for_current_verb_id 	// none → select one for this verb
 
-        lda     indirect_object_idx_lo               	
-        bne     run_sentence              				// IO present → execute
-        jmp     refresh_sentence_bar_trampoline      	// IO missing → refresh and exit
-
-run_sentence:
+        lda     indirect_object_idx_lo 
+		beq		ref_trampoline
+		
         // ------------------------------------------------------------
         // All parts validated → tail-jump to execution.
 		//
         // Avoids extra stack depth by jumping, not calling.
         // ------------------------------------------------------------
-        jmp     dispatch_or_push_action
+		jmp     dispatch_or_push_action
+		
+		//Unreachable code - replicated from original
+		jmp 	select_preposition_for_current_verb_id
+		
+ref_trampoline:		
+        jmp     refresh_sentence_bar_trampoline      	// IO missing → refresh and exit
 
+        
         // ------------------------------------------------------------
         // Preposition determination path
         // ------------------------------------------------------------
@@ -813,6 +821,9 @@ select_preposition_for_current_verb_id:
         jsr     select_preposition_for_verb      		// A := selected preposition
         bne     save_preposition_and_request_ui_refresh // have preposition → persist and refresh UI
         jmp     dispatch_or_push_action          		// no preposition needed → execute now
+
+		//Unreachable code - replicated from original
+		jmp		refresh_sentence_bar
 
 save_preposition_and_request_ui_refresh:
         // ------------------------------------------------------------
@@ -1039,6 +1050,9 @@ verify_inventory_status:
         lda     #ARG_IS_DO                     			// select DO
         jsr     push_pickup_for_sentence_part  			// push pickup action for DO
         rts                                    			// defer sentence; pickup will run first
+		
+		//Unreachable code - replicated from original
+		jmp		set_active_sentence_tokens
 
 try_indirect_object_pickup:
         // Attempt scripted pickup for the indirect object
@@ -1050,6 +1064,9 @@ try_indirect_object_pickup:
         lda     #ARG_IS_IO                     			// select IO
         jsr     push_pickup_for_sentence_part  			// push pickup action for IO
         rts                                    			// defer sentence; pickup runs first
+
+		//Unreachable code - replicated from original
+		jmp		set_active_sentence_tokens
 
 drop_sentence_no_pickup_available:
         // discard entry: neither DO nor IO can be auto-picked
@@ -1108,6 +1125,9 @@ stack_capacity_ok:
         bne     init_walk_to_indirect_object  	// IO in world → initiate walk to IO
         jmp     execute_verb_handler_for_object // IO ready → execute verb now
 
+		//Unreachable code - replicated from original
+		jmp		exit_process_sentence_stack_entry
+		
         // ------------------------------------------------------------
         // Walk toward indirect object
         // ------------------------------------------------------------
@@ -1131,7 +1151,7 @@ init_walk_to_indirect_object:
 		//Check if actor is incapacitated
         tax                                     // X := active_costume index for per-actor arrays
         lda     actor_vars,x                    // load actor flags
-        and     ACTOR_IS_FROZEN                 // isolate frozen bit; Z=1 iff not frozen
+        and     #ACTOR_IS_FROZEN                 // isolate frozen bit; Z=1 iff not frozen
         bne     exit_hsq                        // frozen → skip movement setup
 		
 		//Actor free to move, set destination
@@ -1145,13 +1165,16 @@ exit_hsq:
 execute_active_verb:
         // Execute the active verb immediately (tail-jump).
         jmp     execute_verb_handler_for_object
+		
+		//Unreachable code - replicated from original
+		jmp		exit_process_sentence_stack_entry
 
         // ------------------------------------------------------------
         // Walk toward direct object if not in inventory
         // ------------------------------------------------------------
 check_walk_to_direct_object:
         lda     control_mode                    // read input mode
-        cmp     KEYPAD_CONTROL_MODE             // keypad mode disables auto-walk
+        cmp     #KEYPAD_CONTROL_MODE             // keypad mode disables auto-walk
         bne     init_walk_to_direct_object      // not keypad → walk toward DO if needed
 
         jsr     execute_verb_handler_for_object // keypad mode → execute immediately, no walking
@@ -1179,7 +1202,7 @@ init_walk_to_direct_object:
 		//Check if actor is incapacitated
         tax                                     // X := actor index for per-actor arrays
         lda     actor_vars,x                    // load actor state flags
-        and     ACTOR_IS_FROZEN                 // test frozen bit
+        and     #ACTOR_IS_FROZEN                 // test frozen bit
         bne     exit_process_sentence_stack_entry // frozen → skip issuing a destination
 		
 		//Actor free to move, set destination
@@ -1341,7 +1364,7 @@ handle_walk_to:
         // ------------------------------------------------------------
         ldx     current_kid_idx                    
         lda     actor_vars,x                   // Load actor’s state flags
-        and     ACTOR_IS_FROZEN                // Mask bit(s) indicating frozen state
+        and     #ACTOR_IS_FROZEN                // Mask bit(s) indicating frozen state
         bne     exit_bare_walk				   // If frozen → skip path setup and exit routine
 
         // ------------------------------------------------------------
@@ -1417,8 +1440,9 @@ push_sentence:
         lda     #WALK_TO_VERB                   // Default UI verb after pushing
         sta     current_verb_id                 // Reset current verb to "Walk to"
 
-        lda     #$00                            // Prepare clear value
+        lda     #$00                            
         sta     direct_object_idx_lo            // Clear direct object reference
+        lda     #$00                            
         sta     current_preposition             // Clear preposition token
 
         // ------------------------------------------------------------
@@ -1582,10 +1606,10 @@ launch_custom_handler:
 		
 		// Build pointer to script
         clc                                     
-        adc.zp  <room_obj_ofs                   // A := low(addr) = handler_ofs + room_obj_ofs.lo
+        adc.zp  room_obj_ofs                   // A := low(addr) = handler_ofs + room_obj_ofs.lo
         sta     task_pc_ofs_lo_tbl               
         lda     #$00                            
-        adc.zp  >room_obj_ofs                   
+        adc.zp  room_obj_ofs + 1
         sta     task_pc_ofs_hi_tbl               // save high byte of script address
 
 		//Select script slot 0
@@ -1778,7 +1802,7 @@ resolve_and_check_pickup_handler:
         // Resolve object and query Pick Up handler
         // ------------------------------------------------------------
         jsr     resolve_object_resource         // set object context using A:hi, X:lo id
-        lda     PICK_UP_VERB                    // A := verb id for "Pick Up"
+        lda     #PICK_UP_VERB                    // A := verb id for "Pick Up"
         jsr     find_object_verb_handler_offset // A := handler offset (0 if none)
 
         // Nonzero → script exists
@@ -1967,9 +1991,9 @@ push_pickup_for_sentence_part:
         // Indirect object → copy indices into object_ptr
         // ------------------------------------------------------------
         lda     stacked_io_id_lo,x              
-        sta     <object_ptr                     
+        sta     object_ptr                     
         lda     stacked_io_id_hi,x              
-        sta     >object_ptr                     
+        sta     object_ptr + 1
         jmp     next_sentence_index             // join common path to push and advance
 
 fetch_direct_object:
@@ -1977,9 +2001,9 @@ fetch_direct_object:
         // Direct object → copy indices into object_ptr
         // ------------------------------------------------------------
         lda     stacked_do_id_lo,x              
-        sta     <object_ptr                     
+        sta     object_ptr                     
         lda     stacked_do_id_hi,x              
-        sta     >object_ptr                     
+        sta     object_ptr + 1
 
 next_sentence_index:
         // ------------------------------------------------------------
@@ -2006,7 +2030,7 @@ push_pickup_obj:
         // Push a new “Pick Up” sentence for the selected object
         // ------------------------------------------------------------
         // push "Pick up" verb
-		lda     PICK_UP_VERB                    
+		lda     #PICK_UP_VERB                    
         sta     stacked_verb_ids,x              
 		
 		// clear preposition for this entry
@@ -2014,9 +2038,9 @@ push_pickup_obj:
         sta     stacked_prep_ids,x              
 		
 		// copy object ID
-        lda     <object_ptr                     
+        lda     object_ptr                     
         sta     stacked_do_id_lo,x              
-        lda     >object_ptr                     
+        lda     object_ptr + 1
         sta     stacked_do_id_hi,x              
 
         // Restore X and return

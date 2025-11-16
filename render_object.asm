@@ -194,9 +194,9 @@ load_room_base_ptr:
         // ----------------------------------------
         ldx     current_room                 // X := current room id
         lda     room_ptr_lo_tbl,x            // A := room base lo
-        sta     <room_rsrc_base               // room_rsrc_base.lo = A
+        sta     room_rsrc_base               // room_rsrc_base.lo = A
         lda     room_ptr_hi_tbl,x            // A := room base hi
-        sta     >room_rsrc_base               // room_rsrc_base.hi = A
+        sta     room_rsrc_base + 1               // room_rsrc_base.hi = A
 
         // ----------------------------------------
         // Main scan loop: X := last index (descending)
@@ -261,7 +261,7 @@ test_and_render_candidate:
         // Visibility gate on X; render only if intersects viewport
         // ----------------------------------------
         ldx     draw_candidate_idx            // restore candidate index for draw
-        jsr     render_object_if_visible      // decode/draw if visible this frame
+        jmp     render_object_if_visible      // decode/draw if visible this frame
 
 advance_to_prev_object:
         // ----------------------------------------
@@ -588,12 +588,12 @@ decode_object_gfx:
 	
         //Add base (room_rsrc_base) to offset (obj_gfx_ptr_tbl,Y)
 		clc                                 
-		lda     <room_rsrc_base            // A := room_rsrc_base.lo
+		lda     room_rsrc_base            // A := room_rsrc_base.lo
 		adc     obj_gfx_ptr_tbl,y         // A := lo(base) + lo(offset)
-		sta     <decomp_src_ptr           // decomp_src_ptr.lo := result
-		lda     >room_rsrc_base            // A := room_rsrc_base.hi
+		sta     decomp_src_ptr           // decomp_src_ptr.lo := result
+		lda     room_rsrc_base + 1            // A := room_rsrc_base.hi
 		adc     obj_gfx_ptr_tbl+1,y       // A := hi(base) + hi(offset) + C
-		sta     >decomp_src_ptr           // decomp_src_ptr.hi := result
+		sta     decomp_src_ptr + 1           // decomp_src_ptr.hi := result
 
         // ------------------------------------------------------------
         // Compute left trim: max(0, viewport_left_col - obj_left_col)           
@@ -670,9 +670,9 @@ trims_finalized:
         // ------------------------------------------------------------
 		ldy     obj_top_row               // Y := row index to draw at
 		lda     screen_row_offsets_hi,y   // A := row offset hi byte
-		sta     >screen_row_offset        // save hi
+		sta     screen_row_offset + 1        // save hi
 		lda     screen_row_offsets_lo,y   // A := row offset lo byte
-		sta     <screen_row_offset        // save lo
+		sta     screen_row_offset        // save lo
 
         // ------------------------------------------------------------
         // Compute starting column offset:                            
@@ -685,10 +685,10 @@ trims_finalized:
 		clc                               // add left trim to reach first visible col
 		adc     src_skip_left
 		clc                               // add column delta to row base offset
-		adc     <screen_row_offset
-		sta     <screen_row_offset        // update row base offset (lo)
+		adc     screen_row_offset
+		sta     screen_row_offset        // update row base offset (lo)
 		bcc     start_decode              // no carry → hi unchanged
-		inc     >screen_row_offset        // carry → bump row base offset (hi)
+		inc     screen_row_offset + 1      // carry → bump row base offset (hi)
 
 start_decode:	
 
@@ -697,36 +697,36 @@ start_decode:
         // ------------------------------------------------------------
 		jsr     decomp_dict4_init         // init dict4 decoder for this stream
 		clc                               // compute dst := base + offset
-		lda     <screen_row_offset
-		adc     <frame_buffer_base
-		sta     <destination_ptr          // dst.lo
-		lda     >screen_row_offset
-		adc     >frame_buffer_base
-		sta     >destination_ptr          // dst.hi
+		lda     screen_row_offset
+		adc     frame_buffer_base
+		sta     destination_ptr          // dst.lo
+		lda     screen_row_offset + 1
+		adc     frame_buffer_base + 1
+		sta     destination_ptr + 1          // dst.hi
 		jsr     decode_trimmed_window     // blit visible window into pixel layer
 
         // ------------------------------------------------------------
         // Layer 2: color - dst := COLOR_LAYER base + row_offset                  
         // ------------------------------------------------------------
 		clc                               
-		lda     <screen_row_offset        // A := row_offset.lo
+		lda     screen_row_offset        // A := row_offset.lo
 		adc     #<COLOR_LAYER_COL_0       // add base lo
-		sta     <destination_ptr          // dst.lo
-		lda     >screen_row_offset        // A := row_offset.hi
+		sta     destination_ptr          // dst.lo
+		lda     screen_row_offset + 1        // A := row_offset.hi
 		adc     #>COLOR_LAYER_COL_0       // add base hi + carry
-		sta     >destination_ptr          // dst.hi
+		sta     destination_ptr + 1          // dst.hi
 		jsr     decode_trimmed_window     // blit visible window into color layer
 
         // ------------------------------------------------------------
         // Layer 3: mask - dst := MASK_LAYER base + row_offset                   
         // ------------------------------------------------------------
 		clc                               
-		lda     <screen_row_offset        // A := row_offset.lo
+		lda     screen_row_offset        // A := row_offset.lo
 		adc     #<MASK_LAYER_COL_0        // add base lo
-		sta     <destination_ptr          // dst.lo
-		lda     >screen_row_offset        // A := row_offset.hi
+		sta     destination_ptr          // dst.lo
+		lda     screen_row_offset + 1        // A := row_offset.hi
 		adc     #>MASK_LAYER_COL_0        // add base hi + carry
-		sta     >destination_ptr          // dst.hi
+		sta     destination_ptr + 1          // dst.hi
 		jsr     decode_trimmed_window     // blit visible window into mask layer
 
         // ------------------------------------------------------------
@@ -820,9 +820,9 @@ decode_row_loop:
 		lda     <destination_ptr         // A := dst_lo
 		clc                              // prepare unsigned add
 		adc     #ROW_STRIDE              // add row stride (40 bytes)
-		sta     <destination_ptr         // store new dst_lo
+		sta     destination_ptr         // store new dst_lo
 		bcc     skip_right_margin        // no carry → hi byte unchanged
-		inc     >destination_ptr         // carry → bump dst_hi
+		inc     destination_ptr + 1         // carry → bump dst_hi
 
 skip_right_margin:
         // ------------------------------------------------------------

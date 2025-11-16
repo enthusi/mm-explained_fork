@@ -340,9 +340,9 @@ fetch_cel_seq_tbl:
         // ------------------------------------------------------------
         ldx     actor
         lda     actor_cel_seq_tbl_lo,x
-        sta     <cel_seq_tbl
+        sta     cel_seq_tbl
         lda     actor_cel_seq_tbl_hi,x
-        sta     >cel_seq_tbl
+        sta     cel_seq_tbl + 1
         rts
 
 /*
@@ -409,9 +409,9 @@ setup_clip_set:
 		// ----------------------------------------
 check_for_new_clip:
 		lda     actor_clip_tbl_lo,x
-		sta     <clip_tbl
+		sta     clip_tbl
 		lda     actor_clip_tbl_hi,x
-		sta     >clip_tbl
+		sta     clip_tbl + 1
 
 		// ----------------------------------------
 		// Exit if clip unchanged
@@ -452,6 +452,7 @@ prepare_limb_frame:
 		tax
 
 		lda     limb_index // Redundant code, result discarded immediately
+		
 		// Read clip limb entry: bit7=flip, low7=base cel; $FF means skip
 		lda     (clip_tbl),y
 		bpl     bit7_clear
@@ -461,7 +462,7 @@ prepare_limb_frame:
 bit7_set:
 		//Inactive limb cel?
 		cmp     #INACTIVE_CEL
-		beq     advance_limb                   // Inactive → skip this limb
+		beq     adv_limb_2                   // Inactive → skip this limb
 
 
 		//Decompose cel sequence index -> target cel sequence
@@ -480,6 +481,9 @@ set_horizontal_flip:
 		lda     #FLIP_SET
 		sta     limb_flip_tbl,x
 		jmp     copy_loop_count
+adv_limb_2:		
+		jmp		advance_limb
+		jmp		copy_loop_count		//Unreachable code
 
 		// bit7_clear: no flip requested
 bit7_clear:

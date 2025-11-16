@@ -119,7 +119,7 @@ walk_costume_to_object_common:
 		
 		// Did we find it?		
 		cpy     #OBJ_NOT_FOUND                            
-		beq     exit                            // no → nothing to do
+		beq     owctio_exit                            // no → nothing to do
 
 		// Compute x/y near object
 		jsr     set_actor_destination_to_object      
@@ -127,7 +127,7 @@ walk_costume_to_object_common:
 		// Pathfind and walk to (x,y)
 		jsr     set_actor_destination       
 
-exit:
+owctio_exit:
 		rts
 /*
 ================================================================================

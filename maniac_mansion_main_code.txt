@@ -2767,7 +2767,7 @@ check_direct_object:
 .C:0898  D0 06       BNE check_preposition
 ;We don't, refresh the sentence with what we have so far, and exit
 .C:089a  4C F0 0A    JMP refresh_sentence_bar_trampoline
-;.C:089d  4C C6 08    JMP refresh_sentence_bar	;Unreachable code
+.C:089d  4C C6 08    JMP refresh_sentence_bar	;Unreachable code
 ;-----------------------
 check_preposition:
 ;We have a direct object - do we have a preposition determined?
@@ -2780,7 +2780,7 @@ check_preposition:
 .C:08a8  F0 06       BEQ check_refresh_sentence_3
 ;We have all necessary parts in place, process the action
 .C:08aa  4C F3 0A    JMP dispatch_or_enqueue_action
-;.C:08ad  4C B3 08    JMP select_preposition_for_verb_2	;Unreachable code
+.C:08ad  4C B3 08    JMP select_preposition_for_verb_2	;Unreachable code
 check_refresh_sentence_3:
 .C:08b0  4C F0 0A    JMP refresh_sentence_bar_trampoline	;This is a JMP refresh_sentence_bar
 ;-----------------------
@@ -2792,7 +2792,7 @@ select_preposition_for_verb_2:
 ;No preposition needed - and no indirect object needed either
 ;Then we have all necessary parts in place, process the action
 .C:08b8  4C F3 0A    JMP dispatch_or_enqueue_action
-;.C:08bb  4C C6 08    JMP refresh_sentence_bar		;Unreachable code
+.C:08bb  4C C6 08    JMP refresh_sentence_bar		;Unreachable code
 ;-----------------------
 preposition_needed:
 ;There was a preposition needed and we determined it, save it
@@ -3567,7 +3567,7 @@ check_direct_obj_pickup_script:
 .C:0be0  20 E1 0E    JSR enqueue_pickup_for_sentence_part
 .C:0be3  60          RTS
 ;--------------------------------------------------
-;.C:0be4  4C FD 0B    JMP set_active_sentence_parts	;Unreachable code
+.C:0be4  4C FD 0B    JMP set_active_sentence_parts	;Unreachable code
 check_indirect_obj_pickup_script:
 ;Does the indirect object have a pick up script?
 .C:0be7  A9 02       LDA #$02
@@ -3580,7 +3580,7 @@ check_indirect_obj_pickup_script:
 .C:0bf0  A9 02       LDA #$02
 .C:0bf2  20 E1 0E    JSR enqueue_pickup_for_sentence_part
 .C:0bf5  60          RTS
-;.C:0bf6  4C FD 0B    JMP set_active_sentence_parts	;Unreachable code
+.C:0bf6  4C FD 0B    JMP set_active_sentence_parts	;Unreachable code
 ;--------------------------------------------------
 no_custom_pickup_scripts:
 ;Nothing left to do, move the sentence index and exit
@@ -3637,7 +3637,7 @@ available_queue_capacity:
 .C:0c50  D0 06       BNE walk_to_indirect_object
 ;We have direct object, preposition and indirect object, try to handle the sentence
 .C:0c52  4C C5 0D    JMP execute_verb_handler_for_object
-;.C:0c55  4C CF 0C    JMP exit	;Unreachable code
+.C:0c55  4C CF 0C    JMP exit	;Unreachable code
 ;--------------------------------------------------
 walk_to_indirect_object:
 ;Set the active indirect object as the destination object
@@ -3672,7 +3672,7 @@ exit_2:
 ;Execute the verb handler for this object
 do_verb_handler:
 .C:0c8a  4C C5 0D    JMP execute_verb_handler_for_object
-;.C:0c8d  4C CF 0C    JMP exit	;Unreachable
+.C:0c8d  4C CF 0C    JMP exit	;Unreachable
 ;--------------------------------------------------
 check_walk_to_direct_object:
 ;Are we in keypad control mode? If so, execute the verb handler directly as there's no walking
@@ -6058,7 +6058,7 @@ next_iteration:
 .C:1931  A9 00       LDA #$00
 .C:1933  8D D0 CA    STA return_value
 .C:1936  60          RTS
-;.C:1937  4C 52 19    JMP $1952	;Unreachable code
+.C:1937  4C 52 19    JMP $1952	;Unreachable code
 ;-----------------------------------------------
 destination_not_adjacent:
 .C:193a  20 B6 19    JSR are_adjacents_known
@@ -6247,7 +6247,7 @@ next_box:
 ;Return #FF signaling that we have exhausted the boxes and all are known
 .C:19d6  A9 FF       LDA #$FF
 .C:19d8  60          RTS
-;.C:19d9  4C E8 19    JMP $19E8 ;Unreachable code
+.C:19d9  4C E8 19    JMP $19E8 ;Unreachable code
 ;-----------------------------------------------
 process_box:
 ;Set the adjacent box as current box
@@ -7024,7 +7024,7 @@ get_box_for_depth:
 .C:1cc6  0A          ASL A
 .C:1cc7  18          CLC
 .C:1cc8  69 10       ADC #$10
-;.C:1cca  A8          TAY	;Redundant code
+.C:1cca  A8          TAY	;Redundant code
 ;Add the box depth to get the final offset
 .C:1ccb  18          CLC
 .C:1ccc  6D 3B FC    ADC target_box_index
@@ -8113,7 +8113,7 @@ call_mask_function:
 .C:1fe5  AC 2A FC    LDY horizontal_byte_offset
 mask_function = $1fe9
 .C:1fe8  4C 00 00    JMP mask_function
-;.C:1feb  4C 11 20    JMP update_sprite_data_ptr ;Unreachable code
+.C:1feb  4C 11 20    JMP update_sprite_data_ptr ;Unreachable code
 ;--------------------------------------------
 ; Masking functions
 ;--------------------------------------------
@@ -8601,7 +8601,7 @@ draw_actor:
 .C:226e  A9 D4       LDA >mask_bit_patterns
 .C:2270  85 8B       STA >global_mask_patterns_ptr
 .C:2272  BD 32 FC    LDA actor_sprite_index,X
-;.C:2275  AA          TAX	;Redundant code
+.C:2275  AA          TAX	;Redundant code
 .C:2276  A8          TAY
 ;Determine base address for the actor's sprite based on the sprite index and the sprite_bank_sel in use
 .C:2277  20 56 24    JSR set_actor_sprite_base_address
@@ -8753,7 +8753,7 @@ clear_sprite_row:
 .C:2342  91 80       STA (sprite_data_ptr),Y
 .C:2344  88          DEY
 .C:2345  91 80       STA (sprite_data_ptr),Y
-;.C:2347  AC 30 FC    LDY active_costume	;Redundant code
+.C:2347  AC 30 FC    LDY active_costume	;Redundant code
 ;Move to the next row
 .C:234a  EE 51 CB    INC current_row
 ;Did we reach the bottom visible row? If not, continue
@@ -8780,8 +8780,8 @@ draw_actor_limbs:
 .C:235b  85 3F       STA current_sprite_y_pos
 ;Initialize multiple drawing variables
 .C:235d  A9 00       LDA #$00
-;.C:235f  85 3E       STA $3E				;Apparently unused
-;.C:2361  8D 4D FD    STA $FD4D				;Unused
+.C:235f  85 3E       STA $3E				;Apparently unused
+.C:2361  8D 4D FD    STA $FD4D				;Unused
 .C:2364  8D 03 FC    STA fifth_byte
 .C:2367  8D 04 FC    STA intercell_vertical_displacement
 .C:236a  8D 55 CB    STA sprite_vertical_offset
@@ -9478,7 +9478,7 @@ prepare_limb_frame:
 .C:262f  AD 03 25    LDA limb_index
 .C:2632  6D 36 FC    ADC actor_limbs_ofs
 .C:2635  AA          TAX
-;.C:2636  AD 03 25    LDA limb_index ;Redundant code
+.C:2636  AD 03 25    LDA limb_index ;Redundant code
 ;Load the frame for this limb in this animation set
 .C:2639  B1 17       LDA (animation_sets),Y
 ;Is bit 7 clear?
@@ -9505,7 +9505,7 @@ set_horizontal_flip:
 .C:2657  4C 74 26    JMP copy_animation_argument
 next_limb_2:
 .C:265a  4C 82 26    JMP next_limb
-;.C:265d  4C 74 26    JMP $2674		;Unreachable code
+.C:265d  4C 74 26    JMP $2674		;Unreachable code
 ;-----------------------------------------------------
 bit7_clear:
 ;Set the base limb cell
@@ -10046,7 +10046,7 @@ end_of_bar_check:
 .C:28b5  D0 D2       BNE next_character	
 ;We reached the end of the msg bar. Treat it as a line break.
 .C:28b7  4C 9A 28    JMP handle_line_break
-;.C:28ba  4C C0 28    JMP exit	;Unreachable code
+.C:28ba  4C C0 28    JMP exit	;Unreachable code
 ;--------------------------------------
 shutdown_topbar_talking_2:
 .C:28bd  20 34 28    JSR shutdown_topbar_talking
@@ -10386,10 +10386,10 @@ set_delta_directions_for_actor:
 ;Set the resulting bitmask
 .C:2a7c  9D EF FD    STA path_delta_directions_for_actor,X
 ;--------------------------------------------
-;.C:2a7f  BD A8 FD    LDA actor_box_fg_masking,X	;Redundant code
-;.C:2a82  C9 03       CMP #$03		;Redundant code
-;.C:2a84  D0 00       BNE $2A86		;Redundant code
-;.C:2a86  20 22 2C    JSR do_nothing
+.C:2a7f  BD A8 FD    LDA actor_box_fg_masking,X	;Redundant code
+.C:2a82  C9 03       CMP #$03		;Redundant code
+.C:2a84  D0 00       BNE $2A86		;Redundant code
+.C:2a86  20 22 2C    JSR do_nothing
 .C:2a89  20 70 2B    JSR resolve_turning_and_facing
 .C:2a8c  20 CA 2B    JSR apply_standing_clip
 ;Is the actor walking or standing/turning? 
@@ -10468,9 +10468,9 @@ set_walking_limbs:
 .C:2ac2  20 F6 2B    JSR apply_walking_clip
 actor_is_walking:
 .C:2ac5  A6 D8       LDX actor
-;.C:2ac7  BD A8 FD    LDA actor_box_fg_masking,X	;Redundant code
-;.C:2aca  C9 03       CMP #$03
-;.C:2acc  D0 00       BNE $2ACE
+.C:2ac7  BD A8 FD    LDA actor_box_fg_masking,X	;Redundant code
+.C:2aca  C9 03       CMP #$03
+.C:2acc  D0 00       BNE $2ACE
 ;
 ;Get the low nibble of the motion state
 .C:2ace  BD 68 FD    LDA actor_motion_state,X
@@ -10573,7 +10573,7 @@ x_walkbox_not_changed:
 ;No change in walkboxes and waypoint position not reached yet - return #00
 .C:2b40  A9 00       LDA #$00
 .C:2b42  60          RTS
-;.C:2b43  4C 66 2B    JMP path_direction_x_set
+.C:2b43  4C 66 2B    JMP path_direction_x_set
 y_walkbox_changed:
 ;We're traversing into a new walkbox, reflect that in the motion state (#04)
 .C:2b46  8D 3B FC    STA position_reached
@@ -10842,11 +10842,11 @@ update_current_box_2:
 ;Box not determined - reset animation
 .C:2c92  20 48 2F    JSR restore_actor_path_snapshot
 .C:2c95  4C 23 2C    JMP reset_actor_render_flags
-;Completely redundant section of code
-;.C:2c98  C9 FF       CMP #$FF
-;.C:2c9a  D0 06       BNE $2CA2
-;.C:2c9c  20 48 2F    JSR restore_actor_path_snapshot
-;.C:2c9f  4C 23 2C    JMP reset_actor_render_flags
+;Redundant section of code
+.C:2c98  C9 FF       CMP #$FF
+.C:2c9a  D0 06       BNE $2CA2
+.C:2c9c  20 48 2F    JSR restore_actor_path_snapshot
+.C:2c9f  4C 23 2C    JMP reset_actor_render_flags
 exit:
 .C:2ca2  60          RTS
 ;===========================================
@@ -10873,8 +10873,8 @@ update_depth:
 ;Has the current box been determined?
 .C:2cb9  C9 FF       CMP #$FF
 .C:2cbb  F0 0A       BEQ current_box_not_determined
-;.C:2cbd  C9 FF       CMP #$FF		;Redundant code
-;.C:2cbf  F0 06       BEQ $2CC7
+.C:2cbd  C9 FF       CMP #$FF		;Redundant code
+.C:2cbf  F0 06       BEQ $2CC7
 .C:2cc1  20 48 2F    JSR restore_actor_path_snapshot
 .C:2cc4  4C 33 2A    JMP set_state_to_moving
 ;----------------------------------------------------
@@ -10969,7 +10969,7 @@ next_box:
 .C:2d2f  A9 FF       LDA #$FF
 .C:2d31  60          RTS
 ;--------------------------------------------------------
-;.C:2d32  4C 3E 2D    JMP $2D3E	;Unreachable code
+.C:2d32  4C 3E 2D    JMP $2D3E	;Unreachable code
 check_current_box:
 ;Get the current current box index
 .C:2d35  AD AC FD    LDA current_box_index
@@ -16866,17 +16866,17 @@ next_voice_2:
 ;Copy the sound resource for the music to music_to_start_ptr
 .C:48a8  AE A3 FE    LDX selected_music_idx
 .C:48ab  BD C5 78    LDA sound_ptr_hi_tbl,X
-.C:48ae  8D A1 FE    STA <music_to_start_ptr
+.C:48ae  8D A1 FE    STA music_to_start_ptr_hi
 .C:48b1  BD 0B 79    LDA sound_ptr_lo_tbl,X
-.C:48b4  8D A2 FE    STA >music_to_start_ptr
+.C:48b4  8D A2 FE    STA music_to_start_ptr_lo
 ;Is the music to start the same as the music in progress?
 ;If so, jump to the music code and then exit
 ;If not, setup the music pointers
-.C:48b7  AD A1 FE    LDA <music_to_start_ptr
-.C:48ba  CD 7D 54    CMP <music_in_progress_ptr
+.C:48b7  AD A1 FE    LDA music_to_start_ptr_hi
+.C:48ba  CD 7D 54    CMP music_in_progress_ptr_hi
 .C:48bd  D0 0E       BNE setup_music_pointers
-.C:48bf  AD A2 FE    LDA >music_to_start_ptr
-.C:48c2  CD 7C 54    CMP >music_in_progress_ptr
+.C:48bf  AD A2 FE    LDA music_to_start_ptr_lo
+.C:48c2  CD 7C 54    CMP music_in_progress_ptr_lo
 .C:48c5  D0 06       BNE setup_music_pointers
 .C:48c7  20 D4 48    JSR jump_to_music_code
 .C:48ca  4C D3 48    JMP exit
@@ -16931,10 +16931,10 @@ stop_logical_voice_loop:
 .C:4924  8D 61 51    STA arpeggio_secondary_active_flag
 .C:4927  A9 00       LDA #$00
 .C:4929  8D 63 51    STA $5163
-.C:492c  AD A2 FE    LDA >music_to_start_ptr
-.C:492f  8D 7C 54    STA >music_in_progress_ptr
-.C:4932  AD A1 FE    LDA <music_to_start_ptr
-.C:4935  8D 7D 54    STA <music_in_progress_ptr
+.C:492c  AD A2 FE    LDA music_to_start_ptr_lo
+.C:492f  8D 7C 54    STA music_in_progress_ptr_lo
+.C:4932  AD A1 FE    LDA music_to_start_ptr_hi
+.C:4935  8D 7D 54    STA music_in_progress_ptr_hi
 .C:4938  60          RTS
 ;===========================================
 ; Starts a sound for a specific voice.
@@ -17666,26 +17666,26 @@ music_track_ptr_loop:
 ;Compute lo
 .C:4c7a  BD 7E 54    LDA music_track_offsets_lo,X
 .C:4c7d  18          CLC
-.C:4c7e  6D A2 FE    ADC >music_to_start_ptr
+.C:4c7e  6D A2 FE    ADC music_to_start_ptr_lo
 .C:4c81  9D 90 54    STA music_track_ptrs_lo,X
 ;Compute hi
 .C:4c84  BD 87 54    LDA music_track_offsets_hi,X
-.C:4c87  6D A1 FE    ADC <music_to_start_ptr
+.C:4c87  6D A1 FE    ADC music_to_start_ptr_hi
 .C:4c8a  9D 99 54    STA music_track_ptrs_hi,X
 ;Next track
 .C:4c8d  CA          DEX
 .C:4c8e  10 EA       BPL music_track_ptr_loop
 ;---------------------------
 ;inlined_music_address = music_to_start_ptr + #14D
-.C:4c90  AD A2 FE    LDA >music_to_start_ptr
-.C:4c93  8D 7C 54    STA >music_in_progress_ptr
+.C:4c90  AD A2 FE    LDA music_to_start_ptr_lo
+.C:4c93  8D 7C 54    STA music_in_progress_ptr_lo
 .C:4c96  18          CLC
 .C:4c97  69 4D       ADC #$4D
-.C:4c99  8D D5 48    STA <inlined_music_address
-.C:4c9c  AD A1 FE    LDA <music_to_start_ptr
-.C:4c9f  8D 7D 54    STA <music_in_progress_ptr
+.C:4c99  8D D5 48    STA inlined_music_address
+.C:4c9c  AD A1 FE    LDA music_to_start_ptr_hi
+.C:4c9f  8D 7D 54    STA music_in_progress_ptr_hi
 .C:4ca2  69 01       ADC #$01
-.C:4ca4  8D D6 48    STA >inlined_music_address
+.C:4ca4  8D D6 48    STA inlined_music_address + 1
 .C:4ca7  68          PLA
 .C:4ca8  AA          TAX
 .C:4ca9  60          RTS
@@ -17948,7 +17948,7 @@ check_voice3_conflict_flag_b:
 .C:4dd3  AD 9F 47    LDA rsrc_for_voice_3
 .C:4dd6  4C F2 4D    JMP evict_sound
 ;Unreachable code
-;.C:4dd9  4C E1 4D    JMP $4DE1
+.C:4dd9  4C E1 4D    JMP $4DE1
 return_ff:
 .C:4ddc  A9 FF       LDA #$FF
 .C:4dde  4C 88 4E    JMP exit
@@ -19563,7 +19563,7 @@ rsrc_hdr_init:
 .C:5604  A0 00       LDY #$00
 .C:5606  AD 9C FD    LDA <raw_data_size
 .C:5609  91 4F       STA (block),Y
-.C:560b  C81         INY
+.C:560b  C8          INY
 .C:560c  AD 9D FD    LDA >raw_data_size
 .C:560f  91 4F       STA (block),Y
 ;Store resource type 
@@ -19618,7 +19618,7 @@ infinite_loop:
 .C:565e  8D 20 D0    STA vic_border_color_reg_register
 .C:5661  4C 5E 56    JMP infinite_loop	
 ;Unreachable code
-;.C:5664  4C 6D 56    JMP $566D
+.C:5664  4C 6D 56    JMP $566D
 ;----------------
 ;Disk ID doesn't match
 disk_id_mismatch:
@@ -23445,9 +23445,9 @@ play_music:
 .C:65f5  DE 51 79    DEC sound_attr_tbl,X
 ;Setup music playback pointers
 .C:65f8  BD C5 78    LDA sound_ptr_hi_tbl,X
-.C:65fb  8D A1 FE    STA <music_to_start_ptr
+.C:65fb  8D A1 FE    STA music_to_start_ptr_hi
 .C:65fe  BD 0B 79    LDA sound_ptr_lo_tbl,X
-.C:6601  8D A2 FE    STA >music_to_start_ptr
+.C:6601  8D A2 FE    STA music_to_start_ptr_lo
 .C:6604  20 76 4C    JSR setup_music_pointers	
 ;Skip header (4 bytes) and compute sound code pointer (inlined)
 .C:6607  AE A3 FE    LDX selected_music_idx
@@ -26998,7 +26998,7 @@ write_to_dest:
 .C:f601  91 C7       STA (dest),Y
 .C:f603  C8          INY
 inlined_column_length = $f605
-.C:f604  C0 12       CPY #$FF		;Inlined argument
+.C:f604  C0 12       CPY #$12		;Inlined argument
 .C:f606  D0 E7       BNE read_next_byte
 .C:f608  60          RTS
 ;===================================================
@@ -27048,7 +27048,7 @@ set_region_text_color:
 .C:f63b  C8          INY
 ;Check if we reached the max column. If not, loop
 inlined_max_column = $f63d
-.C:f63c  C0 FF       CPY #$FF		;Inlined argument
+.C:f63c  C0 0F       CPY #$0F		;Inlined argument
 .C:f63e  D0 F9       BNE set_region_text_color
 ;Move to the next row
 .C:f640  AC 8C CB    LDY $cb8c
@@ -27057,7 +27057,7 @@ inlined_max_row = $f645
 ;Check if we reached the max row. If not, loop.
 ;Note: all regions below the graphics area are only 1 row long
 ;So the comparison below will always be equal in those cases
-.C:f644  C0 FF       CPY #$FF		;Inlined argument
+.C:f644  C0 15       CPY #$15		;Inlined argument
 .C:f646  D0 D9       BNE set_color_in_row
 .C:f648  60          RTS
 ;===================================================

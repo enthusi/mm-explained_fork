@@ -512,7 +512,6 @@ Summary:
 	- Efficiently skips work if actor is already at the target and not moving.
 ================================================================================
 */
-
 * = $29f8
 update_actor_motion:
         // ------------------------------------------------------------
@@ -662,6 +661,13 @@ set_delta_directions_for_actor:
         // ------------------------------------------------------------
         sta     path_delta_directions_for_actor,x   // Store traversal mask for this actor (indexed by X)
 
+		// Redundant code
+		lda actor_box_fg_masking,X	
+		cmp #$03		
+		bne dummy_dn		
+dummy_dn:
+		jsr do_nothing_2C22
+
         // ------------------------------------------------------------
         // Resolve facing/turning and apply standing limb set
 		//
@@ -690,7 +696,7 @@ init_walking_clip:
         // - Sets walking clip based on current facing/direction
         // ------------------------------------------------------------
         jsr     apply_walking_clip       // Select walking clip/limbs for current facing
-        rts                                       // Done: walking state initialized
+		// Fall through to step_actor_along_path
 /*
 ================================================================================
   step_actor_along_path
@@ -913,6 +919,14 @@ enter_walking_pose:
         // ------------------------------------------------------------
 walking_fastpath:
         ldx     actor                          // X := current actor index
+		
+		//Redundant code - replicated from original
+		lda 	actor_box_fg_masking,x
+		cmp		#$03
+		bne		dummy_wfp
+		//
+		
+dummy_wfp:		
         lda     actor_motion_state,x           // load motion state
         and     #MSK_LOW_NIBBLE                // isolate low nibble selector
 
@@ -1046,6 +1060,9 @@ no_horiz_traverse_continue_y:
         lda     #$00                           // status: continue walking
         rts
 
+		//Unreachable code - replicated from original
+		jmp commit_x_dirmask_and_walk
+		
         // ------------------------------------------------------------
         // Y walkbox boundary crossing
 		//
@@ -1383,6 +1400,15 @@ commit_walking_clip:
         jsr     setup_clip_set			// setup clip
         ldx     actor                   // restore actor index
         rts
+		
+/*
+================================================================================
+  do_nothing_2C22
+================================================================================
+*/
+* = $2C22		
+do_nothing_2C22:		
+		rts		
 /*
 ================================================================================
   reset_actor_render_flags
@@ -1596,9 +1622,18 @@ recheck_box_after_vertical_move:
 
         // Box resolved? If yes, finish; else rollback and stop animation
         cmp     #BOX_UNRESOLVED_CODE
+        bne     dummy_fht       // resolved → done
+        jsr     restore_actor_path_snapshot       // unresolved → restore prior state
+        jmp     reset_actor_render_flags       // stop/refresh animation
+
+		//Redundant section of code - replicated from original
+		// (This was an evident copy/paste of the section above)
+dummy_fht:
+        cmp     #BOX_UNRESOLVED_CODE
         bne     finish_horizontal_traversal       // resolved → done
         jsr     restore_actor_path_snapshot       // unresolved → restore prior state
         jmp     reset_actor_render_flags       // stop/refresh animation
+		
 
 finish_horizontal_traversal:
         rts
@@ -1675,6 +1710,10 @@ resolve_box_after_vstep:
 		cmp     #BOX_UNRESOLVED_CODE
 		beq     handle_unresolved_box_vert
 
+		//Redundant code - replicated from original
+		cmp     #BOX_UNRESOLVED_CODE
+		beq     handle_unresolved_box_vert
+		
 		// Box resolved → restore state and continue moving
 		jsr     restore_actor_path_snapshot
 		jmp     set_state_to_moving
@@ -1927,6 +1966,7 @@ try_next_box:
 
         lda     #BOX_RESULT_UNDETERMINED    // report: undetermined
         rts
+		jmp		dummy_tcb 
 
 test_current_box:
         // ------------------------------------------------------------
@@ -1941,6 +1981,7 @@ test_current_box:
         lda     scan_box_idx
         jsr     get_walkbox_offset          // Y := offset for scan_box_idx
         jsr     is_actor_pos_inside_box     // test actor position against this box
+dummy_tcb:		
         bne     cache_vertical_edge         // miss → cache V-edge and continue
 
 		// ------------------------------------------------------------
@@ -2158,9 +2199,9 @@ update_box_handler_on_prog_change:
 		tya                                      // A := Y
 		tax                                      // X := handler index for table lookup
 		lda     box_attr_handler_lo,x            // load handler low byte
-		sta     <box_attr_handler_jsr_op         // write JSR operand low
+		sta     box_attr_handler_jsr_op          // write JSR operand low
 		lda     box_attr_handler_hi,x            // load handler high byte
-		sta     >box_attr_handler_jsr_op         // write JSR operand high
+		sta     box_attr_handler_jsr_op + 1      // write JSR operand high
 
         // ------------------------------------------------------------
 		// Call through self-modified JSR operand (target set above)
@@ -2210,10 +2251,10 @@ clear_actor_walkbox_attrs:
         // ------------------------------------------------------------
 		// Initialize attribute pointer: box_attr_ptr := actor_box_handler_idx (base of attr table)
         // ------------------------------------------------------------
-		lda     <actor_box_handler_idx             
-		sta     <box_attr_ptr                   
-		lda     >actor_box_handler_idx             
-		sta     >box_attr_ptr                   
+		lda     #<actor_box_handler_idx             
+		sta     box_attr_ptr                   
+		lda     #>actor_box_handler_idx             
+		sta     box_attr_ptr + 1
 
         // ------------------------------------------------------------
 		// Prepare loop registers  
@@ -2235,12 +2276,12 @@ clear_next_attr:
         // ------------------------------------------------------------
 		// Advance to next attribute plane (+4 bytes)
         // ------------------------------------------------------------
-		lda     <box_attr_ptr                // lo += 4
+		lda     box_attr_ptr                // lo += 4
 		clc
 		adc     #$04
-		sta     <box_attr_ptr
+		sta     box_attr_ptr
 		bcc     advance_to_next_attr_plane         // no page cross
-		inc     >box_attr_ptr                // carry → bump hi byte
+		inc     box_attr_ptr + 1                // carry → bump hi byte
 
 advance_to_next_attr_plane:
         // ------------------------------------------------------------
@@ -2257,8 +2298,6 @@ advance_to_next_attr_plane:
 		tya                                     // A := actor index copy
 		tax                                     // X := actor index
 		rts                                     // done
-
-
 /*
 ================================================================================
   set_facing_override_to_up

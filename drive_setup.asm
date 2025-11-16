@@ -147,21 +147,21 @@ setup_vectors_and_drive_code:
 
         // Set IRQ handler to $EA31.
         lda     #<KERNAL_IRQ_VECTOR_ADDR
-        sta     <kernal_irq_vector
+        sta     kernal_irq_vector
         lda     #>KERNAL_IRQ_VECTOR_ADDR
-        sta     >kernal_irq_vector
+        sta     kernal_irq_vector + 1
 
         // Set BRK handler to $EA31.
         lda     #<KERNAL_IRQ_VECTOR_ADDR
-        sta     <kernal_brk_vector
+        sta     kernal_brk_vector
         lda     #>KERNAL_IRQ_VECTOR_ADDR
-        sta     >kernal_brk_vector
+        sta     kernal_brk_vector + 1
 
         // Set NMI handler to $FE47 (original NMI, skipping hardware NMI).
         lda     #<KERNAL_NMI_VECTOR_ADDR
-        sta     <kernal_nmi_vector
+        sta     kernal_nmi_vector
         lda     #>KERNAL_NMI_VECTOR_ADDR
-        sta     >kernal_nmi_vector
+        sta     kernal_nmi_vector + 1
 
 		// Enables all five CIA2 interrupt sources (mask bits); does not clear pending IFR flags
         lda     #CIA2_IRQ_ENABLE_ALL
@@ -195,15 +195,15 @@ setup_vectors_and_drive_code:
 
         // Set source pointer = $8121.
         lda     #<DRIVE_LOADER_SRC_ADDR
-        sta     <source
+        sta     source
         lda     #>DRIVE_LOADER_SRC_ADDR
-        sta     >source
+        sta     source + 1
 
         // Set destination pointer = $0500 (drive buffer #2).
         lda     #<DRIVE_LOADER_DEST_ADDR
-        sta     <destination
+        sta     destination
         lda     #>DRIVE_LOADER_DEST_ADDR
-        sta     >destination
+        sta     destination + 1
 
         // Write 16 groups of 32 bytes each.
         ldx     #DRIVE_GROUP_COUNT_32B
@@ -362,9 +362,9 @@ drive_issue_write_memory_32:
         jsr     CHROUT
 
         // Send destination address (lo, hi)
-        lda     <destination
+        lda     destination
         jsr     CHROUT
-        lda     >destination
+        lda     destination + 1
         jsr     CHROUT
 
         // Send byte count (32)
@@ -421,23 +421,23 @@ Description
 */
 * = $80DE
 advance_io_ptrs_by_group:
-        lda     <source                   
+        lda     source                   
         clc                               
         adc     #DRIVE_GROUP_SIZE_BYTES   // +32
-        sta     <source                   
+        sta     source                   
 		
-        lda     >source                   
+        lda     source + 1
         adc     #$00                      
-        sta     >source                   
+        sta     source + 1
 
-        lda     <destination              
+        lda     destination              
         clc
         adc     #DRIVE_GROUP_SIZE_BYTES   // +32
-        sta     <destination              
+        sta     destination              
 		
-        lda     >destination              
+        lda     destination + 1
         adc     #$00                      
-        sta     >destination              
+        sta     destination + 1
         rts
 /*
 ================================================================================

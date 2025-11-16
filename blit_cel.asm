@@ -497,9 +497,9 @@ select_blit_variant:
         //   blit_dispatch := flip_entry[x]
 		// ----------------------------------------------------------------------
         lda     flip_entry_lo,x
-        sta     <blit_dispatch
+        sta     blit_dispatch
         lda     flip_entry_hi,x
-        sta     >blit_dispatch
+        sta     blit_dispatch + 1
 		
 		// ----------------------------------------------------------------------
         // Compute destination byte index for flipped blit
@@ -518,9 +518,9 @@ configure_normal_variant:
         //   X = bytes_per_row (0..3) → blit_dispatch := copy_entry[x]
 		// ----------------------------------------------------------------------
         lda     copy_entry_lo,x
-        sta     <blit_dispatch
+        sta     blit_dispatch
         lda     copy_entry_hi,x
-        sta     >blit_dispatch
+        sta     blit_dispatch + 1
 		
 		// ----------------------------------------------------------------------
         // Compute destination byte index for normal blit
@@ -553,9 +553,9 @@ set_column_offset:
         //   X = bytes_per_row (0..3) → mask_dispatch := mask_entry[x]
 		// ----------------------------------------------------------------------
         lda     mask_entry_lo,x
-        sta     <mask_dispatch
+        sta     mask_dispatch
         lda     mask_entry_hi,x
-        sta     >mask_dispatch
+        sta     mask_dispatch + 1
 
 		// ----------------------------------------------------------------------
         // Read header[3]:
@@ -659,11 +659,11 @@ init_output_and_mask_ptrs:
         ldx     current_row_idx           	
         lda     sprite_row_offsets_lo,x   	
         clc                               	
-        adc     <actor_sprite_base        	
-        sta     <sprite_ptr        			
+        adc     actor_sprite_base        	
+        sta     sprite_ptr        			 
         lda     sprite_row_offsets_hi,x   	
-        adc     >actor_sprite_base        	
-        sta     >sprite_ptr        			
+        adc     actor_sprite_base + 1
+        sta     sprite_ptr + 1
 
 		// ----------------------------------------------------------------------
         // Derive mask-layer row pointer from tile row = current_row_idx >> 3
@@ -681,10 +681,10 @@ init_output_and_mask_ptrs:
         lda     mask_row_ofs_lo,x        
         clc
         adc     $FD21                    
-        sta     <mask_row_ptr            
+        sta     mask_row_ptr            
         lda     mask_row_ofs_hi,x        
         adc     $FD22                    
-        sta     >mask_row_ptr            
+        sta     mask_row_ptr + 1
 
 		// ----------------------------------------------------------------------
         // Read header byte #4 (unused) and inter-cel vertical displacement
@@ -701,10 +701,10 @@ init_output_and_mask_ptrs:
 		// ----------------------------------------------------------------------
         tya
         sec
-        adc     <cel_ptr
-        sta     <cel_ptr
+        adc     cel_ptr
+        sta     cel_ptr
         bcc     handle_row_skip
-        inc     >cel_ptr
+        inc     cel_ptr + 1
 
 handle_row_skip:
 		// ----------------------------------------------------------------------
@@ -720,9 +720,9 @@ handle_row_skip:
 next_row_to_skip:
         ldx     bytes_per_row
 skip_row_bytes:
-        inc     <cel_ptr
+        inc     cel_ptr
         bne     next_byte_3
-        inc     >cel_ptr
+        inc     cel_ptr + 1
 next_byte_3:
         dex
         bne     skip_row_bytes
@@ -812,8 +812,8 @@ flip_row_1byte:
 		
 dispatch_mask_after_flip:
         ldy     horizontal_byte_offset
-        jmp     mask_dispatch
-        // jmp advance_output_row   ; unreachable
+        jmp     $0000 //mask_dispatch
+        jmp 	advance_output_row   //unreachable code
 
 /*
 ==============================================================================
@@ -875,11 +875,11 @@ advance_output_row:
         // sprite_ptr := actor_sprite_base + sprite_row_offsets[X]  (16-bit add)
         lda     sprite_row_offsets_lo,x
         clc
-        adc     <actor_sprite_base
-        sta     <sprite_ptr
+        adc     actor_sprite_base
+        sta     sprite_ptr
         lda     sprite_row_offsets_hi,x
-        adc     >actor_sprite_base
-        sta     >sprite_ptr
+        adc     actor_sprite_base + 1
+        sta     sprite_ptr + 1
 
 blit_next_row:
         // Loop guard for row rendering:
@@ -893,7 +893,7 @@ blit_next_row:
         stx     current_row_idx      // row_y := row_y + 1
         ldx     #$00                 // X := 0 (in-row byte selector)
         ldy     cel_ofs   			// restore Y (saved read index)
-        jmp     blit_dispatch        // dispatch to chosen copy/flip path
+        jmp     $0000 				//blit_dispatch - dispatch to chosen copy/flip path
 
 exit_blit:
         rts

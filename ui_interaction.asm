@@ -1706,7 +1706,7 @@ check_space_conversion:
 emit_char_to_screen:
         sta     (scr_dest_ptr),y
         iny
-        cpy     #$FF                           // patched with col_end_ex
+        cpy     #$12                           // patched with col_end_ex
         bne     copy_or_fill_loop
         rts
 /*
@@ -1806,7 +1806,7 @@ row_begin_compute_color_ptr:
 fill_row_colors_loop:
         sta     (scr_dest_ptr),y
         iny
-        cpy     #$FF                         // patched with col_end_ex
+        cpy     #$0F                         // patched with col_end_ex
         bne     fill_row_colors_loop
 
         // ------------------------------------------------------------
@@ -1814,7 +1814,7 @@ fill_row_colors_loop:
         // ------------------------------------------------------------
         ldy     tmp_row_index
         iny
-        cpy     #$FF                         // patched with row_end_ex
+        cpy     #$15                         // patched with row_end_ex
         bne     row_begin_compute_color_ptr
         rts
 /*

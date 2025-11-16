@@ -160,10 +160,10 @@ y_clamp_done:
         ldx     actor                        // X := actor index
         ldy     actor_sprite_index,x         // Y := sprite ID for this actor
         jsr     set_actor_sprite_base        // sets actor_sprite_base (lo/hi)
-        lda     <actor_sprite_base
-        sta     <sprite_base_cached          // cache base low byte
-        lda     >actor_sprite_base
-        sta     >sprite_base_cached          // cache base high byte
+        lda     actor_sprite_base
+        sta     sprite_base_cached           // cache base low byte
+        lda     actor_sprite_base + 1
+        sta     sprite_base_cached + 1       // cache base high byte
 
 		// ----------------------------------------------
         // Select mask row for this scanline: row_index = y >> 3
@@ -179,11 +179,11 @@ y_clamp_done:
 		// ----------------------------------------------
         clc
         lda     mask_row_ofs_lo,x            // A := row offset (lo)
-        adc     <mask_base_ptr               // add base lo
-        sta     <mask_row_ptr                // store row ptr lo
+        adc     mask_base_ptr               // add base lo
+        sta     mask_row_ptr                // store row ptr lo
         lda     mask_row_ofs_hi,x            // A := row offset (hi)
-        adc     >mask_base_ptr               // add base hi + carry
-        sta     >mask_row_ptr                // store row ptr hi
+        adc     mask_base_ptr + 1               // add base hi + carry
+        sta     mask_row_ptr + 1                // store row ptr hi
 
 		// ----------------------------------------------
         // Initialize tile-column cursor and build three pattern pointers for this row
@@ -207,11 +207,11 @@ compute_row_ptrs:
 		// ----------------------------------------------
         lda     sprite_row_offsets_lo,x      // A := row offset lo for scanline y
         clc
-        adc     <sprite_base_cached          // add base lo
-        sta     <sprite_row_ptr              // store row pointer lo
+        adc     sprite_base_cached          // add base lo
+        sta     sprite_row_ptr              // store row pointer lo
         lda     sprite_row_offsets_hi,x      // A := row offset hi for scanline y
-        adc     >sprite_base_cached          // add base hi + carry
-        sta     >sprite_row_ptr              // store row pointer hi
+        adc     sprite_base_cached + 1          // add base hi + carry
+        sta     sprite_row_ptr + 1              // store row pointer hi
 
 		// ----------------------------------------------
         // If at a tile-row boundary (y & 7 == 0), step mask row and rebuild pointers
@@ -223,12 +223,12 @@ compute_row_ptrs:
 		// ----------------------------------------------
         // Move to previous mask row: subtract one screen row (VIEW_COLS bytes = 40)
 		// ----------------------------------------------
-        lda     <mask_row_ptr               // A := row_ptr_lo
+        lda     mask_row_ptr               // A := row_ptr_lo
         sec                                  // prepare borrow for 16-bit subtract
         sbc     #VIEW_COLS                   // lo := lo - 40
-        sta     <mask_row_ptr
+        sta     mask_row_ptr
         bcs     mask_row_stepped_reindex     // no borrow → high byte unchanged
-        dec     >mask_row_ptr                // borrow occurred → decrement high byte
+        dec     mask_row_ptr + 1                // borrow occurred → decrement high byte
 
 
 mask_row_stepped_reindex:
@@ -398,10 +398,10 @@ store_ptr1:
 		// ----------------------------------------------
         clc                                 // prepare 16-bit add on A(low), X(high)
         adc     mask_bit_patterns_lo        // A := A + base_lo
-        sta     <mask_ptr1                  // store low byte
+        sta     mask_ptr1                   // store low byte
         txa                                 // A := X (bring high byte)
         adc     mask_bit_patterns_hi        // A := X + base_hi + carry
-        sta     >mask_ptr1                  // store high byte
+        sta     mask_ptr1 + 1               // store high byte
 
 
 		// ----------------------------------------------
@@ -440,10 +440,10 @@ store_ptr1:
 store_ptr2:
 		clc
 		adc     mask_bit_patterns_lo
-		sta     <mask_ptr2
+		sta     mask_ptr2
 		txa
 		adc     mask_bit_patterns_hi
-		sta     >mask_ptr2
+		sta     mask_ptr2 + 1
 
 
 		// ----------------------------------------------
@@ -482,10 +482,10 @@ store_ptr2:
 store_ptr3:
 		clc
 		adc     mask_bit_patterns_lo
-		sta     <mask_ptr3
+		sta     mask_ptr3
 		txa
 		adc     mask_bit_patterns_hi
-		sta     >mask_ptr3
+		sta     mask_ptr3 + 1
 		rts
 
 /*
@@ -522,12 +522,12 @@ Description
 
 Bit duplication for C64 multicolor ("fat") sprites
 
-C64 multicolor sprites display *fat* pixels: each visible pixel uses 2 adjacent
-bits instead of 1. The VIC-II interprets bits in pairs `(b2k, b2k+1)` as one
+C64 multicolor sprites display fat pixels: each visible pixel uses 2 adjacent
+bits instead of 1. The VIC-II interprets bits in pairs (b2k, b2k+1) as one
 color index (00,01,10,11). This halves horizontal resolution (12 pixels wide
 instead of 24) but doubles pixel width.
 
-The mask patterns here are generated in single-bit form, one bit per *logical*
+The mask patterns here are generated in single-bit form, one bit per logical
 pixel column. To apply them to multicolor sprites, each logical bit must cover
 two adjacent hardware bits—duplicating each even-position bit into its odd
 neighbor.
@@ -665,7 +665,7 @@ mask_actor_with_foreground_layer(actor_tile_x_coordinate):
 ==============================================================================
 
 Text diagrams of bottom) and top vs. screen [0..SCREEN_TOP].
-`[]` = sprite span before clamp. `<>` = span after clamp. `X` = culled.
+[] = sprite span before clamp. <> = span after clamp. X = culled.
 
 ------------------------------
 1. Fully below screen → culled

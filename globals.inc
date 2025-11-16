@@ -528,10 +528,6 @@ They were definitely intended as debugging aids.
 //#03 - normal play, enable kid change via Function keys
 .label control_mode = $fea8
 
-//Sound
-.label new_sound_instructions_allowed = $fe71	//00 = not allowed, nonzero = allowed
-.label music_to_start_ptr = $fea1
-.label selected_music_idx = $fea3
 
 //===========================================================
 // Interrupt handlers
@@ -732,13 +728,18 @@ They were definitely intended as debugging aids.
 .label inlined_music_address = $48d5
 .label inlined_music_ptr = $53cb          
 
-.label music_in_progress_ptr = $547c
-//Relative offset constants lo/hi for each sound track
-.label music_track_offsets_lo = $547e
+.label music_to_start_ptr_lo = $FEA2
+.label music_to_start_ptr_hi = $FEA1
+.label music_in_progress_ptr_lo = $547C
+.label music_in_progress_ptr_hi = $547D
+.label music_track_offsets_lo = $547E
 .label music_track_offsets_hi = $5487
-//Sound track pointers
 .label music_track_ptrs_lo = $5490
 .label music_track_ptrs_hi = $5499
+.label new_sound_instructions_allowed = $fe71	//00 = not allowed, nonzero = allowed
+.label selected_music_idx = $fea3
+
+
 .label  voice_read_ptr            = $BA      // ZP pointer to current voice script/parameter stream
 .label  filter_control_reg_copy   = $476B    // Shadow copy of SID filter control register (software mirror)
 .label  x_saved                   = $480D    // Scratch storage for last logical voice index processed

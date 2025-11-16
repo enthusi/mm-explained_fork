@@ -584,7 +584,7 @@ scan_actor_for_refresh:
 		jsr     draw_actor                    // render actor this frame
 
 		// ------------------------------------------------------------
-		// If actor is stopped, set refresh to request a follow-up
+		// If actor is stopped, set visible
 		//   (low nibble == MOTION_STOPPED_CODE)
 		// ------------------------------------------------------------
 		ldx     actor                         // restore actor index
@@ -592,7 +592,7 @@ scan_actor_for_refresh:
 		and     #MSK_LOW_NIBBLE               // isolate low nibble
 		cmp     #MOTION_STOPPED_CODE          // stopped?
 		bne     next_actor_or_exit            // moving → no extra flag
-		lda     #ACTOR_RENDER_REFRESH         // bit mask: refresh
+		lda     #ACTOR_RENDER_VISIBLE         // bit mask: visible
 		ora     actor_render_flags,x       // set bit
 		sta     actor_render_flags,x       // commit
 

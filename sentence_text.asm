@@ -65,7 +65,7 @@ refresh_sentence_bar:
 		// ------------------------------------------------------------	
         lda     sentence_bar_needs_refresh      // A := refresh flag
         bne     gate_by_control_mode           // nonzero → proceed
-        jmp     return_no_refresh              // zero → exit
+        jmp     return_refreshed_sentence              // zero → exit
 
 		// ------------------------------------------------------------
 		// Control-mode gate — refresh allowed only in normal modes
@@ -239,7 +239,7 @@ write_kid_names_to_sentence_bar:
 		// Second kid: reposition buffer pointer to slot #2 and print
 		// ------------------------------------------------------------
 		lda     #<KID2_NAME_OFS
-		sta     <sentence_bar_ptr
+		sta     sentence_bar_ptr
 		lda     #>KID2_NAME_OFS
 		sta     sentence_bar_ptr + 1
 		ldx     kid2_costume_id
@@ -250,7 +250,7 @@ write_kid_names_to_sentence_bar:
 		// Third kid: reposition buffer pointer to slot #3 and print
 		// ------------------------------------------------------------
 		lda     #<KID3_NAME_OFS
-		sta     <sentence_bar_ptr
+		sta     sentence_bar_ptr
 		lda     #>KID3_NAME_OFS
 		sta     sentence_bar_ptr + 1
 		ldx     kid3_costume_id
@@ -280,9 +280,9 @@ resolve_costume_name:
         // - Combine into sentence_word_ptr for later append.
         // ------------------------------------------------------------
         lda     name_ptr_hi_tbl,x      
-        sta     >sentence_word_ptr        
+        sta     sentence_word_ptr + 1
         lda     name_ptr_lo_tbl,x      
-        sta     <sentence_word_ptr        
+        sta     sentence_word_ptr        
         rts                          
 /*
 ================================================================================
@@ -343,10 +343,10 @@ object_found:
 		ldy     #OBJ_NAME_OFS                    // offset of name pointer byte
 		lda     (obj_ptr),y               		 // A := name offset
 		clc
-		adc     <obj_ptr                   		 // add to base pointer (lo)
-		sta     <obj_ptr
+		adc     obj_ptr                   		 // add to base pointer (lo)
+		sta     obj_ptr
 		bcc     done                             // no carry → done
-		inc     >obj_ptr                 		 // carry → increment hi byte
+		inc     obj_ptr + 1                		 // carry → increment hi byte
 
 done:
 		lda     #OBJ_NAME_FOUND
@@ -452,8 +452,8 @@ Notes
 * = $0A05
 resolve_object_resource:
         // Store incoming object indices into ZP vars that double as result pointers
-        stx     <obj_idx                 
-        sta     >obj_idx                 
+        stx     obj_idx                 
+        sta     obj_idx + 1
 
         // ------------------------------------------------------------
         // Determine search path based on obj hi-id
@@ -484,7 +484,7 @@ resolve_object_resource:
         ldy     #MAX_INVENTORY_INDEX       // Y := last inventory slot; scan desc
 inv_scan_loop:
         lda     inventory_objects,y        // A := lo-id at slot Y
-        cmp     <obj_idx                 // matches target lo-id?
+        cmp     obj_idx                 // matches target lo-id?
         bne     inv_scan_advance           // no → check previous slot
 
         // ------------------------------------------------------------
@@ -496,15 +496,15 @@ inv_scan_loop:
         // ------------------------------------------------------------
         // Found in inventory → copy object pointer from object tables
         lda     object_ptr_hi_tbl,y    
-        sta     >obj_ptr             
+        sta     obj_ptr + 1
         lda     object_ptr_lo_tbl,y    
-        sta     <obj_ptr             
+        sta     obj_ptr             
 
         // No room offset for inventory objects
         lda     #$00                   
-        sta     <room_obj_ofs
+        sta     room_obj_ofs
         lda     #$00                   
-        sta     >room_obj_ofs
+        sta     room_obj_ofs + 1
 
         lda     #OBJ_FOUND_IN_INV      // return code: found in inventory
         rts                            // exit with obj_ptr_* already set
@@ -526,11 +526,11 @@ dispatch_to_room_search:
         ldy     room_obj_count          // Y := last room object index for descending scan
 room_scan_loop:
         lda     room_obj_idx_lo,y       // A := candidate object's lo-id at index Y
-        cmp     <obj_idx              // match target lo-id?
+        cmp     obj_idx              // match target lo-id?
         bne     room_scan_advance       // no → check previous entry
 
         lda     room_obj_idx_hi,y       // A := candidate object's hi-id at index Y
-        cmp     >obj_idx              // equal to target hi-id?
+        cmp     obj_idx + 1             // equal to target hi-id?
         bne     room_scan_advance       // no → continue scanning
 
         // ------------------------------------------------------------
@@ -553,7 +553,7 @@ room_scan_loop:
         // - If not present in room, continue scanning.
         // ------------------------------------------------------------
 verify_object_present:
-        ldx     <obj_idx             // X := object lo-id to index attributes
+        ldx     obj_idx             // X := object lo-id to index attributes
         lda     object_attributes,x    // A := attribute byte for this object
         and     #OWNER_NIBBLE_MASK     // isolate owner nibble (low 4 bits)
         cmp     #OWNER_IS_ROOM         // owner must be ROOM/no-owner sentinel
@@ -576,20 +576,20 @@ room_match_commit:
 
         // Load 16-bit offset of object data within the room resource
         lda     room_obj_ofs_tbl,x          
-        sta     <room_obj_ofs
+        sta     room_obj_ofs
         lda     room_obj_ofs_tbl+1,x        
-        sta     >room_obj_ofs
+        sta     room_obj_ofs + 1
 
         // Build absolute object pointer: room_base[current_room] + room_obj_ofs
         ldx     current_room                
         lda     room_ptr_lo_tbl,x           
         clc                                 
-        adc     <room_obj_ofs             
-        sta     <obj_ptr                  
+        adc     room_obj_ofs             
+        sta     obj_ptr                  
 
         lda     room_ptr_hi_tbl,x           
-        adc     >room_obj_ofs             
-        sta     >obj_ptr                  
+        adc     room_obj_ofs + 1
+        sta     obj_ptr + 1
 
         lda     #OBJ_FOUND_IN_ROOM          // return code: found in room
         rts                                 // obj_ptr_* now points at object data
@@ -623,9 +623,9 @@ Description
 sentence_bar_init_and_clear:
         // Set pointer to start of sentence bar
         lda     #<SENTENCE_BAR_BASE
-        sta     <sentence_bar_ptr
+        sta     sentence_bar_ptr
         lda     #>SENTENCE_BAR_BASE
-        sta     >sentence_bar_ptr
+        sta     sentence_bar_ptr + 1
 
         // Clear 40 bytes: Y := last index, A := 0, then descend to 0
         ldy     #SENTENCE_BAR_LAST_IDX
@@ -715,10 +715,10 @@ check_terminator:
         iny                                 // include the terminator in count (advance delta by +1)
         tya                                 // A := total bytes processed (data + terminator)
         clc                                 
-        adc     <sentence_bar_ptr           // add delta to write pointer
-        sta     <sentence_bar_ptr           
+        adc     sentence_bar_ptr           // add delta to write pointer
+        sta     sentence_bar_ptr           
         bcc     exit_append                 
-        inc     >sentence_bar_ptr           
+        inc     sentence_bar_ptr + 1
 exit_append:
         rts                                 // done: append ptr now points to next free cell
 /*

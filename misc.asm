@@ -44,22 +44,22 @@ mem_fill_x_1:
         sta     (fill_dest_ptr),y
 
         // Increment low byte of fill_dest_ptr; on wrap, bump high byte
-        inc     <fill_dest_ptr
+        inc     fill_dest_ptr
         bne     counter_decrement
-        inc     >fill_dest_ptr
+        inc     fill_dest_ptr + 1
 
 counter_decrement:
         // Decrement 16-bit fill_byte_cnt (hi then lo)
-        lda     <fill_byte_cnt
+        lda     fill_byte_cnt
         bne     counter_lo_decrement
-        dec     >fill_byte_cnt
+        dec     fill_byte_cnt + 1
 
 counter_lo_decrement:
-        dec     <fill_byte_cnt
+        dec     fill_byte_cnt
 
         // OR both counter bytes; zero only when both reached 0
-        lda     <fill_byte_cnt
-        ora     >fill_byte_cnt
+        lda     fill_byte_cnt
+        ora     fill_byte_cnt + 1
         bne     mem_fill_x_1
 
         // Done filling range
@@ -115,9 +115,9 @@ alternate_frame_buffer:
 switch_to_frame_buffer_2:
         // frame_buffer_base := $C828; video_setup_mode := #$02; frame_buffer := #$02
         lda     #<VIEW_FRAME_BUF_0
-        sta     <frame_buffer_base
+        sta     frame_buffer_base
         lda     #>VIEW_FRAME_BUF_0
-        sta     >frame_buffer_base
+        sta     frame_buffer_base + 1
 
         lda     #VID_SETUP_CC00
         sta     video_setup_mode
@@ -127,9 +127,9 @@ switch_to_frame_buffer_2:
 switch_to_frame_buffer_1:
         // frame_buffer_base := $CC28; video_setup_mode := #$01; frame_buffer := #$01
         lda     #<VIEW_FRAME_BUF_1
-        sta     <frame_buffer_base
+        sta     frame_buffer_base
         lda     #>VIEW_FRAME_BUF_1
-        sta     >frame_buffer_base
+        sta     frame_buffer_base + 1
 
         lda     #VID_SETUP_C800
         sta     video_setup_mode
@@ -137,6 +137,10 @@ switch_to_frame_buffer_1:
 
 exit:
         rts
+		
+* = $077B		
+do_nothing_077B:
+		rts
 /*
 ================================================================================
   handle_entity_approach_and_trigger
@@ -1039,6 +1043,9 @@ disk_id_check:
 infinite_loop:
         sta     vic_border_color_reg
         jmp     infinite_loop
+		
+		//Unreachable code - replicated from original
+		jmp		$566D
 
         // Disk ID doesn't match
 disk_id_mismatch:
@@ -1089,32 +1096,31 @@ mem_fill_x:
         // ------------------------------------------------------------
         ldy     #$00               // Y stays 0 for (fill_dest_ptr),Y addressing
 
-fill_loop:
         // ------------------------------------------------------------
         // Store fill byte and advance destination pointer (handles page cross)
         // ------------------------------------------------------------
         txa                        // A := fill byte (preserve X)
         sta     (fill_dest_ptr),y  // write A to *fill_dest_ptr
-        inc     <fill_dest_ptr     // dest.lo++
+        inc     fill_dest_ptr     // dest.lo++
         bne     dec_count          // no wrap → skip high-byte increment
-        inc     >fill_dest_ptr     // wrapped → dest.hi++
+        inc     fill_dest_ptr + 1     // wrapped → dest.hi++
 
 dec_count:
         // ------------------------------------------------------------
         // Decrement 16-bit remaining count (borrow when low byte is 0)
         // ------------------------------------------------------------
-        lda     <fill_byte_cnt     // low byte
+        lda     fill_byte_cnt     // low byte
         bne     dec_count_lo       // if low != 0, no borrow
-        dec     >fill_byte_cnt     // borrow: dec high byte
+        dec     fill_byte_cnt + 1     // borrow: dec high byte
 dec_count_lo:
-        dec     <fill_byte_cnt     // dec low byte
+        dec     fill_byte_cnt     // dec low byte
 
         // ------------------------------------------------------------
         // Loop until both counter bytes are zero
         // ------------------------------------------------------------
-        lda     <fill_byte_cnt     // low
-        ora     >fill_byte_cnt     // combine with high; Z=1 iff both zero
-        bne     fill_loop          // not done → continue
+        lda     fill_byte_cnt     // low
+        ora     fill_byte_cnt + 1     // combine with high; Z=1 iff both zero
+        bne     mem_fill_x          // not done → continue
         rts                        // done (Z=1, Y=0, X preserved)
 /*
 ================================================================================

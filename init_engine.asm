@@ -288,10 +288,10 @@ init_memory_sound_and_video:
         ldy     #MAP_IO_IN
         sty     cpu_port                       // map in I/O to access VIC/CIA
 
-        lda     <irq_handler1
-        sta     <irq_handler                   // set IRQ vector low byte ($FFFE)
-        lda     >irq_handler1
-        sta     >irq_handler                   // set IRQ vector high byte ($FFFF)
+        lda     #<irq_handler1
+        sta     irq_handler                   // set IRQ vector low byte ($FFFE)
+        lda     #>irq_handler1
+        sta     irq_handler + 1                   // set IRQ vector high byte ($FFFF)
 
         lda     #CTRL1_BLANK_PRESET
         sta     vic_screen_control_reg_1       // blank screen, 25 rows, vscroll=3
@@ -768,9 +768,9 @@ clear_sprite_regs_and_sprite_memory:
         // Set engine sprite shape data pointer ($CBF8)
         // ------------------------------------------------------------
         lda     #<SPRITE_SHAPE_SET1_ADDR
-        sta     <sprite_shape_data_ptr
+        sta     sprite_shape_data_ptr
         lda     #>SPRITE_SHAPE_SET1_ADDR
-        sta     >sprite_shape_data_ptr
+        sta     sprite_shape_data_ptr + 1
 
         // ------------------------------------------------------------
         // Map out I/O and restore memory configuration
@@ -992,9 +992,9 @@ init_game_engine:
         // Set message bar standard delay
         // ------------------------------------------------------------
         lda     #<STD_MSG_DEFAULT_TICKS
-        sta     <std_msg_countdown             // low byte (30 ticks)
+        sta     std_msg_countdown             // low byte (30 ticks)
         lda     #>STD_MSG_DEFAULT_TICKS
-        sta     >std_msg_countdown             // high byte
+        sta     std_msg_countdown + 1             // high byte
 
         // ------------------------------------------------------------
         // Set initial text speed factor

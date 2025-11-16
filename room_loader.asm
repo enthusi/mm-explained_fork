@@ -342,10 +342,10 @@ clear_mask_patterns_hi:
 
         // No active room: null out room script entry/exit pointers.
         lda     #$00
-        sta     <room_exit_script_ptr       // lo := 0
-        sta     >room_exit_script_ptr       // hi := 0
-        sta     <room_entry_script_ptr      // lo := 0
-        sta     >room_entry_script_ptr      // hi := 0
+        sta     room_exit_script_ptr       // lo := 0
+        sta     room_exit_script_ptr + 1       // hi := 0
+        sta     room_entry_script_ptr      // lo := 0
+        sta     room_entry_script_ptr + 1      // hi := 0
 
         // Balance caller’s stack usage
 		// We come from a running script? So discarding the return address
@@ -405,6 +405,7 @@ lru_age_scan:
 
         lda     room_mem_attrs,x
         and     #ROOM_ATTR_AGE_MASK          // extract age (0..$7F)
+		cmp		#$00
         beq     age_scan_next                 // age==0 → do not age
 
         inc     room_mem_attrs,x              // ++age; lock bit (bit7) remains as-is
@@ -468,22 +469,22 @@ room_read_metadata:
 		ldx     current_room
 
 		lda     room_ptr_hi_tbl,x   
-		sta     >current_room_rsrc  // publish base for other subsystems
-		sta     >room_base          // local working base (hi)
+		sta     current_room_rsrc + 1  // publish base for other subsystems
+		sta     room_base + 1          // local working base (hi)
 		lda     room_ptr_lo_tbl,x
-		sta     <current_room_rsrc  // publish base (lo)
-		sta     <room_base          // local working base (lo)
+		sta     current_room_rsrc  // publish base (lo)
+		sta     room_base          // local working base (lo)
 
 
 		// Advance read cursor past the 4-byte resource header (header +0..+3),
 		// so subsequent reads start at the first metadata field. 
 		clc
-		lda     <room_base
+		lda     room_base
 		adc     #<MEM_HDR_LEN
-		sta     <read_ptr
-		lda     >room_base
+		sta     read_ptr
+		lda     room_base + 1
 		adc     #>MEM_HDR_LEN
-		sta     >read_ptr
+		sta     read_ptr + 1
 
 		// Copy the six 8-bit fields following the header
 		ldy     #ROOM_META_8_START_OFS
@@ -516,28 +517,28 @@ copy_gfx_ofs_loop:
 		//   +$16..+$17 → room_entry_script_ptr
 		ldy     #ROOM_EXIT_SCRIPT_OFS
 		lda     (read_ptr),y
-		sta     <room_exit_script_ptr
+		sta     room_exit_script_ptr
 		iny
 		lda     (read_ptr),y
-		sta     >room_exit_script_ptr
+		sta     room_exit_script_ptr + 1
 		iny
 		lda     (read_ptr),y
-		sta     <room_entry_script_ptr
+		sta     room_entry_script_ptr
 		iny
 		lda     (read_ptr),y
-		sta     >room_entry_script_ptr
+		sta     room_entry_script_ptr + 1
 
 		// Position read_ptr at the tile-matrix section:
 		// read_ptr = room_base + tile_matrix_ofs
 		// The first bytes at this section form the symbol dictionary
 		// required by the decompressor for the tile matrix stream.
 		clc
-		lda     <room_base
-		adc     <tile_matrix_ofs
-		sta     <read_ptr
-		lda     >room_base
-		adc     >tile_matrix_ofs
-		sta     >read_ptr
+		lda     room_base
+		adc     tile_matrix_ofs
+		sta     read_ptr
+		lda     room_base + 1
+		adc     tile_matrix_ofs + 1
+		sta     read_ptr + 1
 
 		// Copy the symbol dictionary for the tile matrix.
 		ldy     #COMP_DICT_MAX_OFS
@@ -553,12 +554,12 @@ copy_tile_dict_loop:
 		// The first bytes at this section are the symbol dictionary 
 		// for the color stream.
 		clc
-		lda     <room_base
-		adc     <color_layer_ofs
-		sta     <read_ptr
-		lda     >room_base
-		adc     >color_layer_ofs
-		sta     >read_ptr
+		lda     room_base
+		adc     color_layer_ofs
+		sta     read_ptr
+		lda     room_base + 1
+		adc     color_layer_ofs + 1
+		sta     read_ptr + 1
 
 		// Copy the symbol dictionary for the color layer.
 		ldy     #COMP_DICT_MAX_OFS
@@ -573,12 +574,12 @@ copy_color_dict_loop:
 		// The first bytes at this section are the symbol dictionary 
 		// for the mask stream.
 		clc
-		lda     <room_base
-		adc     <mask_layer_ofs
-		sta     <read_ptr
-		lda     >room_base
-		adc     >mask_layer_ofs
-		sta     >read_ptr
+		lda     room_base
+		adc     mask_layer_ofs
+		sta     read_ptr
+		lda     room_base + 1
+		adc     mask_layer_ofs + 1
+		sta     read_ptr + 1
 
 		// Copy the symbol dictionary for the mask layer.
 		ldy     #COMP_DICT_MAX_OFS
@@ -630,10 +631,10 @@ room_load_sounds_and_scripts:
 		lda     room_ptr_lo_tbl,x
 		clc
 		adc     #<MEM_HDR_LEN
-		sta     <meta_ptr
+		sta     meta_ptr
 		lda     room_ptr_hi_tbl,x
 		adc     #>MEM_HDR_LEN
-		sta     >meta_ptr
+		sta     meta_ptr + 1
 
 		// Fetch subresource counts from metadata:
 		//   +$12 → sound_count (drives first loop)
@@ -732,11 +733,11 @@ room_get_sounds_base:
 		//      yielding an error of multiples of $0100 (e.g., N ≥ 57 can mispoint).
 		clc
 		adc     room_ptr_lo_tbl,x
-		sta     <room_sounds_base
+		sta     room_sounds_base
 
 		lda     room_ptr_hi_tbl,x
 		adc     #$00
-		sta     >room_sounds_base
+		sta     room_sounds_base + 1
 		rts
 /*===========================================
  * room_read_objects: gather per-object tables and scatter object fields
@@ -784,18 +785,18 @@ room_read_objects:
 		ldx     current_room
 		
 		lda     room_ptr_hi_tbl,x
-		sta     >room_base            // working base (hi)
+		sta     room_base + 1            // working base (hi)
 		lda     room_ptr_lo_tbl,x
-		sta     <room_base            // working base (lo)
+		sta     room_base            // working base (lo)
 
 		// Start parsing at the metadata region: read_ptr = room_base + header.
 		clc
-		lda     <room_base
+		lda     room_base
 		adc     #<MEM_HDR_LEN
-		sta     <read_ptr
-		lda     >room_base
+		sta     read_ptr
+		lda     room_base + 1
 		adc     #>MEM_HDR_LEN
-		sta     >read_ptr
+		sta     read_ptr + 1
 
 		// Fetch object_count from metadata.
 		// Mirror it: obj_count_remaining drives loops; room_obj_count is for callers/UI.
@@ -862,16 +863,16 @@ load_obj_records:
 		// Build a direct pointer to this object’s record within the room blob:
 		// read_ptr := room_base + room_obj_ofs_tbl[x]  (bytes from room_base).
 		lda     room_obj_ofs_tbl,x
-		sta     <read_ptr
+		sta     read_ptr
 		lda     room_obj_ofs_tbl+1,x
-		sta     >read_ptr
+		sta     read_ptr + 1
 		clc
-		lda     <read_ptr
-		adc     <room_base          // add base (lo)
-		sta     <read_ptr
-		lda     >read_ptr
-		adc     >room_base          // add base (hi) + carry
-		sta     >read_ptr
+		lda     read_ptr
+		adc     room_base          // add base (lo)
+		sta     read_ptr
+		lda     read_ptr + 1
+		adc     room_base + 1          // add base (hi) + carry
+		sta     read_ptr + 1
 
 		// Switch X to the object index for attribute table writes.
 		ldx     object_idx
@@ -1016,9 +1017,9 @@ read_room_graphics:
         ldx     current_room
 
         lda     room_ptr_lo_tbl,x     // base.lo := room_ptr_lo_tbl[current_room]
-        sta     <room_base
+        sta     room_base
         lda     room_ptr_hi_tbl,x     // base.hi := room_ptr_hi_tbl[current_room]
-        sta     >room_base
+        sta     room_base + 1
 
         /*---------------------------------------
          * Program background colors via VIC registers
@@ -1046,29 +1047,29 @@ bkg_colors_set_loop:
          Set decode byte budget for tile definitions (exactly $0800 bytes to write)
          *--------------------------------------*/
         lda     #<TILE_DEFS_SIZE
-        sta     <bytes_left
+        sta     bytes_left
         lda     #>TILE_DEFS_SIZE
-        sta     >bytes_left
+        sta     bytes_left + 1 
 
         /*---------------------------------------
          Point decoder source at the tile-definitions stream:
          decomp_src_ptr = room_base + tile_defs_ofs  (units: bytes)
          *--------------------------------------*/
         clc
-        lda     <room_base
-        adc     <room_tile_definitions_offset
-        sta     <decomp_src_ptr
-        lda     >room_base
-        adc     >room_tile_definitions_offset
-        sta     >decomp_src_ptr
+        lda     room_base
+        adc     room_tile_definitions_offset
+        sta     decomp_src_ptr
+        lda     room_base + 1
+        adc     room_tile_definitions_offset + 1
+        sta     decomp_src_ptr + 1
 
         /*---------------------------------------
          Set destination for decoded tile definitions (tile bitmap page)
          *--------------------------------------*/
         lda     #<TILE_DEFS_ADDR
-        sta     <gfx_write_ptr
+        sta     gfx_write_ptr
         lda     #>TILE_DEFS_ADDR
-        sta     >gfx_write_ptr
+        sta     gfx_write_ptr + 1
 
         /*---------------------------------------
 		 Decompress tile definitions
@@ -1083,18 +1084,18 @@ bkg_colors_set_loop:
 decomp_tiles_loop:
         jsr     decomp_stream_next            // produce next decoded byte in A
         sta     (gfx_write_ptr),y             // store at *dst_ptr
-        inc     <gfx_write_ptr                // dst_ptr++ (lo)
+        inc     gfx_write_ptr                // dst_ptr++ (lo)
         bne     tiles_update_count
-        inc     >gfx_write_ptr                // carry into hi on wrap
+        inc     gfx_write_ptr + 1                // carry into hi on wrap
 
 tiles_update_count:
-        lda     <bytes_left                   // 16-bit countdown: if lo==0 then dec hi
+        lda     bytes_left                   // 16-bit countdown: if lo==0 then dec hi
         bne     tiles_dec_lo_byte
-        dec     >bytes_left
+        dec     bytes_left + 1
 tiles_dec_lo_byte:
-        dec     <bytes_left                   // --remain_bytes.lo
-        lda     <bytes_left
-        ora     >bytes_left                   // zero when both lo and hi are zero
+        dec     bytes_left                   // --remain_bytes.lo
+        lda     bytes_left
+        ora     bytes_left + 1                   // zero when both lo and hi are zero
         bne     decomp_tiles_loop             // keep decoding while bytes remain
 
         /*---------------------------------------
@@ -1111,46 +1112,46 @@ setup_mask_patterns_load:
            gfx_read_ptr = room_base + mask_idx_ofs  (start of size-prefixed block)
          *--------------------------------------*/
         clc
-        lda     <room_base
-        adc     <mask_indexes_ofs
-        sta     <gfx_read_ptr
-        lda     >room_base
-        adc     >mask_indexes_ofs
-        sta     >gfx_read_ptr
+        lda     room_base
+        adc     mask_indexes_ofs
+        sta     gfx_read_ptr
+        lda     room_base + 1
+        adc     mask_indexes_ofs + 1
+        sta     gfx_read_ptr + 1
 
         /*---------------------------------------
          Read payload size prefix at start of mask-index block (little-endian: lo,hi)
          *--------------------------------------*/
         ldy     #$00
         lda     (gfx_read_ptr),y
-        sta     <payload_len
+        sta     payload_len
         iny
         lda     (gfx_read_ptr),y
-        sta     >payload_len
+        sta     payload_len + 1
 
         /*---------------------------------------
          Compute total allocation size = payload_size + resource header (4 bytes)
          Store into remain_bytes for use as the request to mem_alloc
          *--------------------------------------*/
         clc
-        lda     <payload_len
+        lda     payload_len
         adc     #<MEM_HDR_LEN
-        sta     <bytes_left
-        lda     >payload_len
+        sta     bytes_left
+        lda     payload_len + 1
         adc     #>MEM_HDR_LEN
-        sta     >bytes_left
+        sta     bytes_left + 1
 
         /*---------------------------------------
          Request a heap block large enough to hold [4-byte header + payload]
          mem_alloc expects (X=lo, Y=hi) byte count; returns block base in (X,Y)
          *--------------------------------------*/
-        ldx     <bytes_left
-        ldy     >bytes_left
+        ldx     bytes_left
+        ldy     bytes_left + 1
         jsr     mem_alloc
 
         // Record the allocated block base for later writes and publishing
-        stx     <gfx_alloc_base
-        sty     >gfx_alloc_base
+        stx     gfx_alloc_base
+        sty     gfx_alloc_base + 1
 
         /*---------------------------------------
          Initialize the resource header for this block:
@@ -1167,8 +1168,8 @@ setup_mask_patterns_load:
         /*---------------------------------------
          Publish the newly allocated block as the room’s mask bit-patterns buffer
          *--------------------------------------*/
-        ldx     <gfx_alloc_base
-        ldy     >gfx_alloc_base
+        ldx     gfx_alloc_base
+        ldy     gfx_alloc_base + 1
         stx     mask_bit_patterns_lo          // record base.lo
         sty     mask_bit_patterns_hi          // record base.hi (hi==0 would mean “none”)
 
@@ -1176,47 +1177,47 @@ setup_mask_patterns_load:
          Point destination at start of payload within the new block:
          dst_ptr := gfx_alloc_base + MEM_HDR_LEN  (skip 4-byte resource header)
          *--------------------------------------*/
-        stx     <gfx_write_ptr
-        sty     >gfx_write_ptr
+        stx     gfx_write_ptr
+        sty     gfx_write_ptr + 1
         clc
-        lda     <gfx_write_ptr
+        lda     gfx_write_ptr
         adc     #<MEM_HDR_LEN          // add header size (bytes) to lo
-        sta     <gfx_write_ptr
-        lda     >gfx_write_ptr
+        sta     gfx_write_ptr
+        lda     gfx_write_ptr + 1
         adc     #>MEM_HDR_LEN          // propagate carry into hi
-        sta     >gfx_write_ptr
+        sta     gfx_write_ptr + 1
 
         /*---------------------------------------
          Set remaining byte budget to the payload size (we’ll decode exactly this many bytes)
          *--------------------------------------*/
-        lda     <payload_len
-        sta     <bytes_left
-        lda     >payload_len
-        sta     >bytes_left
+        lda     payload_len
+        sta     bytes_left
+        lda     payload_len + 1
+        sta     bytes_left + 1
 
         /*---------------------------------------
          Reacquire stream base for mask-index section:
            gfx_read_ptr = room_base + mask_idx_ofs  (we’ll skip the size next)
          *--------------------------------------*/
         clc
-        lda     <room_base
-        adc     <mask_indexes_ofs
-        sta     <gfx_read_ptr
-        lda     >room_base
-        adc     >mask_indexes_ofs
-        sta     >gfx_read_ptr
+        lda     room_base
+        adc     mask_indexes_ofs
+        sta     gfx_read_ptr
+        lda     room_base + 1
+        adc     mask_indexes_ofs + 1
+        sta     gfx_read_ptr + 1
 
         /*---------------------------------------
          Set decoder source just past the 2-byte size prefix:
            decomp_src_ptr = gfx_read_ptr + 2  (units: bytes)
          *--------------------------------------*/
         clc
-        lda     <gfx_read_ptr
+        lda     gfx_read_ptr
         adc     #$02
-        sta     <decomp_src_ptr
-        lda     >gfx_read_ptr
+        sta     decomp_src_ptr
+        lda     gfx_read_ptr + 1
         adc     #$00
-        sta     >decomp_src_ptr
+        sta     decomp_src_ptr + 1
 
         /*---------------------------------------
 		 Decompress mask patterns
@@ -1231,18 +1232,18 @@ setup_mask_patterns_load:
 decomp_mask_patterns_loop:
         jsr     decomp_stream_next            // A ← next decoded byte from comp_src_ptr
         sta     (gfx_write_ptr),y             // store to *dst_ptr
-        inc     <gfx_write_ptr                // dst_ptr++
+        inc     gfx_write_ptr                // dst_ptr++
         bne     mask_update_count
-        inc     >gfx_write_ptr                // carry into hi on wrap
+        inc     gfx_write_ptr + 1                // carry into hi on wrap
 
 mask_update_count:
-        lda     <bytes_left                   // 16-bit countdown: if lo==0 then dec hi
+        lda     bytes_left                   // 16-bit countdown: if lo==0 then dec hi
         bne     mask_dec_lo_byte
-        dec     >bytes_left
+        dec     bytes_left + 1
 mask_dec_lo_byte:
-        dec     <bytes_left                   // --remain_bytes.lo
-        lda     <bytes_left
-        ora     >bytes_left                   // Z=1 when both lo and hi are zero
+        dec     bytes_left                   // --remain_bytes.lo
+        lda     bytes_left
+        ora     bytes_left + 1                   // Z=1 when both lo and hi are zero 
         bne     decomp_mask_patterns_loop     // continue until no bytes remain
 
         rts
@@ -1321,15 +1322,15 @@ room_ensure_resident:
 
 		// Fetch room from disk
 		jsr     rsrc_load_from_disk
-		stx     <room_data_ptr_local              // save ptr.lo
-		sty     >room_data_ptr_local              // save ptr.hi
+		stx     room_data_ptr_local              // save ptr.lo
+		sty     room_data_ptr_local + 1              // save ptr.hi
 
 		// Publish the pointer into the residency tables (Y = room_index):
 		//   lo -> room_ptr_lo_tbl[y], hi -> room_ptr_hi_tbl[y].
 		ldy     room_index
-		lda     <room_data_ptr_local
+		lda     room_data_ptr_local
 		sta     room_ptr_lo_tbl,y
-		lda     >room_data_ptr_local
+		lda     room_data_ptr_local + 1
 		sta     room_ptr_hi_tbl,y
 
 		// Choose which room’s attribute to update (index lives in rsrc_resource_index here).
@@ -1429,6 +1430,6 @@ costume_in_current_room:
 next_costume_2:
         // Loop control: advance to next costume; exit once X == COSTUME_MAX_INDEX+1.
         inx
-        cpx     #COSTUME_MAX_INDEX + 1    // processed 0..COSTUME_MAX_INDEX
+        cpx     #(COSTUME_MAX_INDEX + 1)    // processed 0..COSTUME_MAX_INDEX
         bne     check_costume_presence
         rts

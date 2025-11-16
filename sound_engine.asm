@@ -463,15 +463,15 @@ next_voice_for_control:
 
         ldx     selected_music_idx
         lda     sound_ptr_hi_tbl,x
-        sta     <music_to_start_ptr
+        sta     music_to_start_ptr_hi
         lda     sound_ptr_lo_tbl,x
-        sta     >music_to_start_ptr
+        sta     music_to_start_ptr_lo
 
-        lda     <music_to_start_ptr
-        cmp     <music_in_progress_ptr
+        lda     music_to_start_ptr_hi
+        cmp     music_in_progress_ptr_hi
         bne     dispatch_music_playback
-        lda     >music_to_start_ptr
-        cmp     >music_in_progress_ptr
+        lda     music_to_start_ptr_lo
+        cmp     music_in_progress_ptr_lo
         bne     dispatch_music_playback
 
         jsr     jump_to_music_code
@@ -572,10 +572,10 @@ stop_all_logical_voices_loop:
         // ------------------------------------------------------------
         // Initialize music_in_progress_ptr from music_to_start_ptr
         // ------------------------------------------------------------
-        lda     >music_to_start_ptr
-        sta     >music_in_progress_ptr
-        lda     <music_to_start_ptr
-        sta     <music_in_progress_ptr
+        lda     music_to_start_ptr_lo
+        sta     music_in_progress_ptr_lo
+        lda     music_to_start_ptr_hi
+        sta     music_in_progress_ptr_hi
 
         rts
 
@@ -646,7 +646,7 @@ set_voice_sid_range_flags:
         clc
         adc     voice_instr_loop_ofs_lo,x
         sta     voice_instr_pc_lo,x
-        sta     <voice_read_ptr
+        sta     voice_read_ptr
 
         // ------------------------------------------------------------
         // If high byte of base is zero → resource not in memory
@@ -666,7 +666,7 @@ set_hi_bytes:
         sta     voice_base_addr_hi,x
         adc     voice_instr_loop_ofs_hi,x
         sta     voice_instr_pc_hi,x
-        sta     >voice_read_ptr
+        sta     voice_read_ptr + 1
 
         // ------------------------------------------------------------
         // Determine parameter-byte count based on X
@@ -814,9 +814,9 @@ decode_voice_instruction:
 		// ------------------------------------------------------------
 voice_instr_resource_loaded:
         lda     voice_instr_pc_lo,x                   
-        sta     <voice_read_ptr                       
+        sta     voice_read_ptr                       
         lda     voice_instr_pc_hi,x                   
-        sta     >voice_read_ptr                       
+        sta     voice_read_ptr + 1
 
 		// Store debug/status flag = non-zero instruction header
         lda     #$ff                                  

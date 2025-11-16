@@ -15,7 +15,7 @@
 * = $04FD
 main_loop:
         // Debug hook – no-op call
-        jsr     do_nothing
+        jsr     do_nothing_077B
 
         // Reset IRQ-driven pacing counter (main loop runs once per 4 IRQ entries)
         lda     #$00
@@ -403,6 +403,3 @@ advance_to_next_actor:
 update_walking_sounds_exit:
         rts                                   
 
-* = $077B
-do_nothing:
-		rts

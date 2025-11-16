@@ -21,17 +21,17 @@ setup_music_pointers:
         // Tracks are processed from index 8 down to 0.
         // ------------------------------------------------------------
         ldx     #$08
-
+		
 music_track_ptr_loop:
         // Low byte: ptr_lo[X] := offsets_lo[X] + music_to_start_ptr.hi
         lda     music_track_offsets_lo,x
         clc
-        adc     >music_to_start_ptr
+        adc     music_to_start_ptr_lo
         sta     music_track_ptrs_lo,x
 
         // High byte: ptr_hi[X] := offsets_hi[X] + music_to_start_ptr.lo + carry
         lda     music_track_offsets_hi,x
-        adc     <music_to_start_ptr
+        adc     music_to_start_ptr_hi
         sta     music_track_ptrs_hi,x
 
         dex
@@ -43,16 +43,16 @@ music_track_ptr_loop:
         // The patched address is written into the JSR operand used by
         // jump_to_music_code.
         // ------------------------------------------------------------
-        lda     >music_to_start_ptr
-        sta     >music_in_progress_ptr
+        lda     music_to_start_ptr_lo
+        sta     music_in_progress_ptr_lo
         clc
         adc     #$4d
-        sta     <inlined_music_address
+        sta     inlined_music_address
 
-        lda     <music_to_start_ptr
-        sta     <music_in_progress_ptr
+        lda     music_to_start_ptr_hi
+        sta     music_in_progress_ptr_hi
         adc     #$01
-        sta     >inlined_music_address
+        sta     inlined_music_address + 1
 
         pla
         tax

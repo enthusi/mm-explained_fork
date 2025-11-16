@@ -168,8 +168,8 @@ multiple_64_hi:
     // High bytes of (index * 64) for sprite VRAM base addressing (indices 0..7).
 .byte $00, $00, $00, $00, $01, $01, $01, $01
 
-.label sprite_row_offsets_hi = $d5a8   // points 8 bytes into HI table → entry i=0 maps logical row 8
-.label sprite_row_offsets_lo = $d508   // points 8 bytes into LO table → entry i=0 maps logical row 8
+.label sprite_row_offsets_hi = $d508   // points 8 bytes into HI table → entry i=0 maps logical row 8
+.label sprite_row_offsets_lo = $d5a8   // points 8 bytes into LO table → entry i=0 maps logical row 8
 
 * = $d5a0
     // Row byte-offset low nibbles stepping by +3 per row (lo bytes for off = 3*r).
@@ -304,7 +304,6 @@ Notes
 	- Bias “-3” aligns decode to the character grid.
 ================================================================================
 */
-
 * = $2252
 draw_actor:
         // ----------------------------------------
@@ -335,10 +334,14 @@ draw_actor:
         // ----------------------------------------
         // global_mask_patterns_ptr = &mask_bit_patterns
         // ----------------------------------------
-        lda     <mask_bit_patterns
-        sta     <global_mask_patterns_ptr
-        lda     >mask_bit_patterns
-        sta     >global_mask_patterns_ptr
+        lda     #<mask_bit_patterns
+        sta     global_mask_patterns_ptr
+        lda     #>mask_bit_patterns
+        sta     global_mask_patterns_ptr + 1
+		
+        lda     actor_sprite_index,x
+		tax
+		tay
 
         // ----------------------------------------
         // Compute sprite VRAM base for this Y (sprite slot)
@@ -350,9 +353,9 @@ draw_actor:
         // ----------------------------------------
         ldx     actor
         lda     actor_gfx_base_lo,x
-        sta     <gfx_base
+        sta     gfx_base
         lda     actor_gfx_base_hi,x
-        sta     >gfx_base
+        sta     gfx_base + 1
 
         // ----------------------------------------
         // Copy offset of cel HI table 
@@ -370,9 +373,9 @@ draw_actor:
         // cel_seq_tbl ← limb_cel_list_for_actor[actor]
         // ----------------------------------------
         lda     actor_cel_seq_tbl_lo,x
-        sta     <cel_seq_tbl
+        sta     cel_seq_tbl
         lda     actor_cel_seq_tbl_hi,x
-        sta     >cel_seq_tbl
+        sta     cel_seq_tbl + 1
 
         // ----------------------------------------
         // Precompute actor_index * 8 (stride used elsewhere)
@@ -524,9 +527,9 @@ compute_data_pointer:
         lda     costume_ptr_hi_tbl,x
         ldy     actor_for_costume,x             // Y := actor index
         sta     actor_gfx_base_hi,y
-        sta     >costume_base
+        sta     costume_base + 1
         lda     costume_ptr_lo_tbl,x
-        sta     <costume_base
+        sta     costume_base
 
         // costume graphics section starts at base + 9 (skip header)
         clc
@@ -645,7 +648,7 @@ set_actor_sprite_base:
         // Low byte: 64 * sprite_index
         // ----------------------------------------
         lda     multiple_64_lo,y
-        sta     <actor_sprite_base
+        sta     actor_sprite_base
 
         // ----------------------------------------
         // High byte: (64 * index).hi + base_hi
@@ -660,7 +663,7 @@ set_actor_sprite_base:
 add_base_E800:
         adc     #>SPRITE_BASE_1
 store_ptr_hi:
-        sta     >actor_sprite_base
+        sta     actor_sprite_base + 1
         rts
 /*
 ================================================================================
@@ -782,15 +785,15 @@ set_sprite_ptr_for_row:
         // ----------------------------------------
         lda     sprite_row_offsets_lo,y
         clc
-        adc     <actor_sprite_base
-        sta     <src_row_ptr
+        adc     actor_sprite_base
+        sta     src_row_ptr
 
         // ----------------------------------------
         // src_row_ptr.hi = base.hi + offset.hi + carry
         // ----------------------------------------
         lda     sprite_row_offsets_hi,y
-        adc     >actor_sprite_base
-        sta     >src_row_ptr
+        adc     actor_sprite_base + 1
+        sta     src_row_ptr + 1
         rts
 /*
 ================================================================================
@@ -855,7 +858,7 @@ clear_sprite_visible_rows:
 		sta     bottom_row
 		sec
 		sbc     sprite_voff_buf1,y       // A := top = bottom_row − sprite_voff_buf1[Y]
-		bne     init_top_row             // A already holds top → proceed
+		jmp     init_top_row             // A already holds top → proceed
 
 path_buf0_load_bounds:
 		// Bank 0 path: compute bottom_row and top from bank-0 buffers
@@ -890,8 +893,8 @@ init_top_row:
 clamp_bottom_to_visible_max:
 		lda     #VISIBLE_ROW_MAX            // Cap bottom_row at the visible window maximum
 		sta     bottom_row
-		// Fall through to loop initialization
-
+		jmp		begin_clear_loop
+		
 		// ------------------------------------------------------------
 		// Validate top: keep within [0 .. VISIBLE_ROW_MAX]
 		// ------------------------------------------------------------
@@ -921,6 +924,7 @@ clear_row_loop:
 		dey
 		sta     (src_row_ptr),y
 
+		ldy		active_costume			
 		inc     clear_row_idx           // Advance to next row
 		lda     clear_row_idx           // Load current row index
 		cmp     bottom_row              // Compare against bottom bound
@@ -997,16 +1001,16 @@ compute_cel_ptr:
         // ----------------------------------------
         lda     (gfx_base),y
         clc
-        adc     <gfx_base
-        sta     <src_cel_ptr
+        adc     gfx_base
+        sta     src_cel_ptr
 
         // ----------------------------------------
         // >src_cel_ptr = cel_hi_tbl[cel_idx] (we're actually using the cel_idx_offset relative to gfx_base)
         // ----------------------------------------
         ldy     offset_hi
         lda     (gfx_base),y
-        adc     >gfx_base
-        sta     >src_cel_ptr
+        adc     gfx_base + 1
+        sta     src_cel_ptr + 1
         rts
 /*
 ================================================================================
@@ -1101,15 +1105,15 @@ Outputs
 * = $241E
 derive_dest_from_src:
         // copy low byte, prepare subtract
-        lda     <src_row_ptr
+        lda     src_row_ptr
         sec
         sbc     #$00
-        sta     <dest_row_ptr
+        sta     dest_row_ptr
 
         // subtract one from high byte (page back)
-        lda     >src_row_ptr
+        lda     src_row_ptr + 1
         sbc     #$01
-        sta     >dest_row_ptr
+        sta     dest_row_ptr + 1
         rts
 /*
 ================================================================================
@@ -1176,6 +1180,8 @@ draw_actor_limbs:
         // Init per-draw state
         // ----------------------------------------
         lda     #$00
+		sta		$3E
+		sta		$FD4D
         sta     fifth_byte
         sta     intercel_vertical_displacement
         sta     sprite_vertical_offset

@@ -38,7 +38,9 @@
 
 .label cam_request_pos = $d0
 
+* = $0668
 left_follow_threshold: .byte $0A
+* = $0669
 right_follow_threshold: .byte $1E
 
 

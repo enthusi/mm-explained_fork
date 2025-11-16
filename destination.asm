@@ -161,11 +161,11 @@ select_facing_clip_for_destination:
         beq     return_stand_right
 
         lda     #CLIP_STAND_LEFT
-        bne     done_2                                  
+        jmp     sfcfd_exit                                  
 
 return_stand_right:
         lda     #CLIP_STAND_RIGHT
-        bne     done_2                                  
+        jmp     sfcfd_exit                                  
 
 		// --------------------------------------------------------------------
 		// Destination is an object: explicit clip or default to “down”
@@ -176,12 +176,14 @@ target_is_object:
         beq     return_stand_down                 // unknown object → down
 
         lda     object_destination_active,y       // explicit clip?
-        bne     done_2                            // nonzero → use it
+		bne		sfcfd_exit_2
+        lda     #CLIP_STAND_DOWN
+sfcfd_exit_2:		
+        jmp     sfcfd_exit                            // nonzero → use it
 
 return_stand_down:
         lda     #CLIP_STAND_DOWN
-
-done_2:
+sfcfd_exit:
         rts
 /*
 ================================================================================

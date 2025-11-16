@@ -166,9 +166,9 @@ start_selected_music:
         // Initialize music_to_start_ptr for this music
         // ------------------------------------------------------------
         lda     sound_ptr_hi_tbl,x           // A := hi byte of chosen music base address
-        sta     <music_to_start_ptr          // music_to_start_ptr.lo := hi byte (bank/segment selector)
+        sta     music_to_start_ptr_hi          
         lda     sound_ptr_lo_tbl,x           
-        sta     >music_to_start_ptr          
+        sta     music_to_start_ptr_lo
 		
 		// Initialize internal music pointer state from this base
         jsr     setup_music_pointers         
