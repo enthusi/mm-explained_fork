@@ -1,8 +1,3 @@
-#importonce
-#import "globals.inc"
-#import "constants.inc"
-#import "ui_interaction.asm"
-
 /*
 ================================================================================
 Cursor physics engine — technical summary of core techniques
@@ -52,163 +47,12 @@ C64/6502-specific techniques and optimizations
 	
 ================================================================================
 */
+#importonce
+#import "globals.inc"
+#import "constants.inc"
+#import "ui_interaction.asm"
+#import "cursor_physics.inc"
 
-/*
-============================================================
-Joystick direction index lookup table
-============================================================
-
-Each possible 4-bit joystick reading (bits 0–3 = directions)
-is translated into a compact “direction index”.
-
-That index is then used to fetch horizontal and vertical
-deltas from the two tables that follow. Only 8 of the 16
-possible nibble values correspond to valid 8-way directions.
-
-  Input  Bitmask   Index   Direction
-  ------ --------  ------  ----------------
-    E     1110        1    up
-    A     1010        2    up-left
-    B     1011        3    left
-    9     1001        4    down-left
-    D     1101        5    down
-    5     0101        6    down-right
-    7     0111        7    right
-    6     0110        8    up-right
-
-The remaining input codes map to neutral (no movement).
-
-============================================================
-*/
-* = $F694
-joy_dir_idx_tbl:
-        .byte $00,$00,$00,$00,$00        // $0..$4 : neutral
-        .byte $06,$08,$07,$00,$04        // $5=↘(6), $6=↗(8), $7=→(7), $8=0, $9=↙(4)
-        .byte $02,$03,$00,$05,$01        // $A=↖(2), $B=←(3), $C=0, $D=↓(5), $E=↑(1)
-        .byte $00                        // $F      : neutral
-
-/*
-============================================================
-Joystick direction delta tables
-============================================================
-
-Each table defines the signed step applied to cursor speed
-for a given joystick direction index (from the lookup table
-described above). The deltas use small integer steps:
-  0  → no movement
-  1  → positive axis motion
-  $FF → negative axis motion (−1)
-
-These values form a simple 8-way direction model:
-  - joy_dir_dx_tbl controls horizontal motion.
-  - joy_dir_dy_tbl controls vertical motion.
-
-Entries are indexed by direction index (1–8). The first
-entry (index 0) represents neutral (no input).
-
-============================================================
-*/
-
-* = $F6A4
-joy_dir_dx_tbl:
-        .byte $00, $00, $FF, $FF, $FF, $00, $01, $01, $01
-
-* = $F6AD
-joy_dir_dy_tbl:
-        .byte $00, $FF, $FF, $00, $01, $01, $01, $00, $FF
-
-/*
-============================================================
-cursor_physics_for_region
-============================================================
-
-Maps each interaction-region handler index to a physics
-profile selector used by update_cursor_physics_from_hotspot.
-
-Profile meanings:
-  0 = standard / bottom-half cursor physics
-  1 = upper-half physics (different acceleration & drag)
-
-This table allows certain on-screen regions (e.g., UI areas
-above the horizon line) to have lighter or heavier cursor
-movement characteristics.
-
-------------------------------------------------------------
-Index : Value  →  Profile
-------------------------------------------------------------
-  0 : 01  →  upper-half profile
-  1 : 00  →  standard
-  2 : 00  →  standard
-  3 : 00  →  standard
-  4 : 00  →  standard
-============================================================
-*/
-* = $F2D7
-cursor_physics_for_region:
-        .byte $01, $00, $00, $00, $00
-		
-/*
-============================================================
-h_acceleration_masks
-============================================================
-Horizontal acceleration masks per physics profile (index 0..1).
-Used with:  A := delta (0/$01/$FF)
-            A := (A ROR with sign in C) → $00 or $FF
-            A := A EOR h_acceleration_masks[idx]
-This maps the 0/$FF selector into a tuned fractional step size.
-
-Profiles:
-  0 = standard / bottom-half
-  1 = upper-half
-
-Current values are identical for both profiles ($FA).
-============================================================
-*/
-* = $F310
-h_acceleration_masks:
-        .byte $FA, $FA
-
-
-/*
-============================================================
-v_acceleration_masks
-============================================================
-Vertical acceleration masks per physics profile (index 0..1).
-Same usage as the horizontal mask but for the Y axis. With the
-current $FF mask, the signed selector ($00 or $FF) passes through
-unchanged (full step magnitude).
-
-Profiles:
-  0 = standard / bottom-half
-  1 = upper-half
-
-Current values: both $FF.
-============================================================
-*/
-* = $F312
-v_acceleration_masks:
-        .byte $FF, $FF
-
-
-/*
-============================================================
-drag_shift_counts
-============================================================
-Drag strength per physics profile (index 0..1). This is the loop
-count for the 16-bit {ASL low; ROL high} sequence that implements
-a “virtual right shift” of the low byte, yielding ~½-speed drag.
-Typical value is 7.
-
-Profiles:
-  0 = standard / bottom-half
-  1 = upper-half
-
-Current values: both 7.
-============================================================
-*/
-* = $F314
-drag_shift_counts:
-        .byte $07, $07
 		
 .const X_RIGHT_LIMIT               = $A0     // compare threshold (valid if < $A0)
 .const X_MAX_CLAMP                 = $9F     // max in-range X after clamp
@@ -216,9 +60,7 @@ drag_shift_counts:
 .const Y_MAX_CLAMP                 = $BF     // max in-range Y after clamp
 .const Y_MIN_CLAMP                 = $08     // minimum allowed Y
 .const OUT_OF_BOUNDS_REGION 	   = $8A
-.const MSK_JOY_FIRE            	   = $10     // Mask for FIRE button (active-low)
 
-.label prev_fire_bit           	= $CB89   // Latched FIRE bit from previous frame (masked to bit4)
 .label drag                    = $CB8C   // temp 16-bit drag (lo/hi)
 .label drag_sub_hi             = $CB8E   // temp: sign-extend byte for hi subtract ($00/$FF)
 .label x_frac_accum_prev       = $CB7E   // prior X fractional accumulator (smoothing)
@@ -380,24 +222,24 @@ Outputs it updates
 
 Derive “half-speed” drag using a 7× left-shift trick
 
-A 16-bit right shift would cleanly divide the velocity by 2,
-but 6502 has no direct 16-bit ROR pair instruction. Instead,
-the code performs seven ASL/ROL steps, which pushes the low
-byte’s high bits into the high byte. After seven shifts, the
-new high byte (>drag) contains the same bit pattern as what
-the low byte (<drag) would have had after one logical right
-shift. In other words:
+	A 16-bit right shift would cleanly divide the velocity by 2,
+	but the 6502 has no direct 16-bit ROR pair instruction. Instead,
+	the code performs seven ASL/ROL steps, which pushes the low
+	byte’s high bits into the high byte. After seven shifts, the
+	new high byte (>drag) contains the same bit pattern as what
+	the low byte (<drag) would have had after one logical right
+	shift. In other words:
 
-  result_hi = (orig_lo >> 1)
-  carry     = original bit 9 of the value
+	  result_hi = (orig_lo >> 1)
+	  carry     = original bit 9 of the value
 
-This clever inversion makes “7× left” equal to “1× right”
-for the portion we care about, and the carry bit now holds
-the original sign information. Only >drag (the high byte) is
-used afterward, effectively producing drag = speed ÷ 2.
+	This clever inversion makes “7× left” equal to “1× right”
+	for the portion we care about, and the carry bit now holds
+	the original sign information. Only >drag (the high byte) is
+	used afterward, effectively producing drag = speed ÷ 2.
 
-drag_shift_count = 7 ensures this transformation is consistent
-every frame.
+	drag_shift_count = 7 ensures this transformation is consistent
+	every frame.
 ================================================================================
 */
 * = $F6B6
@@ -611,66 +453,8 @@ drag_exit:
         rts		
 /*
 ================================================================================
-detect_fire_press_edge
+  update_cursor_physics_from_hotspot
 ================================================================================
-
-Summary
-        Detect a new joystick FIRE press (active-low) by comparing the current
-        state to the previous frame’s stored bit. Returns with A = $10 on a
-        fresh press, or A = $00 if unchanged or released.
-
-Global Inputs
-        joy_state              // raw joystick state (bit4 = FIRE, active-low)
-        prev_fire_bit          // previous frame’s masked FIRE bit
-
-Global Outputs
-        prev_fire_bit          // updated to current FIRE bit
-
-Returns
-        A  = $10  if FIRE was newly pressed (transition 1→0)
-             $00  otherwise
-        Z  = 0 if pressed this frame, 1 if not
-
-Description
-        - FIRE line is active-low: 1 = released, 0 = pressed.
-        - The expression (curr XOR prev) AND prev isolates a 1→0 transition:
-              prev=1, curr=0 → new press → A=$10
-              otherwise → A=$00
-        - Stores the current FIRE bit for next-frame comparison.
-
-Notes
-        This routine provides edge detection, not level detection.
-        Callers can test the Zero flag or A directly to trigger one-time actions.
-================================================================================
-*/		
-* = $F7CB
-detect_fire_press_edge:
-        // ------------------------------------------------------------
-        // Mask current FIRE bit (active-low) and keep a copy in X
-        // ------------------------------------------------------------
-        lda     joy_state                      // A := raw joystick state
-        and     #MSK_JOY_FIRE                  // A := FIRE bit only (bit4)
-        tax                                     // X := current FIRE bit (for state latch)
-
-        // ------------------------------------------------------------
-        // Edge detect: (curr XOR prev) AND prev → 1→0 transition only
-        //  - Unpressed=1, Pressed=0 → detect new press this frame
-        // ------------------------------------------------------------
-        eor     prev_fire_bit                  // A := curr ⊕ prev (changed?)
-        and     prev_fire_bit                  // A := (changed) ∧ prev → 1→0 edge → $10 else $00
-
-        // ------------------------------------------------------------
-        // Latch current FIRE bit for next frame; A is the result
-        //  - A=$10 ⇒ new press this frame (Z=0)
-        //  - A=$00 ⇒ no new press (Z=1)
-        // ------------------------------------------------------------
-        stx     prev_fire_bit
-        rts
-/*
-================================================================================
-update_cursor_physics_from_hotspot
-================================================================================
-
 Summary
     Selects the cursor physics profile (acceleration masks + drag strength)
     from the current interaction region. Out-of-bounds uses the default
@@ -678,23 +462,24 @@ Summary
 
 Global Inputs
     hotspot_entry_ofs                   current region id
-    hotspot_type[]        region id → handler index
-    cursor_physics_for_region[]          handler index → profile (0=standard,1=upper)
-    h_acceleration_masks[]               per-profile horizontal accel mask
-    v_acceleration_masks[]               per-profile vertical   accel mask
-    drag_shift_counts[]                  per-profile drag shift count (e.g., 7)
+    hotspot_type[]        				region id → handler index
+    cursor_physics_for_region[]         handler index → profile (0=standard,1=upper)
+    h_acceleration_masks[]              per-profile horizontal accel mask
+    v_acceleration_masks[]              per-profile vertical   accel mask
+    drag_shift_counts[]                 per-profile drag shift count (e.g., 7)
 
 Global Outputs
-    accel_h_mask                         selected horizontal accel mask
-    accel_v_mask                         selected vertical   accel mask
-    drag_shift_count                     selected drag strength (shift count)
+    accel_h_mask                        selected horizontal accel mask
+    accel_v_mask                        selected vertical   accel mask
+    drag_shift_count                    selected drag strength (shift count)
 
 Description
     • If hotspot_entry_ofs == OUT_OF_BOUNDS_REGION:
         X := 0 (default profile) → load constants and RTS.
+		
     • Else:
         Y := hotspot_type[X]
-        X := cursor_physics_for_region[Y]    ; 0 = standard, 1 = upper-half
+        X := cursor_physics_for_region[Y]    		// 0 = standard, 1 = room viewport
         Load:
             accel_h_mask := h_acceleration_masks[X]
             accel_v_mask := v_acceleration_masks[X]
@@ -710,24 +495,25 @@ update_cursor_physics_from_hotspot:
         // ------------------------------------------------------------
         // Resolve physics profile index (X) from hotspot_entry_ofs
         // ------------------------------------------------------------
-        ldx     hotspot_entry_ofs              // X := current interaction region id
+        ldx     hotspot_entry_ofs               // X := current interaction region id
         cpx     #OUT_OF_BOUNDS_REGION           // Compare: is region OOB (outside any zone)?
         bne     fetch_handler_index             // No → look up handler → profile via tables
+		
         ldx     #$00                            // Yes → force default profile index 0
         jmp     load_constants                  
 
 fetch_handler_index:
-        ldy     hotspot_type,x  // Y := handler index for this region
-        ldx     cursor_physics_for_region,y    // X := physics profile (1=upper-half, 0=else)
+        ldy     hotspot_type,x  				// Y := handler index for this region
+        ldx     cursor_physics_for_region,y     // X := physics profile (1=upper-half, 0=else)
 
 load_constants:
         // ------------------------------------------------------------
         // Install selected physics constants for this region profile
         // ------------------------------------------------------------
-        lda     h_acceleration_masks,x          // Load horizontal accel mask for profile X
-        sta     accel_h_mask                    // → apply to horizontal movement logic
-        lda     v_acceleration_masks,x          // Load vertical accel mask for profile X
-        sta     accel_v_mask                    // → apply to vertical movement logic
-        lda     drag_shift_counts,x             // Load drag shift count (e.g., 7 for half-speed)
-        sta     drag_shift_count                // → controls damping strength in cursor_physics_step
-        rts                                     // Done updating physics parameters
+        lda     h_acceleration_masks,x          // Load horizontal accel mask for profile
+        sta     accel_h_mask                    
+        lda     v_acceleration_masks,x          // Load vertical accel mask for profile
+        sta     accel_v_mask                    
+        lda     drag_shift_counts,x             // Load drag shift count
+        sta     drag_shift_count                
+        rts                                     
