@@ -364,6 +364,84 @@ Caveats
      - the top edge farthest from the origin.
 
  This defines the limiting region used to test for a clear trajectory.
+
+================================================================================
+Pathing system — algorithms and techniques used
+================================================================================
+
+• Walkbox-based spatial graph:
+    - Navigation occurs on a graph whose nodes are walkboxes (AABBs).
+    - Edges come from adjacency discovered by the walkbox engine.
+    - Actor motion is constrained to remain inside these boxes.
+
+• Target snapping and nearest-box projection:
+    - Destinations outside all walkboxes are snapped to the closest point on the
+      nearest box using nearest-point-on-rectangle clamping (AABB closest-point).
+    - Diagonal walkbox edges receive an additional clamp via a per-scanline ΔX
+      lookup table (diag_dx_lut), approximating sloped walls.
+
+• Path staging and BFS/DFS integration:
+    - The file assumes that a walkbox path (from the search engine in
+      walkbox.asm) already exists in actor_discovered_boxes.
+    - snap_and_stage_path_update decides whether to rebuild the path and stores
+      the chosen target box.
+
+• AABB relation classification:
+    - classify_box_relation performs standard oriented AABB separation tests to
+      determine if the target box is above, below, left, right, or overlapping.
+    - Encodes relation in bitfields (axis + nearer-origin direction).
+
+• Orthogonal-axis actor-vs-target classification:
+    - classify_actor_axis_vs_box tests the *orthogonal* axis to the relation
+      (vertical relation → test X; horizontal relation → test Y) to detect
+      whether a straight path would clip the target’s span.
+
+• “Narrowest hall” construction (corridor intersection):
+    - evaluate_path_adjustment_need fuses current and target boxes to compute
+      the strict interior of their overlap corridor:
+          hall_lower_bound = max(first edges)
+          hall_upper_bound = min(second edges)
+      Requires dest to satisfy hall_lower_bound < dest < hall_upper_bound.
+    - Ensures straight-line movement does not graze solid walls; strict bounds
+      force corner turns when the corridor is too narrow.
+
+• Along-relation edge-crossing checks:
+    - After orthogonal containment, the routine checks the *other* axis (the
+      relation axis) to verify that the destination stays on the correct side of
+      the current box before reaching the target corridor.
+    - Uses the relation bit0 (near-origin / far-origin) to pick which current
+      edge is relevant.
+
+• Corner waypoint generation:
+    - If straight movement is unsafe:
+        • For vertical relations, fix Y from target (top/bottom) and choose X
+          from actor or box edges.
+        • For horizontal relations, fix X from target (left/right) and choose Y
+          from actor or box edges.
+    - Produces a guaranteed reachable “corner” waypoint at a valid box
+      intersection.
+
+• Diagonal-wall clamping:
+    - clamp_walkbox_diagonal_edge detects diagonal edges via attribute bits and
+      applies slope-dependent ΔX corrections:
+          up-left:  boundary = right − dx
+          down-right: boundary = left  + dx
+    - dx is taken from diag_dx_lut indexed by scanline (dy from box top).
+    - Ensures candidate_x does not cross the visible sloped wall.
+
+• Per-actor path lifecycle and fallback logic:
+    - apply_waypoint_update_if_needed checks flags, rebuilds waypoint, or falls
+      back to raw destination on failure/overlap.
+    - build_waypoint_from_path integrates all relation, corridor, and corner
+      logic to output the next waypoint.
+
+Overall:
+    The system combines AABB geometry, nearest-point projection, diagonal-edge
+    clamping, corridor intersection tests, and relation-based corner routing to
+    guarantee that each waypoint is reachable while respecting the walkbox
+    graph. It is a 6502-optimized, strictly O(1) per-update waypoint generator
+    layered on top of the walkbox search engine.
+================================================================================
 */
 
 .label current_box_ptr          = $17  // zp ptr → current walkbox edge table {left,right,top,bottom}
@@ -377,7 +455,6 @@ Caveats
 .label rel_axis_coord           = $CAD5  // scratch: actor coordinate on the axis being evaluated (X or Y)
 .label box_relpos_code          = $CAD6  // REL_* code from classify_box_relation (bit1=axis, bit0=near-origin)
 .label tgt_box_idx              = $FC3B  // walkbox index selected for target at final BFS depth
-//.label actor_axis_class         = $FC3C  // axis test vs target: $00 below/left, $01 above/right, $02 inside
 .label actor_axis_class         = $FC3B  // axis test vs target: $00 below/left, $01 above/right, $02 inside
 .label dest_other_axis          = $FC3F  // temp: destination coordinate on the axis opposite to the hall axis
 .label nearest_box_index        = $FDAC    // current walkbox index
