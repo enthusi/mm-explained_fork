@@ -63,7 +63,6 @@ Notes
 .const  KEY_F7                  = $04    // resume interrupted script
 .const  KEY_F2                  = $05    // save/load menu
 .const  KEY_F8                  = $08    // restart game
-.const  KEY_SPACE               = $20    // pause/resume
 .const  KEY_PLUS                = $2B    // text speed faster
 .const  KEY_MINUS               = $2D    // text speed slower
 
