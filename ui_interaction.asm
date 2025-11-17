@@ -5,6 +5,7 @@
 #import "text_data.inc"
 #import "hotspots_metadata.inc"
 #import "cursor.asm"
+#import "input_scan.asm"
 
 // ------------------------------------------------------------
 // Hotspot lookup and metadata
