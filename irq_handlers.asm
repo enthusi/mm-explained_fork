@@ -681,7 +681,7 @@ h1_keyboard:
 
         // cursor + interaction area
         jsr     step_cursor_and_dispatch_hotspot
-        jsr     $F3BC
+        jsr     compute_corrected_cursor_pos
         sta     cursor_sprite_x_hi
         stx     cursor_sprite_x_lo
         sty     cursor_sprite_y
