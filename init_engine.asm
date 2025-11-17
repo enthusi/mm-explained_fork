@@ -992,9 +992,9 @@ init_game_engine:
         // Set message bar standard delay
         // ------------------------------------------------------------
         lda     #<STD_MSG_DEFAULT_TICKS
-        sta     std_msg_countdown             // low byte (30 ticks)
+        sta     std_msg_countdown_lo             // low byte (30 ticks)
         lda     #>STD_MSG_DEFAULT_TICKS
-        sta     std_msg_countdown + 1             // high byte
+        sta     std_msg_countdown_hi             // high byte
 
         // ------------------------------------------------------------
         // Set initial text speed factor
