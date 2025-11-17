@@ -1213,7 +1213,7 @@ verb_pointers_lo = $f21b
 preposition_pointers_hi = $f22a
 preposition_pointers_lo = $f22e
 hotspot_click_handlers = $f2f2
-hotspot_dehighlight_handlers = $f2fc
+hotspot_dehighlighted_handlers = $f2fc
 joy_dir_idx_tbl = $f694
 joy_dir_dx_tbl = $f6a4
 joy_dir_dy_tbl = $f6ad
@@ -26395,8 +26395,8 @@ f2e4:
 ;f2dc
 ;f2e0
 
-hotspot_highlight_handlers = $f2e8
-hotspot_highlight_handlers:
+hotspot_highlighted_handlers = $f2e8
+hotspot_highlighted_handlers:
 ;f3e8	0			do_nothing
 ;f3e9	1			apply_highlight_color_and_fill
 ;f3e9	2			apply_highlight_color_and_fill
@@ -26412,8 +26412,8 @@ hotspot_click_handlers:
 ;f44d		4		click_sentence_bar_rebuild
 
 
-hotspot_dehighlight_handlers = $f2fc
-hotspot_dehighlight_handlers:
+hotspot_dehighlighted_handlers = $f2fc
+hotspot_dehighlighted_handlers:
 	; f3e8		0		do_nothing
 	; f3f8		1		apply_normal_color_and_fill
 	; f3f8		2		apply_normal_color_and_fill
@@ -26463,11 +26463,11 @@ step_cursor_and_dispatch_hotspot:
 .C:f335  0A          ASL A
 .C:f336  A8          TAY
 ;Inline subroutine address
-.C:f337  B9 FC F2    LDA hotspot_dehighlight_handlers,Y
-.C:f33a  8D 44 F3    STA <inlined_dehighlight_handler
-.C:f33d  B9 FD F2    LDA hotspot_dehighlight_handlers+1,Y
-.C:f340  8D 45 F3    STA >inlined_dehighlight_handler
-inlined_dehighlight_handler = $f344
+.C:f337  B9 FC F2    LDA hotspot_dehighlighted_handlers,Y
+.C:f33a  8D 44 F3    STA <inlined_dehighlighted_handler
+.C:f33d  B9 FD F2    LDA hotspot_dehighlighted_handlers+1,Y
+.C:f340  8D 45 F3    STA >inlined_dehighlighted_handler
+inlined_dehighlighted_handler = $f344
 .C:f343  20 00 00    JSR $0000		;Inlined address
 .C:f346  68          PLA
 .C:f347  8D 88 CB    STA hotspot_entry_ofs
@@ -26483,11 +26483,11 @@ inlined_dehighlight_handler = $f344
 .C:f357  0A          ASL A
 .C:f358  A8          TAY
 ;Inline subroutine address
-.C:f359  B9 E8 F2    LDA hotspot_highlight_handlers,Y
-.C:f35c  8D 66 F3    STA <inlined_highlight_handler
-.C:f35f  B9 E9 F2    LDA hotspot_highlight_handlers+1,Y
-.C:f362  8D 67 F3    STA >inlined_highlight_handler
-inlined_highlight_handler = $f366
+.C:f359  B9 E8 F2    LDA hotspot_highlighted_handlers,Y
+.C:f35c  8D 66 F3    STA <inlined_highlighted_handler
+.C:f35f  B9 E9 F2    LDA hotspot_highlighted_handlers+1,Y
+.C:f362  8D 67 F3    STA >inlined_highlighted_handler
+inlined_highlighted_handler = $f366
 .C:f365  20 00 00    JSR $0000		;Inlined address
 ;---------------------------------------
 ;Handle button click
