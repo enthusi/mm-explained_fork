@@ -149,6 +149,44 @@ Notes
   - The DFS explored 0→1, backtracked, then 0→2 and hit the destination.
   - resume_index_tbl ensured scanning resumed where it left off per depth.
   - Depth never exceeded 2, far below MAX_SEARCH_DEPTH.
+  
+================================================================================
+Walkbox system — techniques and algorithms used
+================================================================================
+
+• Graph search / pathfinding:
+    - Bounded depth-first search with explicit depth stack, resumable adjacency
+      cursors, and cycle-avoidance “seen box” checks.
+    - Adjacency lists stored as FF-terminated sublists; DFS resumes mid-list
+      using per-depth resume_index_tbl[] for proper backtracking.
+    - Path reconstruction by reversing the depth-indexed discovered-box stack.
+
+• Packed list / table structures:
+    - Walkboxes stored as variable-length FF-terminated lists packed back-to-back.
+    - get_list_element_offset scans terminators to map a list index to its byte
+      offset.
+    - Fixed-stride per-actor path buffers for output paths.
+
+• Geometry and distance:
+    - Axis-aligned bounding-box (AABB) inclusion checks for “actor inside box?”
+    - Nearest-box selection via distance minimization over all walkboxes.
+    - Nearest-point-on-rectangle via clamping X/Y to [left..right], [top..bottom].
+    - Fast octagonal distance approximation (shift/add metric) to avoid multipliers
+      and square roots.
+
+================================================================================
+C64/6502-specific techniques and optimizations
+================================================================================
+
+• Arithmetic / control-flow techniques:
+    - Multiplication by 5 via shift-and-add (index*5 = (index<<2)+index).
+    - Iterative DFS loop (no recursion), manual depth management, sentinel-based
+      termination.
+    - Standard 6502 multi-byte counter and comparison idioms.
+
+Overall: a 6502-optimized walkbox engine combining DFS pathfinding, compact
+packed-list structures, efficient rectangle geometry, and low-cost distance
+estimation, all implemented without recursion or heavy arithmetic.
 ================================================================================
 */
 
