@@ -4,6 +4,56 @@
 #import "ui_interaction.asm"
 
 /*
+================================================================================
+Cursor physics engine — technical summary of core techniques
+================================================================================
+• Fixed-point Euler integration (8.8):
+    Positions update via pos += vel each frame, with vel split into fractional
+    and integer bytes. Fractional overflow carries into the integer step, giving
+    smooth sub-pixel motion without floating point.
+
+• Shift-based half-speed drag (7× ASL/ROL):
+    Drag = velocity ÷ 2 computed by shifting a 16-bit copy left seven times,
+    which yields (orig_lo >> 1) in the high byte and exposes the original sign
+    in carry. Subtracting this produces exponential decay toward zero.
+
+• Boundary clamping with hysteresis:
+    Out-of-range positions zero velocity on that axis, clamp to an edge, and set
+    the fractional accumulator to $FF to prevent jitter from immediate re-overflow.
+
+• Data-driven physics profiles:
+    Regions map to handler indices, which map to physics profiles. Each profile
+    supplies tuned accel masks and a drag shift count, allowing different cursor
+    “feel” per zone without touching the physics routine. This feature was
+	effectively unused, as all regions have the same profile.
+	
+================================================================================
+C64/6502-specific techniques and optimizations
+================================================================================
+
+• Table-driven joystick direction decoding:
+    A 4-bit joystick nibble indexes a direction lookup table (0–8). Per-index
+    dx/dy tables emit {0,+1,−1}. This removes branches and normalizes odd input
+    combinations into clean 8-way vectors.
+
+• Active-low FIRE edge detection:
+    Bit expression (curr XOR prev) AND prev isolates 1→0 transitions on an
+    active-low FIRE bit. Returns $10 on new press while updating the stored state.
+
+• Active-low and two’s-complement idioms:
+    Sign is derived using cmp #$80, bpl/bmi, and carry logic. Negative cases use
+    X=$FF for sign extension, keeping arithmetic branch-light and in native 6502
+    style.
+	
+• Branchless acceleration mapping (EOR mask + carry sign):
+    Joystick deltas {+1,−1} are turned into tuned fractional steps using a
+    cmp → ror → eor mask sequence. Carry holds the sign so integer and fractional
+    adds share direction with no branching.
+	
+================================================================================
+*/
+
+/*
 ============================================================
 Joystick direction index lookup table
 ============================================================
@@ -302,7 +352,7 @@ Goal:
 		• It zeros the speed on that axis (so you stop “sliding” along the wall),
 		• and snaps the position to the nearest edge (left/right or top/bottom).
 		• The fractional accumulator is set to a “sticky” value so you don’t immediately
-		  re-overflow and jitter at the boundary.
+		  re-overflow and jitter at the boundary.  
 
 5) Enforce a minimum Y
 	- Even after clamping, it guarantees the cursor never dips above a certain line
