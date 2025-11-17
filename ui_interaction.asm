@@ -10,111 +10,104 @@
 // ------------------------------------------------------------
 // Hotspot lookup and metadata
 // ------------------------------------------------------------
-.const  HOTSPOT_END          	  = $8A    // Sentinel “end hotspot” index (out of table range)
-.const  HOTSPOT_REC_STRIDE        = $06    // Bytes per hotspot record (row/col bounds, type, aux)
+.const  HOTSPOT_END          	  	= $8A    // Sentinel “end hotspot” index (out of table range)
+.const  HOTSPOT_REC_STRIDE        	= $06    // Bytes per hotspot record (row/col bounds, type, aux)
 
 // ------------------------------------------------------------
 // Hotspot types (matches hotspot_type field at +4)
 // ------------------------------------------------------------
-.const  HOTSPOT_TYPE_ITEM         = $02    // Inventory item cell (2×2 grid entry)
-.const  HOTSPOT_TYPE_SCROLL       = $03    // Inventory scroll arrow (up/down)
+.const  HOTSPOT_TYPE_ITEM         	= $02    // Inventory item cell (2×2 grid entry)
+.const  HOTSPOT_TYPE_SCROLL       	= $03    // Inventory scroll arrow (up/down)
 
 // ------------------------------------------------------------
 // Screen and color memory
 // ------------------------------------------------------------
-.const  SCREEN_BASE               = $CC00  // Text screen RAM base
-.const  COLOR_BASE                = $D800  // VIC-II color RAM base
-
+.const  SCREEN_BASE               	= $CC00  // Text screen RAM base
+.const  COLOR_BASE                	= $D800  // VIC-II color RAM base
 
 // ------------------------------------------------------------
 // Scroll eligibility thresholds
 // ------------------------------------------------------------
-.const  MIN_OFFSET_FOR_UP         = $01    // Can scroll up if display offset ≥ 1
-.const  ITEMS_THRESHOLD_FOR_DOWN  = $05    // Can scroll down if ≥5 items remain below view
+.const  MIN_OFFSET_FOR_UP         	= $01    // Can scroll up if display offset ≥ 1
+.const  ITEMS_THRESHOLD_FOR_DOWN  	= $05    // Can scroll down if ≥5 items remain below view
 
 // ------------------------------------------------------------
 // Viewport paging
 // ------------------------------------------------------------
-.const  VISIBLE_SLOTS             = $04    // Number of visible item cells per page (2×2)
-.const  INVENTORY_PAGE_STEP       = $02    // Items advanced per scroll click
+.const  VISIBLE_SLOTS             	= $04    // Number of visible item cells per page (2×2)
+.const  INVENTORY_PAGE_STEP       	= $02    // Items advanced per scroll click
 
 // ------------------------------------------------------------
 // Cursor render corrections (pixel/grid tuning)
 // ------------------------------------------------------------
-.const  Y_BUMP1_THRESH            = $90    // If Y ≥ $90, add +1 to computed row
-.const  Y_BUMP2_THRESH            = $08    // If (Y & $0F) ≥ $08, add +1 to computed row
-.const  Y_CORR_BIAS               = $28    // Final row bias (+40 decimal)
-.const  POS16_LO_BIAS             = $80    // Add to low byte of 16-bit row base
-.const  X_OFFSET_PIX              = $06    // X pixel offset applied to cursor position
+.const  Y_BUMP1_THRESH            	= $90    // If Y ≥ $90, add +1 to computed row
+.const  Y_BUMP2_THRESH            	= $08    // If (Y & $0F) ≥ $08, add +1 to computed row
+.const  Y_CORR_BIAS               	= $28    // Final row bias (+40 decimal)
+.const  POS16_LO_BIAS             	= $80    // Add to low byte of 16-bit row base
+.const  X_OFFSET_PIX              	= $06    // X pixel offset applied to cursor position
 
-
-// ------------------------------------------------------------
-// Zero-page pointers
-// ------------------------------------------------------------
 // Source text pointer (lo at $C5, hi at $C6). Used by text copy/render.
-.label src_ptr               = $C5       // ZP pointer to text source
+.label src_ptr               		= $C5       // ZP pointer to text source
 // Destination pointers (lo at $C7, hi at $C8). Dual use:
 // - Screen character destination
 // - Color RAM row pointer (paired with COLOR_BASE paging logic)
-.label scr_dest_ptr                  = $C7       // ZP pointer to screen destination
+.label scr_dest_ptr                 = $C7       // ZP pointer to screen destination
 
 // ------------------------------------------------------------
 // Hotspot metadata view (decoded fields for current hotspot)
 // Offsets correspond to the per-entry layout:
 // +0 row_start, +1 row_end_ex, +2 col_start, +3 col_end_ex, +4 type
 // ------------------------------------------------------------
-.label hotspot_row_start     = $F243     // Current hotspot row start (inclusive)
-.label hotspot_row_end_ex    = $F244     // Current hotspot row end (exclusive)
-.label hotspot_col_start     = $F245     // Current hotspot column start (inclusive)
-.label hotspot_col_end_ex    = $F246     // Current hotspot column end (exclusive)
-.label hotspot_type          = $F247     // Current hotspot type enum
+.label hotspot_row_start     		= $F243     // Current hotspot row start (inclusive)
+.label hotspot_row_end_ex    		= $F244     // Current hotspot row end (exclusive)
+.label hotspot_col_start     		= $F245     // Current hotspot column start (inclusive)
+.label hotspot_col_end_ex    		= $F246     // Current hotspot column end (exclusive)
+.label hotspot_type          		= $F247     // Current hotspot type enum
 
 // ------------------------------------------------------------
-// Self-modifying call targets (patched JSR $0000 vectors)
+// Self-modifying call targets (patched JSR vectors)
 // Each label marks the two-byte destination for the inline JSR
 // ------------------------------------------------------------
-.label inlined_max_column        = $F63D  // Patched target for column limit routine
-.label inlined_max_row           = $F645  // Patched target for row limit routine
-.label inlined_column_length     = $F605  // Patched target for column length calc
-.label inlined_render_handler    = $F3AA  // Patched target for render handler
-.label inlined_dehighlight_handler = $F344 // Patched target for dehighlight handler
-.label inlined_highlight_handler = $F366  // Patched target for highlight handler
-.label inlined_click_handler     = $F386  // Patched target for click handler
+.label inlined_max_column        	= $F63D  // Patched target for column limit routine
+.label inlined_max_row           	= $F645  // Patched target for row limit routine
+.label inlined_column_length     	= $F605  // Patched target for column length calc
+.label inlined_render_handler    	= $F3AA  // Patched target for render handler
+.label inlined_dehighlighted_handler 	= $F344 // Patched target for dehighlight handler
+.label inlined_highlighted_handler 		= $F366 // Patched target for highlight handler
+.label inlined_click_handler     	= $F386  // Patched target for click handler
 
 // ------------------------------------------------------------
 // Inventory view state and shared temporaries
 // Note: $CB8C is shared scratch. Only one alias is valid at a time.
 // ------------------------------------------------------------
-.label inv_display_item_offset = $CB8B    // First visible inventory index (display offset)
-
-.label inv_count_accum         = $CB8C    // TEMP: running count of inventory items
-.label owned_ordinal_remaining = $CB8C    // TEMP: remaining owned-item ordinal
-.label tmp_row_index           = $CB8C    // TEMP: screen row index (0–25)
-.label hotspot_text_color      = $CB8F    // Active text color attribute for hotspot rendering
-                                            // Used when highlighting or dehighlighting labels
-                                            // Written before drawing text into COLOR_BASE rows
+.label inv_display_item_offset 		= $CB8B    // First visible inventory index (display offset)
+.label inv_count_accum         		= $CB8C    // TEMP: running count of inventory items
+.label owned_ordinal_remaining 		= $CB8C    // TEMP: remaining owned-item ordinal
+.label tmp_row_index           		= $CB8C    // TEMP: screen row index (0–25)
+.label hotspot_text_color      		= $CB8F    // Active text color attribute for hotspot rendering
+											   // Used when highlighting or dehighlighting labels
+											   // Written before drawing text into COLOR_BASE rows
 
 // ------------------------------------------------------------
 // Hotspot operand table
 // Maps hotspot → operand used by render/handlers (0–3 display slot)
 // ------------------------------------------------------------
-.label hotspot_operand_slot    = $F248    // Table byte: 0..3 for item grid slot
+.label hotspot_operand_slot    		= $F248    // Table byte: 0..3 for item grid slot
 
 // ------------------------------------------------------------
 // Cursor/grid position math scratch
 // ------------------------------------------------------------
-.label raw_row_base_lo         = $CB7E    // Row base low byte before bias/corrections
-.label pos16_lo                = $CB8C    // 16-bit position low (shared scratch)
-.label pos16_hi                = $CB8D    // 16-bit position high
+.label raw_row_base_lo         		= $CB7E    // Row base low byte before bias/corrections
+.label pos16_lo                		= $CB8C    // 16-bit position low (shared scratch)
+.label pos16_hi                		= $CB8D    // 16-bit position high
 
 /*
 ================================================================================
-refresh_inventory_regions_with_io_guard
+  refresh_inventory_io_guarded
 ================================================================================
-
 Summary
     Safely refresh inventory hotspots by temporarily switching to cutscene
-    control mode and banking I/O in, then restoring both on exit.
+    control mode.
 
 Global Inputs
     control_mode      current UI control state; read to decide early exit
@@ -133,7 +126,7 @@ Description
 * = $5F2B
 refresh_inventory_io_guarded:
         lda     control_mode                 // load current control mode
-        cmp     #CUTSCENE_CONTROL_MODE        // are we already in cutscene mode?
+        cmp     #CUTSCENE_CONTROL_MODE       // are we already in cutscene mode?
         beq     return_early_if_cutscene     // yes → nothing to redraw safely here
 
         lda     control_mode                 // save previous control mode
@@ -156,9 +149,8 @@ return_early_if_cutscene:
         rts                                   
 /*
 ================================================================================
-step_cursor_and_dispatch_hotspot
+  step_cursor_and_dispatch_hotspot
 ================================================================================
-
 Summary
     Update cursor physics, resolve the current hotspot, and handle lifecycle
     transitions and clicks. On hotspot change, clears button edge state,
@@ -166,26 +158,17 @@ Summary
     for the new hotspot. Detects a fresh click edge and dispatches the click
     handler.
 
-Arguments
-    None
-
 Vars/State
-    hotspot_entry_ofs           current hotspot index; updated to new value
-    button_presses              latched count/flag for processed clicks
-    inlined_dehighlight_handler two-byte JSR target patched per hotspot type
-    inlined_highlight_handler   two-byte JSR target patched per hotspot type
-    inlined_click_handler       two-byte JSR target patched per hotspot type
-
-Global Inputs
-    hotspot_type                hotspot type table indexed by hotspot_entry_ofs
+    hotspot_entry_ofs           	current hotspot index; updated to new value
+    hotspot_type                	hotspot type table indexed by hotspot_entry_ofs
+    button_presses              	latched count/flag for processed clicks
+    inlined_dehighlighted_handler 	two-byte JSR target patched per hotspot type
+    inlined_highlighted_handler   	two-byte JSR target patched per hotspot type
+    inlined_click_handler       	two-byte JSR target patched per hotspot type
 
 Global Outputs
-    hotspot_entry_ofs           set to the newly detected hotspot index
-    button_presses              cleared on hotspot change; incremented on click
-
-Returns
-    A, X, Y clobbered
-    NZC unspecified
+    hotspot_entry_ofs           	set to the newly detected hotspot index
+    button_presses              	cleared on hotspot change; incremented on click
 
 Description
     - Step cursor physics and update grid coordinates.
@@ -201,7 +184,6 @@ Description
 
 Notes
     - Uses self-modifying JSR targets to avoid indirect call overhead.
-    - The “no hotspot” sentinel and handler tables are defined elsewhere.
 ================================================================================
 */
 * = $F316
@@ -232,21 +214,24 @@ step_cursor_and_dispatch_hotspot:
         sta     button_presses
 
         // ------------------------------------------------------------
-        // Run exit handler for previous hotspot to dehighlight text
+        // Run dehighlighted handler for previous hotspot
         // ------------------------------------------------------------
         ldx     hotspot_entry_ofs
         cpx     #HOTSPOT_END
         beq     no_dehighlight_needed
 
+		// Resolve hotspot type
         lda     hotspot_type,x
+		// Resolve handler index
         asl
-        tay
-        lda     hotspot_dehighlight_handlers,y
-        sta     inlined_dehighlight_handler
-        lda     hotspot_dehighlight_handlers+1,y
-        sta     inlined_dehighlight_handler+1
+        tay		
+		// Patch inlined handler
+        lda     hotspot_dehighlighted_handlers,y
+        sta     inlined_dehighlighted_handler
+        lda     hotspot_dehighlighted_handlers+1,y
+        sta     inlined_dehighlighted_handler+1
 
-        jsr     $0000                  // invoke dehighlight handler
+        jsr     $0000                  // invoke dehighlighted handler
 
 no_dehighlight_needed:
         pla
@@ -258,21 +243,24 @@ no_dehighlight_needed:
         jsr     update_cursor_physics_from_hotspot
 
         // ------------------------------------------------------------
-        // Run entry handler for new hotspot to highlight text
+        // Run handler for new hotspot to highlight text
         // ------------------------------------------------------------
         ldx     hotspot_entry_ofs
         cpx     #HOTSPOT_END
         beq     handle_click
 
+		// Resolve hotspot type
         lda     hotspot_type,x
+		// Resolve handler index
         asl
         tay
-        lda     hotspot_highlight_handlers,y
-        sta     inlined_highlight_handler
-        lda     hotspot_highlight_handlers+1,y
-        sta     inlined_highlight_handler+1
+		// Patch inlined handler
+        lda     hotspot_highlighted_handlers,y
+        sta     inlined_highlighted_handler
+        lda     hotspot_highlighted_handlers+1,y
+        sta     inlined_highlighted_handler+1
 
-        jsr     $0000                  // invoke highlight handler
+        jsr     $0000                  // invoke highlighted handler
 
 handle_click:
         // ------------------------------------------------------------
@@ -285,9 +273,12 @@ handle_click:
         cpx     #HOTSPOT_END
         beq     register_press_and_exit
 
+		// Resolve hotspot type
         lda     hotspot_type,x
+		// Resolve handler index
         asl
         tay
+		// Patch inlined handler
         lda     hotspot_click_handlers,y
         sta     inlined_click_handler
         lda     hotspot_click_handlers+1,y
@@ -300,29 +291,18 @@ exit_hotspot_handler:
         rts
 /*
 ================================================================================
-render_all_hotspots
+  render_all_hotspots
 ================================================================================
-
 Summary
     Iterate all UI hotspots and render each by dispatching to its type-specific
     handler via a self-modified JSR target. Stops when HOTSPOT_END is reached,
     then updates cursor physics from the final hotspot context.
 
-Arguments
-    None
-
 Vars/State
     hotspot_entry_ofs       current hotspot index; incremented in +6 strides
-    inlined_render_handler  two-byte JSR target patched with the handler address
-
-Global Inputs
     hotspot_type            hotspot type table; selects render handler per index
     hotspot_render_handlers table of handler addresses; indexed by type*2
-
-Returns
-    A, X, Y  clobbered
-    NZC      unspecified
-    Tail-jumps to update_cursor_physics_from_hotspot on completion
+    inlined_render_handler  two-byte JSR target patched with the handler address
 
 Description
     - Initialize hotspot_entry_ofs to 0.
@@ -332,7 +312,7 @@ Description
         • Compute table index = type*2.
         • Patch inlined_render_handler with the two-byte address from
           hotspot_render_handlers[index .. index+1].
-        • JSR $0000 to invoke the patched handler.
+        • Invoke the patched handler.
         • Advance hotspot_entry_ofs by the record stride.
       When finished, jump to update_cursor_physics_from_hotspot.
 
@@ -395,32 +375,27 @@ next_region:
         jmp     update_cursor_physics_from_hotspot
 /*
 ================================================================================
-compute_corrected_cursor_pos
+  compute_corrected_cursor_pos
 ================================================================================
-
 Summary
     Compute adjusted cursor coordinates and a scaled 16-bit position used by
     downstream logic. Applies two Y bump thresholds and a fixed vertical bias,
     then assembles a 16-bit value from row base and X position, left-shifts it,
     and returns the overflow and high byte.
 
-Arguments
-    None
-
-Vars/State
-    pos16_lo                 low byte of assembled 16-bit position (written)
-    pos16_hi                 high byte of assembled 16-bit position (written)
-
 Global Inputs
-    cursor_y_pos             current cursor Y in pixels
-    raw_row_base_lo          low byte of current row base address
-    cursor_x_pos             current cursor X in pixels
+    cursor_x_pos            current cursor X in pixels
+    cursor_y_pos            current cursor Y in pixels
+	
+Vars/State
+    pos16_lo                low byte of assembled 16-bit position (written)
+    pos16_hi                high byte of assembled 16-bit position (written)
+    raw_row_base_lo         low byte of current row base address
 
 Returns
-    A  overflow bit from the 16-bit left shift (0 or 1)
-    X  high byte of ( {pos16_hi:pos16_lo} << 1 )
-    Y  corrected Y = cursor_y_pos after bumps + vertical bias
-    NZC unspecified except as noted for A
+    A  						overflow bit from the 16-bit left shift (0 or 1)
+    X  						high byte of ( {pos16_hi:pos16_lo} << 1 )
+    Y  						corrected Y = cursor_y_pos after bumps + vertical bias
 
 Description
     - Read cursor_y_pos and, if it meets each threshold, add 1 per threshold.
@@ -433,8 +408,6 @@ Description
         • A := final carry (overflow) from the shift
 
 Notes
-    - Thresholds and offsets (Y_BUMP1_THRESH, Y_BUMP2_THRESH, Y_CORR_BIAS,
-      POS16_LO_BIAS, X_OFFSET_PIX) are constants defined elsewhere.
     - Caller interprets (X, A) as a coarse column/overflow pair; Y carries the
       corrected row for subsequent table lookups.
 ================================================================================
@@ -493,29 +466,18 @@ dummy_handler:
 		rts
 /*
 ================================================================================
-apply_highlight_color_and_fill
+  apply_highlight_color_and_fill
 ================================================================================
-
 Summary
     Select the highlight color for the current hotspot type and fill its
     rectangular area in color RAM.
 
-Arguments
-    None
-
-Vars/State
-    (none)
-
 Global Inputs
-    hotspot_entry_ofs                  current hotspot index
-    hotspot_type                       hotspot type for the current index
-    hotspot_apply_highlight_color_and_fill  lookup table of highlight colors, indexed by type
-
-Global Outputs
-    hotspot_text_color                 receives the selected highlight color
-
-Returns
-    None; tail-calls fill_hotspot_color_span. A, X, Y clobbered. NZC unspecified.
+    hotspot_entry_ofs               current hotspot index
+	
+Vars
+    hotspot_type                    hotspot type for the current index
+    hotspot_highlight_colors  		lookup table of highlight colors, indexed by type
 
 Description
     - Load hotspot type from hotspot_type[hotspot_entry_ofs].
@@ -525,46 +487,28 @@ Description
 */
 * = $F3E9
 apply_highlight_color_and_fill:
-        // ------------------------------------------------------------
-        // Set highlight color for current hotspot, then fill it
-        //
-        // X := hotspot_entry_ofs
-        // Y := handler type for this hotspot
-        // A := highlight color for that handler
-        // hotspot_text_color := A
-        // Jumps to fill_hotspot_color_span to apply it.
-        // ------------------------------------------------------------
+		// Resolve hotspot type for hotspot index
         ldx     hotspot_entry_ofs
         ldy     hotspot_type,x
-        lda     hotspot_apply_highlight_color_and_fill,y
+		// Resolve highlight color for type
+        lda     hotspot_highlight_colors,y
         sta     hotspot_text_color
+		// Apply the color
         jmp     fill_hotspot_color_span
 /*
 ================================================================================
-apply_normal_color_and_fill
+  apply_normal_color_and_fill
 ================================================================================
-
 Summary
     Restore the normal color for the current hotspot type and fill its region
     in color RAM.
 
-Arguments
-    None
-
-Vars/State
-    (none)
-
 Global Inputs
     hotspot_entry_ofs      current hotspot index
+	
+Vars
     hotspot_type           per-hotspot type table; indexed by hotspot_entry_ofs
     hotspot_normal_colors  lookup table of normal colors; indexed by hotspot type
-
-Global Outputs
-    hotspot_text_color     receives the selected normal color for this hotspot
-
-Returns
-    None; tail-calls fill_hotspot_color_span. A, X, Y clobbered by callees.
-    NZC unspecified.
 
 Description
     - Load hotspot type from hotspot_type[hotspot_entry_ofs].
@@ -575,139 +519,85 @@ Description
 */
 * = $F3F8
 apply_normal_color_and_fill:
-        // ------------------------------------------------------------
-        // Restore normal color for current hotspot, then fill it
-        //
-        // X := hotspot_entry_ofs
-        // Y := handler type for this hotspot
-        // A := normal color for that handler
-        // hotspot_text_color := A
-        // Jumps to fill_hotspot_color_span to apply it.
-        // ------------------------------------------------------------
+		// Resolve hotspot type for hotspot index
         ldx     hotspot_entry_ofs
         ldy     hotspot_type,x
+		// Resolve normal color for type
         lda     hotspot_normal_colors,y
         sta     hotspot_text_color
+		// Apply the color
         jmp     fill_hotspot_color_span
 /*
 ================================================================================
-enter_verb_hotspot_render
+  enter_verb_hotspot_render
 ================================================================================
-
 Summary
     Render the verb label for this hotspot, then apply the normal dehighlight
     color fill.
 
-Arguments
-    None
-
-Vars/State
-    (none)
-
-Global Inputs
-    (none)
-
-Returns
-    None; tail-calls apply_normal_color_and_fill. A, X, Y clobbered by callees.
-    NZC unspecified.
-
 Description
     - Call render_verb_label to draw the verb text.
     - Jump to apply_normal_color_and_fill to paint baseline colors.
-
-Notes
-    - Operand decoding and color selection are handled by the called helpers.
 ================================================================================
 */
 * = $F407
 enter_verb_hotspot_render:
         // ------------------------------------------------------------
-        // Entered a verb hotspot: render its label, then dehighlight
+        // Render verb with normal color
         // ------------------------------------------------------------
         jsr     render_verb_label
         jmp     apply_normal_color_and_fill
 /*
 ================================================================================
-enter_item_hotspot_render
+  enter_item_hotspot_render
 ================================================================================
-
 Summary
     Render the inventory item text for this hotspot, then apply the normal
-    dehighlight color fill.
-
-Arguments
-    None
-
-Returns
-    None; tail-calls apply_normal_color_and_fill. A, X, Y are clobbered by
-    callees. NZC unspecified.
+    color fill.
 
 Description
     - Call render_item_name_if_owned to draw the item’s name or nothing.
     - Jump to apply_normal_color_and_fill to paint baseline colors.
-
-Notes
-    - Ownership, operand decoding, and color selection are handled by the
-      called helpers.
 ================================================================================
 */
 * = $F40D
 enter_item_hotspot_render:
         // ------------------------------------------------------------
-        // Entered an inventory-item hotspot: render item text, then dehighlight
+        // Render item text with normal color
         // ------------------------------------------------------------
         jsr     render_item_name_if_owned
         jmp     apply_normal_color_and_fill
 /*
 ================================================================================
-enter_scroll_hotspot_render
+  enter_scroll_hotspot_render
 ================================================================================
-
 Summary
     Render the inventory scroll arrow for this hotspot (if eligible), then
-    apply the normal dehighlight color fill.
-
-Arguments
-    None
-
-Returns
-    None; tail-calls apply_normal_color_and_fill. A, X, Y clobbered by callees.
-    NZC unspecified
+    apply the normal color fill.
 
 Description
     - Call render_scroll_arrow_if_eligible to draw the up/down arrow or nothing.
     - Jump to apply_normal_color_and_fill to paint baseline colors.
-
-Notes
-    - This routine does not examine operands or state directly; eligibility and
-      colors are resolved by the called helpers.
 ================================================================================
 */
 * = $F413
 enter_scroll_hotspot_render:
         // ------------------------------------------------------------
-        // Entered an inventory-scroll hotspot: render arrow (if any), then dehighlight
+        // Render scroll arrow (if any) with normal color
         // ------------------------------------------------------------
         jsr     render_scroll_arrow_if_eligible
         jmp     apply_normal_color_and_fill
 /*
 ================================================================================
-enter_sentence_bar_render
+  enter_sentence_bar_render
 ================================================================================
 
 Summary
     Render an empty string into the sentence-bar hotspot, then tail-call the
-    normal dehighlight color fill routine.
-
-Arguments
-    None
+    normal color fill routine.
 
 Vars/State
     src_ptr    source pointer set to the empty string before rendering
-
-Returns
-    None; tail-calls apply_normal_color_and_fill. A, X, Y clobbered by callees.
-    NZC unspecified.
 
 Description
     - Point src_ptr at the empty string.
@@ -718,41 +608,23 @@ Description
 * = $F419
 enter_sentence_bar_render:
         // ------------------------------------------------------------
-        // Entered action-bar background: render empty string, then dehighlight
-        // Points source to $F609 which contains a single #$00 byte.
+        // Rendder empty string with normal color
         // ------------------------------------------------------------
         lda     #<empty_string
-        sta     src_ptr                           // <src_ptr := $F609 (lo)
+        sta     src_ptr                           
         lda     #>empty_string
-        sta     src_ptr + 1                           // >src_ptr := $F609 (hi)
+        sta     src_ptr + 1                       
         jsr     blit_text_to_hotspot_row
         jmp     apply_normal_color_and_fill
 /*
 ================================================================================
-click_room_scene_mark
+  click_room_scene_mark
 ================================================================================
-
 Summary
     Mark that the room scene was clicked.
 
-Arguments
-    None
-
 Global Outputs
     room_scene_clicked_flag    set to TRUE to signal a room-scene click
-
-Returns
-    A  := TRUE
-    X  := preserved
-    Y  := preserved
-    NZC := unspecified
-
-Description
-    - Store TRUE into room_scene_clicked_flag.
-    - Return.
-
-Notes
-    - Flag is level-triggered; upstream logic should clear it after handling.
 ================================================================================
 */
 * = $F427
@@ -765,19 +637,12 @@ click_room_scene_mark:
         rts
 /*
 ================================================================================
-click_set_verb_and_refresh
+  click_set_verb_and_refresh
 ================================================================================
-
 Summary
     Set the current verb from the hotspot operand. If any button press is
     latched, request sentence rebuild; otherwise request sentence UI init.
     Always mark the sentence bar for refresh.
-
-Arguments
-    None
-
-Vars/State
-    (none)
 
 Global Inputs
     hotspot_entry_ofs       current hotspot index to read operand
@@ -785,16 +650,10 @@ Global Inputs
     button_presses          nonzero indicates a button press is latched
 
 Global Outputs
-    current_verb_id         updated to selected verb id
-    needs_sentence_rebuild  set when a button press is latched
-    init_sentence_ui_flag   set when no button press is latched
+    current_verb_id         	updated to selected verb id
+    needs_sentence_rebuild  	set when a button press is latched
+    init_sentence_ui_flag   	set when no button press is latched
     sentence_bar_needs_refresh  set to request bar redraw
-
-Returns
-    A  clobbered
-    X  clobbered
-    Y  preserved
-    NZC unspecified
 
 Description
     - Load verb index from hotspot_operand_slot[hotspot_entry_ofs] and store it
@@ -806,16 +665,7 @@ Description
 */
 * = $F42D
 click_set_verb_and_refresh:
-        // ------------------------------------------------------------
-        // Handle verb click in the action bar
-        //
-        // Load the verb index from the hotspot operand and set it as the
-        // current verb. If any button was pressed, request a sentence
-        // rebuild; otherwise initialize the sentence UI/stack. Always
-        // mark the sentence bar for refresh before exit.
-        // ------------------------------------------------------------
-
-        // Fetch verb for the interaction hotspot
+        // Fetch verb from the interaction hotspot
         ldx     hotspot_entry_ofs
         lda     hotspot_operand_slot,x
 
@@ -826,7 +676,7 @@ click_set_verb_and_refresh:
         lda     button_presses
         beq     reset_sentence_ui_and_stack
 
-        // Rebuild the action sentence
+        // Button latched, rebuild the sentence
         lda     #TRUE
         sta     needs_sentence_rebuild
         jmp     mark_sentence_bar_refresh
@@ -847,27 +697,13 @@ mark_sentence_bar_refresh:
         rts
 /*
 ================================================================================
-click_sentence_bar_rebuild
+  click_sentence_bar_rebuild
 ================================================================================
-
 Summary
     Request a rebuild of the action sentence.
 
-Arguments
-    None
-
 Global Outputs
     needs_sentence_rebuild    set to TRUE to signal sentence reconstruction
-
-Returns
-    A  := TRUE
-    X  := preserved
-    Y  := preserved
-    NZC := unspecified
-
-Description
-    - Store TRUE into needs_sentence_rebuild.
-    - Return.
 ================================================================================
 */
 * = $F44D
@@ -880,48 +716,35 @@ click_sentence_bar_rebuild:
         rts
 /*
 ================================================================================
-click_inventory_item_set_do_or_io
+  click_inventory_item_set_do_or_io
 ================================================================================
-
 Summary
     Handle click on an inventory item hotspot. Uses the hotspot operand as the
     visible cell index, checks ownership via find_owned_slot_for_display, and
-    sets either the Direct Object (no preposition pending) or the Indirect
-    Object (preposition pending and item differs from current DO). Always marks
+    sets either the Direct Object (no preposition set) or the Indirect
+    Object (preposition set and item differs from current DO). Always marks
     the sentence bar for refresh; triggers sentence rebuild if a button press
     is latched.
 
-Arguments
-    None
-
-Vars/State
-    direct_object_idx_lo    low byte of current Direct Object index; written here
-    direct_object_idx_hi    high byte of current Direct Object index; written here
-    indirect_object_idx_lo  low byte of current Indirect Object index; written here
-    indirect_object_idx_hi  high byte of current Indirect Object index; written here
-    needs_sentence_rebuild  flag to request sentence rebuild; may be set here
-    sentence_bar_needs_refresh  flag to refresh sentence bar; set here on exit
-
 Global Inputs
-    hotspot_entry_ofs       current hotspot index; selects operand
-    hotspot_operand_slot    per-hotspot operand; visible cell index 0..3
-    current_preposition     nonzero means a preposition is pending
-    button_presses          nonzero means a button was pressed since last clear
-
-Returns
-    C  preserved from find_owned_slot_for_display on early exit path
-    Y  inventory slot index when the item is owned (on the success path)
-    A  clobbered
-    X  clobbered
-    NZ  unspecified
+    hotspot_entry_ofs       	current hotspot index; selects operand
+    hotspot_operand_slot    	per-hotspot operand; visible cell index 0..3
+    current_preposition     	nonzero means a preposition is set
+    button_presses          	nonzero means a button was pressed since last clear
+	
+Vars/State
+    direct_object_idx_lo/hi    	low/hi byte of current Direct Object index; written here
+    indirect_object_idx_lo/hi  	low/hi byte of current Indirect Object index; written here
+    needs_sentence_rebuild  	flag to request sentence rebuild; may be set here
+    sentence_bar_needs_refresh  flag to refresh sentence bar; set here on exit
 
 Description
     - Read display cell index from hotspot_operand_slot[hotspot_entry_ofs].
     - Call find_owned_slot_for_display:
         • If carry is set, item is not owned → skip object updates.
         • If carry is clear, Y holds the inventory slot:
-            · If no preposition is pending, commit Direct Object = (X=cell, Y=slot).
-            · If a preposition is pending, keep DO if it matches (X,Y);
+            · If no preposition is set, commit Direct Object = (X=cell, Y=slot).
+            · If a preposition is set, keep DO if it matches (X,Y);
               otherwise commit Indirect Object = (X,Y).
     - If any button press is latched, set needs_sentence_rebuild.
     - Always set sentence_bar_needs_refresh before returning.
@@ -934,39 +757,40 @@ Notes
 * = $F452
 click_inventory_item_set_do_or_io:
         // ------------------------------------------------------------
-        // Handle click on an inventory item hotspot
-        //
-        // A := display slot index (0..3) via hotspot_operand_slot[X].
-        // JSR find_owned_slot_for_display:
-        //   - On CLC (owned): .Y = inventory slot index; proceed to set DO/IO.
-        //   - On SEC (not owned): skip to UI refresh.
-        // Updates:
-        //   - If no preposition pending: set Direct Object = (X,Y).
-        //   - Else: if (X,Y) already equals Direct Object, keep as-is; otherwise set Indirect Object = (X,Y).
-        // Always marks sentence bar for refresh; rebuilds sentence if any button was pressed.
+        // Resolve inventory item slow
         // ------------------------------------------------------------
         ldx     hotspot_entry_ofs
         lda     hotspot_operand_slot,x
+		
+        // ------------------------------------------------------------
+        // Find the owned item for this slot
+        //   - On CLC (owned): .Y = inventory slot index; proceed to set DO/IO.
+        //   - On SEC (not owned): skip to UI refresh.
+        // ------------------------------------------------------------
         jsr     find_owned_slot_for_display
-        bcs     post_click_ui_update          // C=1 → not owned
+        bcs     post_click_ui_update          	// C=1 → not owned
 
         // ------------------------------------------------------------
         // Item is owned → decide whether it becomes DO or IO
         // ------------------------------------------------------------
         ldy     #$00
         lda     current_preposition
-        bne     check_is_current_do                            // preposition set → possible IO path
-        stx     direct_object_idx_lo             // commit DO := (X,Y)
+        bne     check_is_current_do             // preposition set → possible IO path
+		
+        // ------------------------------------------------------------
+        // Preposition clear: commit as DO
+        // ------------------------------------------------------------
+        stx     direct_object_idx_lo            
         sty     direct_object_idx_hi
         jmp     post_click_ui_update
 
         // ------------------------------------------------------------
-        // Preposition set: if already DO, keep; else commit as IO
+        // Preposition set: if item is already DO, skip; else commit as IO
         // ------------------------------------------------------------
 check_is_current_do:		
-        cpx     direct_object_idx_lo             // same DO lo?
+        cpx     direct_object_idx_lo            // same DO lo?
         bne     commit_indirect_object
-        cpy     direct_object_idx_hi             // same DO hi?
+        cpy     direct_object_idx_hi            // same DO hi?
         bne     commit_indirect_object
         jmp     post_click_ui_update
 
@@ -979,10 +803,12 @@ commit_indirect_object:
 
 post_click_ui_update:
         // ------------------------------------------------------------
-        // Post-click UI updates: maybe rebuild sentence, always refresh bar
+        // If a button is latched, rebuild the sentence
         // ------------------------------------------------------------
-        lda     button_presses                   // any button latched?
+        lda     button_presses                  
         beq     return_refresh_bar
+		
+		// Button latched, rebuild sentence
         lda     #TRUE
         sta     needs_sentence_rebuild
 
@@ -995,40 +821,30 @@ return_refresh_bar:
         rts
 /*
 ================================================================================
-click_inventory_scroll_page
+  click_inventory_scroll_page
 ================================================================================
-
 Summary
     Handle click on an inventory scroll arrow. Operand 0=up, 1=down. Adjust
     inv_display_item_offset by ±INVENTORY_PAGE_STEP and then refresh inventory
     regions.
 
-Arguments
-    None
-
 Global Inputs
-    hotspot_entry_ofs       current hotspot index to read the operand
-    hotspot_operand_slot    per-hotspot operand; 0=up, 1=down
-    inv_display_item_offset current window start index before adjustment
+    hotspot_entry_ofs       	current hotspot index to read the operand
+    hotspot_operand_slot    	per-hotspot operand; 0=up, 1=down
+    inv_display_item_offset 	current inventory window start index before adjustment
 
 Global Outputs
-    inv_display_item_offset updated window start index after adjustment
-
-Returns
-    None; tail-calls refresh_inventory_regions on down path.
-    On up path, falls through to the next routine. A, X modified. NZC unspecified.
+    inv_display_item_offset 	updated inventory window start index after adjustment
 
 Description
     - Read operand from hotspot_operand_slot[hotspot_entry_ofs].
+	Operand is scroll direction.
+	
     - If operand=1 (down): add INVENTORY_PAGE_STEP to inv_display_item_offset,
       commit, and jump to refresh_inventory_regions.
+	  
     - If operand=0 (up): subtract INVENTORY_PAGE_STEP. If result is negative,
-      clamp to 0. Commit and fall through.
-
-Notes
-    - INVENTORY_PAGE_STEP is a constant defined elsewhere.
-    - Caller should not expect an RTS here; control either jumps to the refresh
-      routine or falls through into the next routine.
+      clamp to 0. Commit and fall through to refresh_inventory_regions.
 ================================================================================
 */
 * = $F48F
@@ -1067,27 +883,20 @@ scroll_page_up:
         lda     #$00
 commit_display_offset:
         sta     inv_display_item_offset
-        // Fall through to next routine	
+        // Fall through to refresh_inventory_regions	
 /*
 ================================================================================
-refresh_inventory_regions
+  refresh_inventory_regions
 ================================================================================
-
 Summary
-    Refresh all inventory-related hotspots (items and arrows). Clamps the
-    window offset to the highest valid page, then scans all hotspots and
-    re-renders those whose type is inventory item or scroll arrow.
-
-Arguments
-    None
+    Refresh all inventory-related hotspots (items and scroll arrows). 
+	Clamps the inventory window offset to the highest valid page, then scans all hotspots 
+	and re-renders those whose type is inventory item or scroll arrow.
 
 Global Inputs
     inv_display_item_offset    index of the top-left visible item; may be clamped
     hotspot_entry_ofs          current hotspot index; preserved across this pass
     hotspot_type               per-hotspot type table read during the scan
-
-Returns
-    None; clobbers A, X, Y. NZC unspecified.
 
 Description
     - Compute max valid window start as max(count_owned - 4, 0).
@@ -1099,21 +908,11 @@ Description
     - Restore hotspot_entry_ofs and return.
 
 Notes
-    - ITEM and SCROLL type ids, HOTSPOT_END, and HOTSPOT_REC_STRIDE are
-      constants defined elsewhere.
     - The visible grid holds 4 item cells; paging step depends on layout.
 ================================================================================
 */
 * = $F4B3
 refresh_inventory_regions:
-        // ------------------------------------------------------------
-        // Refresh all inventory-related hotspots (items and arrows)
-        //
-        // Clamps inv_display_item_offset to ensure it does not exceed
-        // the highest valid page. Then scans all hotspots and refreshes
-        // those of type “inventory item” (#$02) or “scroll arrow” (#$03).
-        // ------------------------------------------------------------
-
         // ------------------------------------------------------------
         // Clamp display offset to (owned_items - 4) minimum 0
         // ------------------------------------------------------------
@@ -1145,29 +944,34 @@ scan_all_hotspots:
         lda     hotspot_type,x
 
         // ------------------------------------------------------------
-        // hotspot type #$02 → inventory item
+        // hotspot type item?
         // ------------------------------------------------------------
         cmp     #HOTSPOT_TYPE_ITEM
         bne     dispatch_scroll_arrow
+		
+		// Item - render item name if owned
         jsr     render_item_name_if_owned
         jmp     advance_region_or_finish
 
 dispatch_scroll_arrow:
         // ------------------------------------------------------------
-        // hotspot type #$03 → inventory scroll arrow
+        // hotspot type scroll arrow?
         // ------------------------------------------------------------
         cmp     #HOTSPOT_TYPE_SCROLL
         bne     advance_region_or_finish
+		
+		// Scroll arrow - render if eligible
         jsr     render_scroll_arrow_if_eligible
 
 advance_region_or_finish:
         // ------------------------------------------------------------
-        // Advance to next hotspot (+6 stride) and continue
+        // Advance to next hotspot and continue
         // ------------------------------------------------------------
         clc
         lda     hotspot_entry_ofs
         adc     #HOTSPOT_REC_STRIDE
         sta     hotspot_entry_ofs
+		
         cmp     #HOTSPOT_END
         bne     scan_all_hotspots
 
@@ -1179,28 +983,21 @@ advance_region_or_finish:
         rts
 /*
 ================================================================================
-render_scroll_arrow_if_eligible
+  render_scroll_arrow_if_eligible
 ================================================================================
-
 Summary
     Render the inventory scroll arrow (up or down) into the hotspot row if the
     paging condition is met; otherwise render an empty string.
 
-Arguments
-    None
-
-Vars/State
-    src_ptr                 source pointer for arrow text (written here)
-
 Global Inputs
-    hotspot_entry_ofs       current hotspot index used to read operand
-    hotspot_operand_slot    per-hotspot operand; 0=up, 1=down
-    inv_display_item_offset index of the top-left visible item
-    inv_arrow_ptr_lo        low bytes of arrow text pointers (indexed by operand)
-    inv_arrow_ptr_hi        high bytes of arrow text pointers (indexed by operand)
-
-Returns
-    None; clobbers A, X, Y. NZC unspecified.
+    hotspot_entry_ofs       	current hotspot index used to read operand
+	
+Vars/State
+    hotspot_operand_slot    	per-hotspot operand; 0=up arrow, 1=down arrow
+    inv_display_item_offset 	index of the top-left visible item
+    inv_arrow_ptr_lo        	low bytes of arrow text pointers (indexed by operand)
+    inv_arrow_ptr_hi       		high bytes of arrow text pointers (indexed by operand)
+    src_ptr                 	source pointer for arrow text (written here)
 
 Description
     - If operand=0 (up): show arrow only when inv_display_item_offset ≥ 1.
@@ -1210,19 +1007,15 @@ Description
     - On failure: point src_ptr to the empty string and blit.
 
 Notes
-    - Threshold constants and the empty string label are defined elsewhere.
     - Uses blit_text_to_hotspot_row for rendering.
 ================================================================================
 */
 * = $F4F7
 render_scroll_arrow_if_eligible:
         // ------------------------------------------------------------
-        // Render inventory scroll arrow (up or down) in hotspot 
-        //
-        // Operand (0 = up, 1 = down) defines which arrow to display.
-        // The up arrow is shown only if the inventory offset ≥ 1.
-        // The down arrow is shown only if there are ≥ 5 items past
-        // the current offset (more pages to scroll).
+        // Resolve arrow index into Y
+		//
+		// Operand (0 = up, 1 = down) defines which arrow to display.
         // ------------------------------------------------------------
         ldx     hotspot_entry_ofs
         ldy     hotspot_operand_slot,x
@@ -1251,7 +1044,7 @@ decide_arrow_display:
         bcc     no_arrow
 
         // ------------------------------------------------------------
-        // Valid arrow → get text pointer and render
+        // Valid arrow → resolve arrow text pointer and render
         // ------------------------------------------------------------
         ldx     hotspot_entry_ofs
         ldy     hotspot_operand_slot,x
@@ -1263,7 +1056,7 @@ decide_arrow_display:
 
 no_arrow:
         // ------------------------------------------------------------
-        // Point to empty string
+        // No arrow -> point to empty string
         // ------------------------------------------------------------
         lda     #<empty_string
         sta     src_ptr
@@ -1273,26 +1066,19 @@ rsaie_trampoline:
         jmp     blit_text_to_hotspot_row
 /*
 ================================================================================
-render_verb_label
+  render_verb_label
 ================================================================================
-
 Summary
     Copy the verb text referenced by the hotspot into the hotspot’s screen row.
 
-Arguments
-    None
-
-Vars/State
-    src_ptr                     source pointer for text bytes (written here)
-
 Global Inputs
     hotspot_entry_ofs           current hotspot index used to read operand
+	
+Vars/State
     hotspot_operand_slot        per-hotspot operand; verb index for this entry
     verb_pointers_lo            table of verb text pointers, low bytes
     verb_pointers_hi            table of verb text pointers, high bytes
-
-Returns
-    None; clobbers A, X, Y. NZC unspecified.
+    src_ptr                     source pointer for text bytes (written here)
 
 Description
     - Load verb index from hotspot_operand_slot[hotspot_entry_ofs].
@@ -1307,11 +1093,7 @@ Notes
 * = $F530
 render_verb_label:
         // ------------------------------------------------------------
-        // Copy the text of a verb into the hotspot 
-        //
-        // Loads the hotspot’s operand (verb index) and resolves the
-        // pointer to the corresponding verb string, then blits the text
-        // into the screen row for that hotspot.
+		// Resolve verb index into Y
         // ------------------------------------------------------------
         ldx     hotspot_entry_ofs
         ldy     hotspot_operand_slot,x
@@ -1330,29 +1112,22 @@ render_verb_label:
         jmp     blit_text_to_hotspot_row
 /*
 ================================================================================
-render_item_name_if_owned
+  render_item_name_if_owned
 ================================================================================
-
 Summary
     Copy the current inventory item’s name into its hotspot row. Uses the
     hotspot’s operand to select a visible display cell, checks ownership
     against the current kid, and either blits the resolved name or an empty
     string into the screen region.
 
-Arguments
-    None
-
-Vars/State
-    src_ptr                     source pointer for text bytes (written here)
-
 Global Inputs
     hotspot_entry_ofs           current hotspot index for this render
+	
+Vars/State
     hotspot_operand_slot        table: maps hotspot to display cell index (0..3)
     object_ptr_lo_tbl           table: per-inventory-slot object base pointer lo
     object_ptr_hi_tbl           table: per-inventory-slot object base pointer hi
-
-Returns
-    None; clobbers A, X, Y. NZC unspecified.
+    src_ptr                     source pointer for text bytes (written here)
 
 Description
     - Read the hotspot’s display cell index from hotspot_operand_slot[X].
@@ -1363,27 +1138,26 @@ Description
       object’s name offset at byte +$0D and blit via blit_text_to_hotspot_row.
 
 Notes
-    - Assumes find_owned_slot_for_display returns Y = inventory slot index
-      when C=0 (owned). On C=1, Y is not used.
     - Name offset (+$0D) is part of the object record layout.
 ================================================================================
 */
 * = $F543
 render_item_name_if_owned:
         // ------------------------------------------------------------
-        // Copy the current item's name text into its hotspot 
-        //
-        // Determines if the item corresponding to the hotspot belongs
-        // to the current kid. If not, sets src_ptr to an empty string.
-        // Otherwise, computes the name pointer and blits it to screen.
+		// Resolve operand slot index for hotspot entry -> A
         // ------------------------------------------------------------
         ldx     hotspot_entry_ofs
         lda     hotspot_operand_slot,x
+		
+        // ------------------------------------------------------------
+        // Determine if the item corresponding to the hotspot belongs
+        // to the current kid. 
+        // ------------------------------------------------------------
         jsr     find_owned_slot_for_display
         bcc     resolve_name_ptr_and_blit
 
         // ------------------------------------------------------------
-        // Item not owned → set src_ptr to empty string at $F609
+        // Item not owned → set src_ptr to empty string
         // ------------------------------------------------------------
         lda     #<empty_string
         sta     src_ptr
@@ -1401,7 +1175,7 @@ resolve_name_ptr_and_blit:
         sta     src_ptr+1
 
         // ------------------------------------------------------------
-        // Add name offset from byte +$0D within object record
+        // Add name offset
         // ------------------------------------------------------------
         ldy     #OBJ_NAME_OFS
         clc
@@ -1415,9 +1189,8 @@ blit_text_trampoline:
         jmp     blit_text_to_hotspot_row
 /*
 ================================================================================
-find_owned_slot_for_display
+  find_owned_slot_for_display
 ================================================================================
-
 Summary
     Resolve whether the Nth visible inventory item (by display index) is owned
     by the current kid. Converts display index to an ordinal within the stream
@@ -1436,12 +1209,8 @@ Global Inputs
     current_kid_idx            active kid index used to match ownership
 
 Returns
-    C  clear if the targeted visible item is owned by current kid
-       set   if not owned or no such item
-    A  clobbered
-    X  clobbered
-    Y  clobbered
-    NZ  unspecified
+    C  				clear 	if the targeted visible item is owned by current kid
+					set   	if not owned or no such item
 
 Description
     - Compute target ordinal: display_index + inv_display_item_offset.
@@ -1461,13 +1230,11 @@ Notes
 * = $F573
 find_owned_slot_for_display:
         // ------------------------------------------------------------
-        // Check if a displayed inventory item belongs to the current kid
+        // Initialize ordinal := display index + inv_display_item_offset
         //
-        // Input:  .A = display index (0–3)
-        //         inv_display_item_offset = index of top-left item
-        //
-        // Returns: Carry clear = item owned by current kid
-        //          Carry set   = item not owned
+        // display index = 0–3, index of each of the 4 visible inventory 
+		// 		item slots in the UI
+        // inv_display_item_offset = index of top-left item
         // ------------------------------------------------------------
         clc
         adc     inv_display_item_offset
@@ -1508,34 +1275,27 @@ advance_slot_or_finish:
         rts
 /*
 ================================================================================
-count_active_kid_inventory_items
+  count_active_kid_inventory_items
 ================================================================================
-
 Summary
     Count how many inventory objects are owned by the current kid. Scans the
     inventory slot table, filters empty slots, checks the owner nibble against
     current_kid_idx, and accumulates a total.
 
-Arguments
-    None
+Global Inputs
+    inventory_objects     	inventory slot table; each entry is an object id or $00
+    current_kid_idx       	active kid index to match against object owner nibble
 
 Vars/State
-    inv_count_accum    accumulator for the running item count (written here)
-
-Global Inputs
-    inventory_objects     inventory slot table; each entry is an object id or $00
-    object_attributes     per-object attribute bytes; low nibble encodes owner id
-    current_kid_idx       active kid index to match against object owner nibble
+    inv_count_accum    		accumulator for the running item count (written here)
+    object_attributes     	per-object attribute bytes; low nibble encodes owner id
 
 Returns
-    A  := total number of owned items
-    X  := clobbered
-    Y  := clobbered
-    NZC := unspecified
+    A 						total number of owned items
 
 Description
     - Initialize inv_count_accum to zero and Y to 0.
-    - For each slot:
+    - For each inventory slot:
         • Read object id; skip if $00.
         • Read object_attributes[id], mask owner nibble, compare to current_kid_idx.
         • If equal, increment inv_count_accum.
@@ -1549,11 +1309,7 @@ Notes
 * = $F599
 count_active_kid_inventory_items:
         // ------------------------------------------------------------
-        // Count all items belonging to the current kid
-        //
-        // Loops through the inventory object list and counts how many
-        // items are owned by the active kid (current_kid_idx). Returns
-        // total count in .A.
+        // Initialize count
         // ------------------------------------------------------------
         lda     #$00
         sta     inv_count_accum
@@ -1581,7 +1337,7 @@ scan_slot_check_owner:
 
 advance_slot_or_exit:
         // ------------------------------------------------------------
-        // Advance to next slot; stop after all 45 entries
+        // Advance to next slot; stop after all entries exhausted
         // ------------------------------------------------------------
         iny
         cpy     #INVENTORY_SLOTS
@@ -1594,32 +1350,25 @@ advance_slot_or_exit:
         rts
 /*
 ================================================================================
-blit_text_to_hotspot_row
+  blit_text_to_hotspot_row
 ================================================================================
-
 Summary
     Copy one text row from src_ptr into the active hotspot’s screen region.
     Converts $40 and $00 to space; a $00 also switches to fill mode to pad
     remaining columns with spaces. Uses start-inclusive, end-exclusive bounds.
 
-Arguments
-    None
-
-Vars/State
-    scr_dest_ptr               destination pointer into screen RAM (lo/hi)
-    inlined_column_length  self-modified byte for CPY #column_count
-    src_ptr                source pointer for text bytes (lo/hi)
-
 Global Inputs
     hotspot_entry_ofs      current hotspot index; HOTSPOT_END means none active
-    hotspot_row_start      row start (inclusive) per hotspot, indexed by X
+    src_ptr                source pointer for text bytes (lo/hi)
+	
+Vars/State
+    scr_dest_ptr           destination pointer into screen RAM (lo/hi)
+    hotspot_row_start      row start (inclusive) per hotspot
     hotspot_col_start      column start (inclusive) per hotspot, indexed by X
     hotspot_col_end_ex     column end (exclusive) per hotspot, indexed by X
     screen_row_offsets_lo  low bytes of per-row screen offsets
     screen_row_offsets_hi  high bytes of per-row screen offsets
-
-Returns
-    None; clobbers A, X, Y. NZC unspecified.
+    inlined_column_length  self-modified byte for CPY #column_count
 
 Description
     - Guard: if hotspot_entry_ofs == HOTSPOT_END, return.
@@ -1638,12 +1387,7 @@ Notes
 * = $F5BB
 blit_text_to_hotspot_row:
         // ------------------------------------------------------------
-        // Copy one text row to the hotspot’s screen region
-        //
-        // Writes characters from (src_ptr) into screen RAM ($CC00 page)
-        // spanning the column range defined by the hotspot. Terminator
-        // bytes (#$40 or #$00) are converted to spaces, and #$00 also
-        // triggers filling the remaining columns with spaces.
+        // Guard: exit when no hotspot is active
         // ------------------------------------------------------------
         ldx     hotspot_entry_ofs
         cpx     #HOTSPOT_END
@@ -1653,6 +1397,7 @@ blit_text_to_hotspot_row:
 compute_screen_ptr_for_hotspot:
         // ------------------------------------------------------------
         // Compute destination pointer:
+		//
         // scr_dest_ptr = SCREEN_BASE + screen_row_offsets[row_start]
         // scr_dest_ptr += hotspot_col_start
         // ------------------------------------------------------------
@@ -1691,56 +1436,49 @@ copy_or_fill_loop:
         // Copy loop with terminator handling
         // ------------------------------------------------------------
         txa
-        bne     emit_char_to_screen                  // X != 0 → fill spaces
+        bne     emit_char_to_screen         // X != 0 → fill spaces
 
-        lda     (src_ptr),y                     // read next source byte
+        lda     (src_ptr),y                 // read next source byte
         cmp     #WORD_HARD_STOP
         bne     check_space_conversion
-        lda     #$00                           // convert hard stop → 0
+        lda     #$00                        // convert hard stop → 0
 
 check_space_conversion:
         cmp     #$00
         bne     emit_char_to_screen
-        lda     #SPACE_CHAR                    // convert 0 → space
-        tax                                    // enter fill mode
+        lda     #SPACE_CHAR					// convert 0 → space
+        tax                                 // enter fill mode
 
 emit_char_to_screen:
         sta     (scr_dest_ptr),y
         iny
-        cpy     #$12                           // patched with col_end_ex
+        cpy     #$12                        // patched with col_end_ex
         bne     copy_or_fill_loop
         rts
 /*
 ================================================================================
-fill_hotspot_color_span
+  fill_hotspot_color_span
 ================================================================================
-
 Summary
     Fill the active hotspot’s rectangular area in color RAM using the current
     hotspot color. Uses start-inclusive, end-exclusive bounds. Patches loop
     limits via self-modified bytes for speed.
 
-Arguments
-    None
-
-Vars/State
-    scr_dest_ptr              destination pointer into color RAM (lo/hi)
-    tmp_row_index         working copy of current row index
-    inlined_max_column    self-modified byte for CPY #col_end_ex
-    inlined_max_row       self-modified byte for CPY #row_end_ex
-
 Global Inputs
     hotspot_entry_ofs       current hotspot index; HOTSPOT_END means none active
-    hotspot_row_start       row start (inclusive) per hotspot, indexed by X
-    hotspot_row_end_ex      row end (exclusive) per hotspot, indexed by X
-    hotspot_col_start       column start (inclusive) per hotspot, indexed by X
-    hotspot_col_end_ex      column end (exclusive) per hotspot, indexed by X
+    hotspot_text_color      color byte to write into the region
+	
+Vars/State
+    hotspot_row_start       row start (inclusive) per hotspot
+    hotspot_row_end_ex      row end (exclusive) per hotspot
+    hotspot_col_start       column start (inclusive) per hotspot
+    hotspot_col_end_ex      column end (exclusive) per hotspot
     screen_row_offsets_lo   low bytes of per-row screen offsets
     screen_row_offsets_hi   high bytes of per-row screen offsets
-    hotspot_text_color      color byte to write into the region
-
-Returns
-    None; clobbers A, X, Y. NZC unspecified.
+    scr_dest_ptr            destination pointer into color RAM (lo/hi)
+    tmp_row_index         	working copy of current row index
+    inlined_max_column    	self-modified byte for CPY #col_end_ex
+    inlined_max_row       	self-modified byte for CPY #row_end_ex
 
 Description
     - If no hotspot is active, return immediately.
@@ -1820,35 +1558,29 @@ fill_row_colors_loop:
         rts
 /*
 ================================================================================
-find_hotspot_at_cursor
+  find_hotspot_at_cursor
 ================================================================================
-
 Summary
     Hit-test the UI hotspot table using the current cursor pixel position.
     Converts cursor_x_pos and cursor_y_pos into cell coordinates (x/4, y/8),
     scans hotspot records in +6-byte strides, and returns the matching hotspot
     index. Uses inclusive start bounds and exclusive end bounds.
 
-Arguments
-    None (reads globals only)
-
-Vars/State
-    cursor_x_cell    written: x cell coordinate = cursor_x_pos >> 2
-    cursor_y_cell    written: y cell coordinate = cursor_y_pos >> 3
-
 Global Inputs
-    cursor_x_pos         current cursor X position in pixels
-    cursor_y_pos         current cursor Y position in pixels
-    hotspot_row_start    row start (inclusive) per hotspot, indexed by X
-    hotspot_row_end_ex   row end (exclusive) per hotspot, indexed by X
-    hotspot_col_start    column start (inclusive) per hotspot, indexed by X
-    hotspot_col_end_ex   column end (exclusive) per hotspot, indexed by X
+    cursor_x_pos        current cursor X position in pixels
+    cursor_y_pos        current cursor Y position in pixels
+	
+Vars/State
+    cursor_x_cell    	written: x cell coordinate = cursor_x_pos >> 2
+    cursor_y_cell    	written: y cell coordinate = cursor_y_pos >> 3
+    hotspot_row_start   row start (inclusive) per hotspot, indexed by X
+    hotspot_row_end_ex  row end (exclusive) per hotspot, indexed by X
+    hotspot_col_start   column start (inclusive) per hotspot, indexed by X
+    hotspot_col_end_ex  column end (exclusive) per hotspot, indexed by X
 
 Returns
-    X  := hotspot index on hit, or HOTSPOT_END if none
-    A  := clobbered (last compared value)
-    Y  := preserved
-    NZC := unspecified
+    X  					hotspot index on hit
+						or HOTSPOT_END if none
 
 Description
     - Derive cell coordinates from pixel positions for coarse grid hit-testing.
@@ -1917,7 +1649,7 @@ test_hotspot_bounds:
 
 advance_to_next_hotspot:
         // ------------------------------------------------------------
-        // Move to next hotspot (add stride of 6 to index)
+        // Move to next hotspot
         // ------------------------------------------------------------
         clc
         txa
