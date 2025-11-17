@@ -25,7 +25,7 @@ Global Outputs
         game_vars                Script-accessible variable array
         actor_mouth_state        Updated for mouth control opcodes
         actor_motion_state       Updated for movement
-        refreshed inventory display via refresh_inventory_io_guarded
+        refreshed inventory display via refresh_inventory
 
 Arguments
         Implicit via script stream:
@@ -121,7 +121,7 @@ op_apply_bitmask_to_actor_var:
         // Apply bitmask set/clear, then refresh items UI
         // ------------------------------------------------------------
         jsr     apply_bitmask_to_var
-        jmp     refresh_inventory_io_guarded
+        jmp     refresh_inventory
 /*
 ================================================================================
   op_test_costume_var_bitmask - Opcodes #$1B, #$5B, #$9B, #$DB

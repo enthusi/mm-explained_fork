@@ -775,7 +775,7 @@ copy_object_to_block_loop:
 		lda     #CAM_DEFAULT_POS              // A := default camera position
 		sta     cam_current_pos               // camera_current_position := A
 		jsr     refresh_script_addresses_if_moved // Recompute script PCs if heap moved
-		jsr     refresh_inventory_io_guarded  // Redraw inventory UI safely
+		jsr     refresh_inventory  // Redraw inventory UI safely
 		rts                                   // done		
 		
 
@@ -946,7 +946,7 @@ owner_determined:
         // ------------------------------------------------------------
         // Refresh inventory UI and relocate script pointers if needed
         // ------------------------------------------------------------
-        jsr     refresh_inventory_io_guarded
+        jsr     refresh_inventory
         lda     owner
         jsr     refresh_script_addresses_if_moved
         rts
@@ -1101,5 +1101,5 @@ write_name_from_script_loop:
         // ------------------------------------------------------------
         // Refresh inventory UI
         // ------------------------------------------------------------
-        jsr     refresh_inventory_io_guarded
+        jsr     refresh_inventory
         rts

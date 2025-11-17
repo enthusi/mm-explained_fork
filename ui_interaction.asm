@@ -103,7 +103,7 @@
 
 /*
 ================================================================================
-  refresh_inventory_io_guarded
+  refresh_inventory
 ================================================================================
 Summary
     Safely refresh inventory hotspots by temporarily switching to cutscene
@@ -124,7 +124,7 @@ Description
 ================================================================================
 */
 * = $5F2B
-refresh_inventory_io_guarded:
+refresh_inventory:
         lda     control_mode                 // load current control mode
         cmp     #CUTSCENE_CONTROL_MODE       // are we already in cutscene mode?
         beq     return_early_if_cutscene     // yes → nothing to redraw safely here
