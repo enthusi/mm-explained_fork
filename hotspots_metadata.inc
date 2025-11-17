@@ -1,30 +1,31 @@
-// ------------------------------------------------------------
-// Hotspot metadata layout (per-entry, byte offsets)
-//
-// +0: row_start          Inclusive start row (grid units)
-// +1: row_end_excl       Exclusive end row
-// +2: col_start          Inclusive start column (grid units)
-// +3: col_end_excl       Exclusive end column
-// +4: hotspot_type       Enum:
-//                         0 = ROOM_SCENE
-//                         1 = VERB
-//                         2 = INVENTORY_ITEM
-//                         3 = INVENTORY_SCROLL
-//                         4 = SENTENCE_BAR
-// +5: aux_value          Meaning depends on type:
-//                         - VERB: verb_id
-//                         - INVENTORY_ITEM: position index in 2×2 grid
-//                           0 = top-left, 1 = top-right,
-//                           2 = bottom-left, 3 = bottom-right
-//                         - INVENTORY_SCROLL: scroll direction
-//                           0 = up, 1 = down
-//                         - ROOM_SCENE/SENTENCE_BAR: unused
-//
-// Notes:
-// - Ranges use half-open intervals [start, end).
-// - Coordinates are grid-based and must match cursor grid math.
-// ------------------------------------------------------------
+/*
+ ------------------------------------------------------------
+ Hotspot metadata layout (per-entry, byte offsets)
 
+ +0: row_start          Inclusive start row (grid units)
+ +1: row_end_excl       Exclusive end row
+ +2: col_start          Inclusive start column (grid units)
+ +3: col_end_excl       Exclusive end column
+ +4: hotspot_type       Enum:
+                         0 = ROOM_SCENE
+                         1 = VERB
+                         2 = INVENTORY_ITEM
+                         3 = INVENTORY_SCROLL
+                         4 = SENTENCE_BAR
+ +5: aux_value          Meaning depends on type:
+                         - VERB: verb_id
+                         - INVENTORY_ITEM: position index in 2×2 grid
+                           0 = top-left, 1 = top-right,
+                           2 = bottom-left, 3 = bottom-right
+                         - INVENTORY_SCROLL: scroll direction
+                           0 = up, 1 = down
+                         - ROOM_SCENE/SENTENCE_BAR: unused
+
+ Notes:
+ - Ranges use half-open intervals [start, end).
+ - Coordinates are grid-based and must match cursor grid math.
+ ------------------------------------------------------------
+*/
 //Hotspots metadata
 * = $F243
         .byte $01, $12		// Room scene
@@ -128,33 +129,37 @@ hotspot_highlight_colors:
         .byte $00, $07, $07, $07, $07
 
 * = $F2DC
-// ------------------------------------------------------------
-// Inventory scroll arrow tile rows (per-row character IDs)
-//
-// Layout: [bg_char, left_half, right_half, end_marker]
-// - bg_char    : background fill character (typically $20 = space)
-// - left_half  : tile id for left half of arrow
-// - right_half : tile id for right half of arrow
-// - end_marker : $00 terminator for row definition
-//
-// Row indices:
-//   0 → row of the arrow up graphic
-//   1 → row of the arrow down graphic
-// ------------------------------------------------------------
+/*
+ ------------------------------------------------------------
+ Inventory scroll arrow tile rows (per-row character IDs)
+
+ Layout: [bg_char, left_half, right_half, end_marker]
+ - bg_char    : background fill character (typically $20 = space)
+ - left_half  : tile id for left half of arrow
+ - right_half : tile id for right half of arrow
+ - end_marker : $00 terminator for row definition
+
+ Row indices:
+   0 → row of the arrow up graphic
+   1 → row of the arrow down graphic
+ ------------------------------------------------------------
+*/
 inv_arrow_row_up:
         .byte   $20, $01, $02, $00   // top row: [space, up-left, up-right, end]
 inv_arrow_row_down:
         .byte   $20, $03, $04, $00   // bottom row: [space, down-left, down-right, end]
 
 * = $F2E4
-// ------------------------------------------------------------
-// Pointers to inventory arrow rows
-//
-// These tables map row index → row data address.
-// Use the same row index for both tables:
-//   0 → inv_arrow_row_up
-//   1 → inv_arrow_row_down
-// ------------------------------------------------------------
+/*
+ ------------------------------------------------------------
+ Pointers to inventory scroll arrow rows
+
+ These tables map row index → row data address.
+ Use the same row index for both tables:
+   0 → inv_arrow_row_up
+   1 → inv_arrow_row_down
+ ------------------------------------------------------------
+*/
 inv_arrow_ptr_lo:
         .byte   <inv_arrow_row_up, <inv_arrow_row_down
 inv_arrow_ptr_hi:
@@ -163,10 +168,7 @@ inv_arrow_ptr_hi:
 * = $F2E8
 hotspot_highlighted_handlers:
         // ------------------------------------------------------------
-        // Word table of hotspot HIGHLIGHT handlers (lo, hi per entry)
-        // Indexed by hotspot_type:
-        //   [0]=ROOM_SCENE, [1]=VERB, [2]=INVENTORY_ITEM,
-        //   [3]=INVENTORY_SCROLL, [4]=SENTENCE_BAR
+        // Word table of hotspot HIGHLIGHTED handlers (lo, hi per entry)
         // ------------------------------------------------------------
         .byte   $E8, $F3    // [0] ROOM_SCENE          → do_nothing           
         .byte   $E9, $F3    // [1] VERB                → apply_highlight_color_and_fill     
@@ -178,23 +180,17 @@ hotspot_highlighted_handlers:
 hotspot_click_handlers:
         // ------------------------------------------------------------
         // Word table of hotspot CLICK handlers (lo, hi per entry)
-        // Indexed by hotspot_type:
-        //   [0]=ROOM_SCENE, [1]=VERB, [2]=INVENTORY_ITEM,
-        //   [3]=INVENTORY_SCROLL, [4]=SENTENCE_BAR
         // ------------------------------------------------------------
-        .byte   $27, $F4    // [0] ROOM_SCENE          → click_room_scene_mark       
-        .byte   $2D, $F4    // [1] VERB                → click_set_verb_and_refresh     
-        .byte   $52, $F4    // [2] INVENTORY_ITEM      → click_inventory_item_set_do_or_io   
-        .byte   $8F, $F4    // [3] INVENTORY_SCROLL    → click_inventory_scroll_page 
-        .byte   $4D, $F4    // [4] SENTENCE_BAR        → click_sentence_bar_rebuild     
+        .byte   $27, $F4    // [0] ROOM_SCENE          → mark_room_scene_clicked       
+        .byte   $2D, $F4    // [1] VERB                → set_current_verb_and_refresh     
+        .byte   $52, $F4    // [2] INVENTORY_ITEM      → set_inv_item_as_do_or_io   
+        .byte   $8F, $F4    // [3] INVENTORY_SCROLL    → scroll_inventory_page 
+        .byte   $4D, $F4    // [4] SENTENCE_BAR        → rebuild_sentence     
 
 * = $F2FC
 hotspot_dehighlighted_handlers:
         // ------------------------------------------------------------
-        // Word table of hotspot DEHIGHLIGHT handlers (lo, hi per entry)
-        // Indexed by hotspot_type:
-        //   [0]=ROOM_SCENE, [1]=VERB, [2]=INVENTORY_ITEM,
-        //   [3]=INVENTORY_SCROLL, [4]=SENTENCE_BAR
+        // Word table of hotspot DEHIGHLIGHTED handlers (lo, hi per entry)
         // ------------------------------------------------------------
         .byte   $E8, $F3    // [0] ROOM_SCENE          → do_nothing              
         .byte   $F8, $F3    // [1] VERB                → apply_normal_color_and_fill      
@@ -205,16 +201,13 @@ hotspot_dehighlighted_handlers:
 * = $F306
 hotspot_render_handlers:
         // ------------------------------------------------------------
-        // Word table of hotspot ENTRY/RENDER handlers (lo, hi per entry)
-        // Indexed by hotspot_type:
-        //   [0]=ROOM_SCENE, [1]=VERB, [2]=INVENTORY_ITEM,
-        //   [3]=INVENTORY_SCROLL, [4]=SENTENCE_BAR
+        // Word table of hotspot RENDER handlers (lo, hi per entry)
         // ------------------------------------------------------------
         .byte   $E8, $F3    // [0] ROOM_SCENE          → do_nothing                        
-        .byte   $07, $F4    // [1] VERB                → enter_verb_hotspot_render             
-        .byte   $0D, $F4    // [2] INVENTORY_ITEM      → enter_item_hotspot_render             
-        .byte   $13, $F4    // [3] INVENTORY_SCROLL    → enter_scroll_hotspot_render     
-        .byte   $19, $F4    // [4] SENTENCE_BAR        → enter_sentence_bar_render     
+        .byte   $07, $F4    // [1] VERB                → render_verb_hotspot             
+        .byte   $0D, $F4    // [2] INVENTORY_ITEM      → render_item_hotspot             
+        .byte   $13, $F4    // [3] INVENTORY_SCROLL    → render_scroll_arrow_hotspot     
+        .byte   $19, $F4    // [4] SENTENCE_BAR        → reset_sentence_bar_hotspot     
 
 * = $F609
 empty_string:

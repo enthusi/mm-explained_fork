@@ -1,3 +1,177 @@
+/*
+================================================================================
+  Module: UI interaction and hotspot handling
+================================================================================
+
+Summary
+        Implements the high-level cursor interaction model for the UI:
+			-hotspot hit-testing
+			-highlight/dehighlight behavior
+			-click dispatch
+			-inventory-region rendering (including scroll arrows and item labels)
+
+Description
+	- Hotspots are stored as compact records describing rectangular regions,
+	  types (inventory item, scroll arrow, general UI element), and handler
+	  indices. The file walks these tables to find which hotspot, if any,
+	  lies under the cursor each frame.
+	  
+	- Highlight and dehighlight are implemented via color updates and		
+	  per-type rules (e.g., inventory items vs. scroll arrows), with the
+	  actual behavior delegated to small handler routines called through
+	  self-modified JSR vectors. The handler vector words are patched at
+	  runtime so the central hit-test logic can jump through a single
+	  inline JSR for each kind of action (render, highlight, click).
+	  
+	- Inventory display logic uses a sliding window over the active kid’s
+	  inventory slots, along with simple thresholds and offsets to decide
+	  when the up/down arrows should appear and whether they are clickable.
+	  
+	- When an inventory item hotspot is clicked, the module resolves which
+	  inventory slot actually belongs to the active kid (via ownership
+	  tables), then assigns that object as either the DO or IO of the
+	  current verb, updating the on-screen sentence bar accordingly.
+	  
+	- The file functions as the glue between low-level cursor coordinates
+	  and high-level game semantics: it turns “cursor at (x,y) with a click”
+	  into concrete actions such as highlighting, scroll movement, or verb
+	  argument selection.
+	  
+Public routines
+        step_cursor_and_dispatch_hotspot
+            Per-frame entry point:
+                - maps cursor position to a hotspot (if any),
+                - updates highlight state,
+                - calls the appropriate per-hotspot render / click handlers via
+                  self-modified JSR vectors.
+
+        render_all_hotspots
+            Walk all hotspot records, rendering each visible hotspot’s text.
+			
+        refresh_inventory
+            Rebuild the inventory display region based on the active kid’s
+            inventory window and scroll state (including arrows, empty slots,
+            and text colors).
+			
+Private routines
+	Helpers
+        find_hotspot_at_cursor
+            Given cursor grid coordinates, locate the first hotspot whose
+            rectangular bounds contain the cursor. 
+
+		refresh_inventory_regions
+			Clamps the inventory window offset, then re-renders all inventory item
+			and scroll-arrow hotspots.
+
+		find_owned_slot_for_display
+			Maps a visible inventory cell index to the corresponding owned slot for
+			the current kid, or reports “not owned.”
+
+		count_active_kid_inventory_items
+			Counts how many inventory slots are occupied by objects owned by the
+			active kid.
+			
+	Click handlers
+		mark_room_scene_clicked
+			Marks that the room scene has been clicked, signaling higher-level room
+			interaction logic.
+
+		set_current_verb_and_refresh
+			Sets the current verb from the hotspot operand and flags the sentence
+			bar for initialization or rebuild.
+
+		rebuild_sentence
+			Requests a full rebuild of the action sentence without changing verb or
+			objects.
+
+        set_inv_item_as_do_or_io
+            For a clicked inventory hotspot, resolve the matching inventory
+            slot for the active kid and set the verb’s DO or IO object fields
+            accordingly.
+
+        scroll_inventory_page
+            Handle clicks on inventory up/down scroll arrows, adjusting the
+            inventory window offset and triggering UI refresh when movement is
+            possible.
+
+	Render handlers
+		render_verb_label
+			Looks up verb text from the verb pointer tables and blits it into the
+			verb hotspot row.
+
+        render_scroll_arrow_if_eligible
+            Conditionally render inventory scroll arrows (up/down) based on the
+            active kid’s inventory count and current offset window.
+
+        render_item_name_if_owned
+            Given a displayed inventory object id, render its name only if the
+            active kid actually owns a copy in one of the visible slots.
+			
+	Normal color renderers
+		render_verb_hotspot
+			Renders the verb label for a verb hotspot, then applies its normal
+			color fill.
+
+		render_item_hotspot
+			Renders the inventory item name for an item hotspot if owned, then
+			applies its normal color fill.
+
+		render_scroll_arrow_hotspot
+			Conditionally renders the inventory scroll arrow (up/down) for a scroll
+			hotspot, then applies its normal color fill.
+
+		reset_sentence_bar_hotspot
+			Clears the sentence-bar hotspot by rendering an empty string, then
+			applies its normal color fill.
+
+	Render helpers
+		dummy_handler
+			No-op handler used as a safe default for uninitialized hotspot vectors.
+
+		apply_highlight_color_and_fill
+			Chooses the highlight color for the current hotspot type and floods its
+			color RAM rectangle.
+
+		apply_normal_color_and_fill
+			Chooses the baseline (non-highlight) color for the current hotspot type
+			and floods its color RAM rectangle.
+
+		fill_hotspot_color_span
+			Fills the rectangular color RAM span for the active hotspot using the
+			current hotspot_text_color.
+			
+		blit_text_to_hotspot_row
+			Copies a zero-terminated text row into the active hotspot’s screen
+			region, padding with spaces after the terminator.
+			
+================================================================================
+Techniques used
+================================================================================
+
+• Hotspot state-machine logic  
+  Changes in hotspot selection drive a lifecycle of dehighlight → commit →
+  physics update → highlight, with click edge-detection layered on top.
+  
+• Coarse-grid rectangle hit-testing  
+  Cursor pixel coordinates are quantized to 4×8 cell units, allowing hotspot
+  detection using simple integer compares over compact fixed-stride records.
+
+================================================================================
+Optimizations
+================================================================================
+
+• Self-modifying dispatch vectors  
+  Render, highlight, dehighlight, and click actions are routed through patched
+  JSR $0000 vectors, avoiding indirect-call overhead while supporting per-type
+  behavior tables.
+
+• Self-modified loop bounds  
+  Column and row limits are patched directly into instruction immediates to
+  reduce per-iteration comparisons in both text and color operations.
+
+================================================================================
+*/
+
 #importonce
 #import "globals.inc"
 #import "constants.inc"
@@ -37,15 +211,6 @@
 .const  VISIBLE_SLOTS             	= $04    // Number of visible item cells per page (2×2)
 .const  INVENTORY_PAGE_STEP       	= $02    // Items advanced per scroll click
 
-// ------------------------------------------------------------
-// Cursor render corrections (pixel/grid tuning)
-// ------------------------------------------------------------
-.const  Y_BUMP1_THRESH            	= $90    // If Y ≥ $90, add +1 to computed row
-.const  Y_BUMP2_THRESH            	= $08    // If (Y & $0F) ≥ $08, add +1 to computed row
-.const  Y_CORR_BIAS               	= $28    // Final row bias (+40 decimal)
-.const  POS16_LO_BIAS             	= $80    // Add to low byte of 16-bit row base
-.const  X_OFFSET_PIX              	= $06    // X pixel offset applied to cursor position
-
 // Source text pointer (lo at $C5, hi at $C6). Used by text copy/render.
 .label src_ptr               		= $C5       // ZP pointer to text source
 // Destination pointers (lo at $C7, hi at $C8). Dual use:
@@ -68,13 +233,15 @@
 // Self-modifying call targets (patched JSR vectors)
 // Each label marks the two-byte destination for the inline JSR
 // ------------------------------------------------------------
+.label inlined_render_handler    		= $F3AA  // Patched target for render handler
+.label inlined_dehighlighted_handler 	= $F344 // Patched target for dehighlight handler
+.label inlined_highlighted_handler 		= $F366 // Patched target for highlight handler
+.label inlined_click_handler     		= $F386  // Patched target for click handler
+
+// Self-modified loop bounds (CPY immediates)
 .label inlined_max_column        	= $F63D  // Patched target for column limit routine
 .label inlined_max_row           	= $F645  // Patched target for row limit routine
 .label inlined_column_length     	= $F605  // Patched target for column length calc
-.label inlined_render_handler    	= $F3AA  // Patched target for render handler
-.label inlined_dehighlighted_handler 	= $F344 // Patched target for dehighlight handler
-.label inlined_highlighted_handler 		= $F366 // Patched target for highlight handler
-.label inlined_click_handler     	= $F386  // Patched target for click handler
 
 // ------------------------------------------------------------
 // Inventory view state and shared temporaries
@@ -127,7 +294,7 @@ Description
 refresh_inventory:
         lda     control_mode                 // load current control mode
         cmp     #CUTSCENE_CONTROL_MODE       // are we already in cutscene mode?
-        beq     return_early_if_cutscene     // yes → nothing to redraw safely here
+        beq     ri_exit						 // yes → nothing to redraw safely here
 
         lda     control_mode                 // save previous control mode
         pha
@@ -145,7 +312,7 @@ refresh_inventory:
         pla                                  // restore prior control mode
         sta     control_mode
 
-return_early_if_cutscene:
+ri_exit:
         rts                                   
 /*
 ================================================================================
@@ -442,7 +609,7 @@ apply_normal_color_and_fill:
         jmp     fill_hotspot_color_span
 /*
 ================================================================================
-  enter_verb_hotspot_render
+  render_verb_hotspot
 ================================================================================
 Summary
     Render the verb label for this hotspot, then apply the normal dehighlight
@@ -454,7 +621,7 @@ Description
 ================================================================================
 */
 * = $F407
-enter_verb_hotspot_render:
+render_verb_hotspot:
         // ------------------------------------------------------------
         // Render verb with normal color
         // ------------------------------------------------------------
@@ -462,7 +629,7 @@ enter_verb_hotspot_render:
         jmp     apply_normal_color_and_fill
 /*
 ================================================================================
-  enter_item_hotspot_render
+  render_item_hotspot
 ================================================================================
 Summary
     Render the inventory item text for this hotspot, then apply the normal
@@ -474,7 +641,7 @@ Description
 ================================================================================
 */
 * = $F40D
-enter_item_hotspot_render:
+render_item_hotspot:
         // ------------------------------------------------------------
         // Render item text with normal color
         // ------------------------------------------------------------
@@ -482,7 +649,7 @@ enter_item_hotspot_render:
         jmp     apply_normal_color_and_fill
 /*
 ================================================================================
-  enter_scroll_hotspot_render
+  render_scroll_arrow_hotspot
 ================================================================================
 Summary
     Render the inventory scroll arrow for this hotspot (if eligible), then
@@ -494,7 +661,7 @@ Description
 ================================================================================
 */
 * = $F413
-enter_scroll_hotspot_render:
+render_scroll_arrow_hotspot:
         // ------------------------------------------------------------
         // Render scroll arrow (if any) with normal color
         // ------------------------------------------------------------
@@ -502,7 +669,7 @@ enter_scroll_hotspot_render:
         jmp     apply_normal_color_and_fill
 /*
 ================================================================================
-  enter_sentence_bar_render
+  reset_sentence_bar_hotspot
 ================================================================================
 
 Summary
@@ -519,9 +686,9 @@ Description
 ================================================================================
 */
 * = $F419
-enter_sentence_bar_render:
+reset_sentence_bar_hotspot:
         // ------------------------------------------------------------
-        // Rendder empty string with normal color
+        // Render empty string with normal color
         // ------------------------------------------------------------
         lda     #<empty_string
         sta     src_ptr                           
@@ -531,7 +698,7 @@ enter_sentence_bar_render:
         jmp     apply_normal_color_and_fill
 /*
 ================================================================================
-  click_room_scene_mark
+  mark_room_scene_clicked
 ================================================================================
 Summary
     Mark that the room scene was clicked.
@@ -541,7 +708,7 @@ Global Outputs
 ================================================================================
 */
 * = $F427
-click_room_scene_mark:
+mark_room_scene_clicked:
         // ------------------------------------------------------------
         // Mark that the room scene was clicked
         // ------------------------------------------------------------
@@ -550,7 +717,7 @@ click_room_scene_mark:
         rts
 /*
 ================================================================================
-  click_set_verb_and_refresh
+  set_current_verb_and_refresh
 ================================================================================
 Summary
     Set the current verb from the hotspot operand. If any button press is
@@ -577,7 +744,7 @@ Description
 ================================================================================
 */
 * = $F42D
-click_set_verb_and_refresh:
+set_current_verb_and_refresh:
         // Fetch verb from the interaction hotspot
         ldx     hotspot_entry_ofs
         lda     hotspot_operand_slot,x
@@ -610,7 +777,7 @@ mark_sentence_bar_refresh:
         rts
 /*
 ================================================================================
-  click_sentence_bar_rebuild
+  rebuild_sentence
 ================================================================================
 Summary
     Request a rebuild of the action sentence.
@@ -620,7 +787,7 @@ Global Outputs
 ================================================================================
 */
 * = $F44D
-click_sentence_bar_rebuild:
+rebuild_sentence:
         // ------------------------------------------------------------
         // Rebuild the action sentence
         // ------------------------------------------------------------
@@ -629,7 +796,7 @@ click_sentence_bar_rebuild:
         rts
 /*
 ================================================================================
-  click_inventory_item_set_do_or_io
+  set_inv_item_as_do_or_io
 ================================================================================
 Summary
     Handle click on an inventory item hotspot. Uses the hotspot operand as the
@@ -668,9 +835,9 @@ Notes
 ================================================================================
 */
 * = $F452
-click_inventory_item_set_do_or_io:
+set_inv_item_as_do_or_io:
         // ------------------------------------------------------------
-        // Resolve inventory item slow
+        // Resolve inventory item slot
         // ------------------------------------------------------------
         ldx     hotspot_entry_ofs
         lda     hotspot_operand_slot,x
@@ -734,7 +901,7 @@ return_refresh_bar:
         rts
 /*
 ================================================================================
-  click_inventory_scroll_page
+  scroll_inventory_page
 ================================================================================
 Summary
     Handle click on an inventory scroll arrow. Operand 0=up, 1=down. Adjust
@@ -761,7 +928,7 @@ Description
 ================================================================================
 */
 * = $F48F
-click_inventory_scroll_page:
+scroll_inventory_page:
         // ------------------------------------------------------------
         // Handle click on inventory scroll arrow
         //
@@ -1124,6 +1291,7 @@ Global Inputs
 Returns
     C  				clear 	if the targeted visible item is owned by current kid
 					set   	if not owned or no such item
+	Y 				inventory slot index for the owned object
 
 Description
     - Compute target ordinal: display_index + inv_display_item_offset.
@@ -1136,8 +1304,6 @@ Description
 
 Notes
     - Slot count and owner-nibble mask are constants defined elsewhere.
-    - This routine only answers “is owned” for the visible cell; it does not
-      return the object id or its absolute slot index.
 ================================================================================
 */
 * = $F573
@@ -1579,4 +1745,456 @@ advance_to_next_hotspot:
         // No matching hotspot → return with .X = HOTSPOT_END
         // ------------------------------------------------------------
         rts
+
+/*
+Pseudo-code
 		
+// -----------------------------------------------------------------------------
+// refresh_inventory
+// -----------------------------------------------------------------------------
+function refresh_inventory():
+    if control_mode == CUTSCENE_CONTROL_MODE:
+        return
+
+    oldMode = control_mode
+    control_mode = CUTSCENE_CONTROL_MODE
+
+    // Map I/O + color RAM
+    cpu_port = MAP_IO_IN
+
+    refresh_inventory_regions()
+
+    // Restore normal memory map
+    cpu_port = MAP_IO_OUT
+
+    // Restore previous UI mode
+    control_mode = oldMode
+
+// -----------------------------------------------------------------------------
+// step_cursor_and_dispatch_hotspot
+// -----------------------------------------------------------------------------
+function step_cursor_and_dispatch_hotspot():
+    // 1) Update cursor physics and grid coordinates, then find hotspot
+    cursor_physics_step()
+    update_cursor_grid_coords()
+    newHotspot = find_hotspot_at_cursor()   // returns HOTSPOT_END if none
+
+    // 2) If hotspot changed, handle dehighlight + physics + highlight
+    if newHotspot != hotspot_entry_ofs:
+        // Clear click latch when hotspot changes
+        button_presses = 0
+
+        oldHotspot = hotspot_entry_ofs
+
+        // Dehighlight old hotspot (if any)
+        if oldHotspot != HOTSPOT_END:
+            oldType = hotspot_type[oldHotspot]
+            // Lookup and call dehighlight handler for type
+            call_dehighlight_handler_for_type(oldType)
+
+        // Commit new hotspot
+        hotspot_entry_ofs = newHotspot
+
+        // Allow hotspot-specific cursor-physics tweaks
+        update_cursor_physics_from_hotspot()
+
+        // Highlight new hotspot (if any)
+        if hotspot_entry_ofs != HOTSPOT_END:
+            newType = hotspot_type[hotspot_entry_ofs]
+            // Lookup and call highlight handler for type
+            call_highlight_handler_for_type(newType)
+    
+
+    // 3) Handle click edge and dispatch type-specific click handler
+    if detect_fire_press_edge() == PRESSED_EDGE:
+        if hotspot_entry_ofs != HOTSPOT_END:
+            type = hotspot_type[hotspot_entry_ofs]
+            // Lookup and call click handler for type
+            call_click_handler_for_type(type)
+        
+        // Track total presses seen while this hotspot is active
+        button_presses += 1
+    
+// -----------------------------------------------------------------------------
+// render_all_hotspots
+// -----------------------------------------------------------------------------
+function render_all_hotspots():
+    hotspot_entry_ofs = 0
+
+    while hotspot_entry_ofs != HOTSPOT_END:
+        type = hotspot_type[hotspot_entry_ofs]
+
+        // Call the render handler for this hotspot type
+        call_render_handler_for_type(type)
+
+        // Move to next hotspot record
+        hotspot_entry_ofs += HOTSPOT_REC_STRIDE
+    
+
+    // Let cursor physics know about final hotspot context
+    update_cursor_physics_from_hotspot()
+
+// -----------------------------------------------------------------------------
+// dummy_handler
+// -----------------------------------------------------------------------------
+function dummy_handler():
+    // Intentionally does nothing
+    return
+
+// -----------------------------------------------------------------------------
+// apply_highlight_color_and_fill
+// -----------------------------------------------------------------------------
+function apply_highlight_color_and_fill():
+    if hotspot_entry_ofs == HOTSPOT_END:
+        return
+
+    type = hotspot_type[hotspot_entry_ofs]
+    hotspot_text_color = hotspot_highlight_colors[type]
+
+    fill_hotspot_color_span()
+
+// -----------------------------------------------------------------------------
+// apply_normal_color_and_fill
+// -----------------------------------------------------------------------------
+function apply_normal_color_and_fill():
+    if hotspot_entry_ofs == HOTSPOT_END:
+        return
+
+    type = hotspot_type[hotspot_entry_ofs]
+    hotspot_text_color = hotspot_normal_colors[type]
+
+    fill_hotspot_color_span()
+
+// -----------------------------------------------------------------------------
+// render_verb_hotspot
+// -----------------------------------------------------------------------------
+function render_verb_hotspot():
+    render_verb_label()
+    apply_normal_color_and_fill()
+
+// -----------------------------------------------------------------------------
+// render_item_hotspot
+// -----------------------------------------------------------------------------
+function render_item_hotspot():
+    render_item_name_if_owned()
+    apply_normal_color_and_fill()
+
+// -----------------------------------------------------------------------------
+// render_scroll_arrow_hotspot
+// -----------------------------------------------------------------------------
+function render_scroll_arrow_hotspot():
+    render_scroll_arrow_if_eligible()
+    apply_normal_color_and_fill()
+
+// -----------------------------------------------------------------------------
+// reset_sentence_bar_hotspot
+// -----------------------------------------------------------------------------
+function reset_sentence_bar_hotspot():
+    src_ptr = &empty_string
+    blit_text_to_hotspot_row()
+    apply_normal_color_and_fill()
+
+// -----------------------------------------------------------------------------
+// mark_room_scene_clicked
+// -----------------------------------------------------------------------------
+function mark_room_scene_clicked():
+    room_scene_clicked_flag = TRUE
+
+// -----------------------------------------------------------------------------
+// set_current_verb_and_refresh
+// -----------------------------------------------------------------------------
+function set_current_verb_and_refresh():
+    index = hotspot_entry_ofs
+    verbIndex = hotspot_operand_slot[index]
+    current_verb_id = verbIndex
+
+    if button_presses != 0:
+        needs_sentence_rebuild = TRUE
+    else:
+        init_sentence_ui_flag = TRUE
+    
+
+    sentence_bar_needs_refresh = TRUE
+
+// -----------------------------------------------------------------------------
+// rebuild_sentence
+// -----------------------------------------------------------------------------
+function rebuild_sentence():
+    needs_sentence_rebuild = TRUE
+
+// -----------------------------------------------------------------------------
+// set_inv_item_as_do_or_io
+// -----------------------------------------------------------------------------
+function set_inv_item_as_do_or_io():
+    // Resolve display cell index (0..3) for this hotspot
+    index = hotspot_entry_ofs
+    displayIndex = hotspot_operand_slot[index]
+
+    // Try to find the inventory slot that corresponds to this visible cell,
+    // for the current kid.
+    (owned, slotIndex) = find_owned_slot_for_display(displayIndex)
+
+    if owned:
+        // If no preposition is set, treat this as Direct Object
+        if current_preposition == 0:
+            direct_object_idx_lo = displayIndex
+            direct_object_idx_hi = slotIndex
+        else
+            // Preposition set → DO may already be set.
+            // If same pair as current DO, keep DO as-is.
+            if direct_object_idx_lo == displayIndex and
+               direct_object_idx_hi == slotIndex:
+                // Nothing changes
+            else
+                // Otherwise treat this as Indirect Object
+                indirect_object_idx_lo = displayIndex
+                indirect_object_idx_hi = slotIndex
+            
+    // Update sentence flags
+    if button_presses != 0:
+        needs_sentence_rebuild = TRUE
+    
+    sentence_bar_needs_refresh = TRUE
+
+// -----------------------------------------------------------------------------
+// scroll_inventory_page
+// -----------------------------------------------------------------------------
+function scroll_inventory_page():
+    index = hotspot_entry_ofs
+    operand = hotspot_operand_slot[index]   // 0 = up, 1 = down
+
+    if operand == 1:
+        // Scroll down
+        inv_display_item_offset += INVENTORY_PAGE_STEP
+        refresh_inventory_regions()
+    else
+        // Scroll up
+        inv_display_item_offset -= INVENTORY_PAGE_STEP
+        if inv_display_item_offset < 0:
+            inv_display_item_offset = 0
+        
+        refresh_inventory_regions()
+    
+// -----------------------------------------------------------------------------
+// refresh_inventory_regions
+// -----------------------------------------------------------------------------
+function refresh_inventory_regions():
+    // Clamp inv_display_item_offset to maximum valid start
+    totalOwned = count_active_kid_inventory_items()
+    maxStart = totalOwned - VISIBLE_SLOTS
+    if maxStart < 0:
+        maxStart = 0
+    
+    if inv_display_item_offset > maxStart:
+        inv_display_item_offset = maxStart
+    
+    // Preserve current hotspot index
+    savedHotspot = hotspot_entry_ofs
+
+    // Scan all hotspots
+    hotspot_entry_ofs = 0
+    while hotspot_entry_ofs != HOTSPOT_END:
+        type = hotspot_type[hotspot_entry_ofs]
+
+        if type == HOTSPOT_TYPE_ITEM:
+            // Render inventory item name for this cell
+            render_item_name_if_owned()
+        else if type == HOTSPOT_TYPE_SCROLL:
+            // Render up/down arrow if eligible
+            render_scroll_arrow_if_eligible()
+        
+        hotspot_entry_ofs += HOTSPOT_REC_STRIDE
+    
+    // Restore original hotspot index
+    hotspot_entry_ofs = savedHotspot
+
+// -----------------------------------------------------------------------------
+// render_scroll_arrow_if_eligible
+// -----------------------------------------------------------------------------
+function render_scroll_arrow_if_eligible():
+    index = hotspot_entry_ofs
+    arrowIndex = hotspot_operand_slot[index]   // 0 = up, 1 = down
+
+    showArrow = false
+
+    if arrowIndex == 0:
+        // Up arrow: show only if there is a previous page
+        if inv_display_item_offset >= MIN_OFFSET_FOR_UP:
+            showArrow = true
+        
+    else
+        // Down arrow: show only if there are >= ITEMS_THRESHOLD_FOR_DOWN items
+        // beyond the current window start
+        totalOwned = count_active_kid_inventory_items()
+        remaining = totalOwned - inv_display_item_offset
+        if remaining >= ITEMS_THRESHOLD_FOR_DOWN:
+            showArrow = true
+        
+    if showArrow:
+        src_ptr = pointer_to_inv_arrow_text(arrowIndex)
+    else
+        src_ptr = &empty_string
+    
+    blit_text_to_hotspot_row()
+
+// -----------------------------------------------------------------------------
+// render_verb_label
+// -----------------------------------------------------------------------------
+function render_verb_label():
+    index = hotspot_entry_ofs
+    verbIndex = hotspot_operand_slot[index]
+
+    src_ptr = verb_pointers[verbIndex]   // combined lo/hi table
+    blit_text_to_hotspot_row()
+
+// -----------------------------------------------------------------------------
+// render_item_name_if_owned
+// -----------------------------------------------------------------------------
+function render_item_name_if_owned():
+    index = hotspot_entry_ofs
+    displayIndex = hotspot_operand_slot[index]
+
+    (owned, slotIndex) = find_owned_slot_for_display(displayIndex)
+
+    if not owned:
+        src_ptr = &empty_string
+        blit_text_to_hotspot_row()
+        return
+    
+    // SlotIndex is an inventory slot; resolve its object pointer
+    objectBase = object_ptr_tbl[slotIndex]
+
+    // Object layout: at offset OBJ_NAME_OFS lies the name offset
+    nameOffset = objectBase[OBJ_NAME_OFS]
+    src_ptr = objectBase + nameOffset
+
+    blit_text_to_hotspot_row()
+
+// -----------------------------------------------------------------------------
+// find_owned_slot_for_display
+// -----------------------------------------------------------------------------
+function find_owned_slot_for_display(displayIndex) -> (bool owned, byte slotIndex):
+    // Target ordinal in the owned-items sequence
+    targetOrdinal = displayIndex + inv_display_item_offset
+    remaining = targetOrdinal
+
+    // Scan all inventory slots
+    for slot = 0 to INVENTORY_SLOTS-1:
+        objId = inventory_objects[slot]
+        if objId == 0:
+            continue   // empty slot
+
+        ownerNibble = object_attributes[objId] & OWNER_NIBBLE_MASK
+        if ownerNibble != current_kid_idx:
+            continue   // belongs to someone else
+        
+        remaining -= 1
+        if remaining < 0:
+            // Found the Nth owned item for this display cell
+            return (true, slot)
+        
+    // No matching owned item for this cell
+    return (false, 0)
+
+// -----------------------------------------------------------------------------
+// count_active_kid_inventory_items
+// -----------------------------------------------------------------------------
+function count_active_kid_inventory_items() -> byte:
+    count = 0
+
+    for slot = 0 to INVENTORY_SLOTS-1:
+        objId = inventory_objects[slot]
+        if objId == 0:
+            continue   // empty
+        
+        ownerNibble = object_attributes[objId] & OWNER_NIBBLE_MASK
+        if ownerNibble == current_kid_idx:
+            count += 1
+        
+    return count
+
+// -----------------------------------------------------------------------------
+// blit_text_to_hotspot_row
+// -----------------------------------------------------------------------------
+function blit_text_to_hotspot_row():
+    index = hotspot_entry_ofs
+    if index == HOTSPOT_END:
+        return
+
+    row = hotspot_row_start[index]
+    colStart = hotspot_col_start[index]
+    colEnd = hotspot_col_end_ex[index]
+    colCount = colEnd - colStart
+
+    // Compute destination pointer into SCREEN_BASE:
+    //   rowOffset = screen_row_offset[row]
+    //   dest = SCREEN_BASE + rowOffset + colStart
+    dest = SCREEN_BASE + screen_row_offset[row] + colStart
+
+    // Copy characters from src_ptr with terminator/space rules.
+    // The first 0-byte switches to "fill mode", which writes spaces
+    // for all remaining columns.
+    fillMode = false
+
+    for col = 0 to colCount-1:
+        if not fillMode:
+            ch = src_ptr[col]
+
+            if ch == WORD_HARD_STOP:
+                ch = 0   // treat as terminator
+            
+            if ch == 0:
+                ch = SPACE_CHAR
+                fillMode = true            
+        else:
+            ch = SPACE_CHAR
+        
+        dest[col] = ch
+    
+// -----------------------------------------------------------------------------
+// fill_hotspot_color_span
+// -----------------------------------------------------------------------------
+function fill_hotspot_color_span():
+    index = hotspot_entry_ofs
+    if index == HOTSPOT_END:
+        return
+
+    color = hotspot_text_color
+
+    rowStart = hotspot_row_start[index]
+    rowEnd = hotspot_row_end_ex[index]       // exclusive
+    colStart = hotspot_col_start[index]
+    colEnd = hotspot_col_end_ex[index]       // exclusive
+
+    for row = rowStart to rowEnd-1:
+        // Compute base pointer into COLOR_BASE for this row
+        colorRowPtr = COLOR_BASE + screen_row_offset[row]
+
+        for col = colStart to colEnd-1:
+            colorRowPtr[col] = color
+        
+// -----------------------------------------------------------------------------
+// find_hotspot_at_cursor
+// -----------------------------------------------------------------------------
+function find_hotspot_at_cursor() -> byte:
+    // Convert pixel coordinates to cell grid
+    xCell = cursor_x_pos / 4
+    yCell = cursor_y_pos / 8
+
+    index = 0
+    while index < HOTSPOT_END:
+        rowStart = hotspot_row_start[index]
+        rowEnd = hotspot_row_end_ex[index]
+        colStart = hotspot_col_start[index]
+        colEnd = hotspot_col_end_ex[index]
+
+        if (yCell >= rowStart and yCell < rowEnd) and
+           (xCell >= colStart and xCell < colEnd):
+            // Hit
+            return index
+        
+        index += HOTSPOT_REC_STRIDE
+    
+    // No hotspot under cursor
+    return HOTSPOT_END
+*/		
