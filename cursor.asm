@@ -1,5 +1,87 @@
 /*
 ================================================================================
+  Cursor physics module
+================================================================================
+
+Goal:
+	take the current cursor speed, gently slow it down (drag), add any new push
+	from the joystick, then move the cursor and keep it inside the screen.
+
+1) Apply drag (the “coast down”)
+	- Think of drag as friction in air: if you stop touching the stick, the cursor
+	  shouldn’t stop instantly - it should glide and then settle.
+	- The code makes a “drag” value that’s basically half of the current speed,
+	  with sign preserved.
+	- It then subtracts that drag from the speed. Result: speed shrinks toward zero
+	  smoothly every frame (nice easing).
+
+2) Read joystick and add acceleration
+	- It looks up the stick direction (neutral / 8 directions).
+	- Each direction maps to a tiny delta: +1, −1, or 0 per axis.
+	- That delta is turned into a tuned fractional step (using masks),
+	  then added to the current speed.
+		• If you hold the stick, these tiny steps accumulate, so the cursor accelerates.
+		• If you let go, there’s no new push, only drag, and the cursor coasts to a stop.
+
+3) Integrate velocity into position (fixed-point)
+	Note: this is not analytical integration, it's numerical integration.
+	Also known as Euler integration.
+	
+	- Speed is kept as 8.8 fixed-point (integer byte = whole pixels,
+	  fractional byte = sub-pixels).
+	- It first adds the fractional parts (carrying into the integer when they overflow),
+	  then adds the integer parts to the on-screen position.
+	- This gives smooth, sub-pixel-feeling motion even though the screen is pixels.
+
+4) Clamp to screen edges
+	- If the new X or Y would go off-screen:
+		• It zeros the speed on that axis (so you stop “sliding” along the wall),
+		• and snaps the position to the nearest edge (left/right or top/bottom).
+		• The fractional accumulator is set to a “sticky” value so you don’t immediately
+		  re-overflow and jitter at the boundary.  
+
+Mental model
+	- Drag: halves your current speed → smooth easing.
+	- Acceleration: tiny steps per frame from the joystick → ramps speed up/down.
+	- Integration: frac + frac (carry) then int + int → smooth sub-pixel feel.
+	- Bounds: if you hit the wall, kill speed on that axis and pin to the edge.
+
+Inputs it relies on:
+	- Current velocity (X/Y, integer + fractional bytes).
+	- Current position (X/Y pixels).
+	- Masks and the drag shift count chosen by set_cursor_physics
+	  (so regions can feel heavier/lighter).
+	- The joystick direction index → per-axis deltas.
+
+Outputs it updates:
+	- New velocity (after drag + input).
+	- New position (after integration).
+	- Fractional accumulators (for sub-pixel smoothness).
+
+================================================================================
+
+Derive “half-speed” drag using a 7× left-shift trick
+
+	A 16-bit right shift would cleanly divide the velocity by 2,
+	but the 6502 has no direct 16-bit ROR pair instruction. Instead,
+	the code performs seven ASL/ROL steps, which pushes the low
+	byte’s high bits into the high byte. After seven shifts, the
+	new high byte (>drag) contains the same bit pattern as what
+	the low byte (<drag) would have had after one logical right
+	shift. In other words:
+
+	  result_hi = (orig_lo >> 1)
+	  carry     = original bit 9 of the value
+
+	This clever inversion makes “7× left” equal to “1× right”
+	for the portion we care about, and the carry bit now holds
+	the original sign information. Only >drag (the high byte) is
+	used afterward, effectively producing drag = speed ÷ 2.
+
+	drag_shift_count = 7 ensures this transformation is consistent
+	every frame.
+
+================================================================================
 Cursor physics engine — technical summary of core techniques
 ================================================================================
 • Fixed-point Euler integration (8.8):
@@ -25,6 +107,8 @@ Cursor physics engine — technical summary of core techniques
 ================================================================================
 C64/6502-specific techniques and optimizations
 ================================================================================
+
+• 16-bit rotation using ASL/ROL (explained above)
 
 • Table-driven joystick direction decoding:
     A 4-bit joystick nibble indexes a direction lookup table (0–8). Per-index
@@ -54,39 +138,36 @@ C64/6502-specific techniques and optimizations
 #import "cursor_physics.inc"
 
 		
-.const X_RIGHT_LIMIT               = $A0     // compare threshold (valid if < $A0)
-.const X_MAX_CLAMP                 = $9F     // max in-range X after clamp
-.const Y_BOTTOM_LIMIT              = $C0     // compare threshold (valid if < $C0)
-.const Y_MAX_CLAMP                 = $BF     // max in-range Y after clamp
-.const Y_MIN_CLAMP                 = $08     // minimum allowed Y
-.const OUT_OF_BOUNDS_REGION 	   = $8A
+.const X_RIGHT_LIMIT               	= $A0     // compare threshold (valid if < $A0)
+.const X_MAX_CLAMP                 	= $9F     // max in-range X after clamp
+.const Y_BOTTOM_LIMIT              	= $C0     // compare threshold (valid if < $C0)
+.const Y_MAX_CLAMP                 	= $BF     // max in-range Y after clamp
+.const Y_MIN_CLAMP                 	= $08     // minimum allowed Y
+.const OUT_OF_BOUNDS_REGION 	   	= $8A
 
-.label drag                    = $CB8C   // temp 16-bit drag (lo/hi)
-.label drag_sub_hi             = $CB8E   // temp: sign-extend byte for hi subtract ($00/$FF)
-.label x_frac_accum_prev       = $CB7E   // prior X fractional accumulator (smoothing)
-.label y_frac_accum_prev       = $CB80   // prior Y fractional accumulator
+.label drag_lo                 		= $CB8C   // temp 16-bit drag (lo)
+.label drag_hi						= $CB8D	  // temp 16-bit drag (hi)
+.label drag_sub_hi             		= $CB8E   // temp: sign-extend byte for hi subtract ($00/$FF)
+.label x_frac_accum_prev       		= $CB7E   // prior X fractional accumulator (smoothing)
+.label y_frac_accum_prev       		= $CB80   // prior Y fractional accumulator
 
 
 /*
 ================================================================================
-update_cursor_grid_coords
+  update_cursor_grid_coords
 ================================================================================
-
 Summary
         Convert cursor pixel coordinates to coarse units for UI logic:
-        X_quarter := floor(cursor_x_pos / 4)
-        Y_half    := floor((cursor_y_pos + 8) / 2)
-
-Arguments
-        None
+			X_quarter := floor(cursor_x_pos / 4)
+			Y_half    := floor((cursor_y_pos + 8) / 2)
 
 Global Inputs
         cursor_x_pos
         cursor_y_pos
 
 Global Outputs
-        cursor_x_pos_quarter_relative      // 4-px units
-        cursor_y_pos_half                  // 2-px units, biased by +8 before /2
+        cursor_x_pos_quarter_relative      	4-px units
+        cursor_y_pos_half                  	2-px units, biased by +8 before /2
 
 Description
         - X: shift right twice to divide by 4 with floor.
@@ -100,7 +181,7 @@ update_cursor_grid_coords:
         lsr
         lsr
         sta     cursor_x_pos_quarter_relative
-
+		
         // Compute Y_half := floor((cursor_y_pos + CURSOR_Y_BIAS) / 2)
         clc
         lda     cursor_y_pos
@@ -111,9 +192,8 @@ update_cursor_grid_coords:
         rts
 /*
 ================================================================================
-cursor_physics_step
+  cursor_physics_step
 ================================================================================
-
 Summary
         Apply viscous drag (~½ of current speed), add joystick-driven
         acceleration, integrate fixed-point velocity into cursor position, and
@@ -136,110 +216,30 @@ Global Outputs
         x/y_frac_accum_prev      				  updated sub-pixel accumulators
 
 Description
-        • Drag (per axis):
-          – Copy 16-bit velocity to a temp “drag”.
-          – Perform 7× {ASL low; ROL high}. After 7 steps, (>drag) == (orig low >> 1).
-          – Use the propagated carry (original bit9) to derive a sign byte ($00/$FF)
-            for the high-byte subtract. Subtract drag from velocity to approximate ½·v.
-        • Input:
-          – Decode direction index from joy_state’s low nibble.
-          – Fetch dx/dy deltas {0,$01,$FF}. Use CMP #$80 + ROR to derive a signed
-            high-byte contribution (0 or $FF) while preserving sign in C.
-          – EOR with accel_*_mask to map selector to tuned fractional step; ADC into
-            vel_frac, then add the saved hi contribution into vel_int.
-        • Integrate:
-          – Add vel_frac to the prior accumulator; carry feeds vel_int.
-          – position := position + vel_int (8.8 scheme: only integer byte moves pixels).
-        • Clamp:
-          – If X ≥ X_RIGHT_LIMIT: zero velocity; clamp to $00 (moving left) or X_MAX_CLAMP
-            (moving right). Set frac accumulator to $FF for stability at the edge.
-          – Same for Y with Y_BOTTOM_LIMIT / Y_MAX_CLAMP, then enforce Y ≥ Y_MIN_CLAMP.
+	• Drag (per axis):
+		– Copy 16-bit velocity to a temp “drag”.
+		– Perform 7× {ASL low; ROL high}. After 7 steps, (>drag) == (orig low >> 1).
+		– Use the propagated carry (original bit9) to derive a sign byte ($00/$FF)
+		for the high-byte subtract. Subtract drag from velocity to approximate ½·v.
+	• Input:
+		– Decode direction index from joy_state’s low nibble.
+		– Fetch dx/dy deltas {0,+1,-1}. Use CMP #$80 + ROR to derive a signed
+		high-byte contribution (0 or $FF) while preserving sign in C.
+		– EOR with accel_*_mask to map selector to tuned fractional step; ADC into
+		vel_frac, then add the saved hi contribution into vel_int.
+	• Integrate:
+		– Add vel_frac to the prior accumulator; carry feeds vel_int.
+		– position := position + vel_int (8.8 scheme: only integer byte moves pixels).
+	• Clamp:
+		– If X ≥ X_RIGHT_LIMIT: zero velocity; clamp to $00 (moving left) or X_MAX_CLAMP
+		(moving right). Set frac accumulator to $FF for stability at the edge.
+		– Same for Y with Y_BOTTOM_LIMIT / Y_MAX_CLAMP, then enforce Y ≥ Y_MIN_CLAMP.
 
 Notes
         • Fixed-point format is 8.8: *_vel_int is the signed pixel step; *_vel_frac
           accumulates sub-pixel motion. Carry from frac math is intentionally reused.
         • The “7× left shift = 1× logical right (low)” trick avoids a full 16-bit ROR;
           it yields exactly the half-speed low-byte we need while exposing sign in C.
-================================================================================
-
-Goal:
-	take the current cursor speed, gently slow it down (drag), add any new push
-	from the joystick, then move the cursor and keep it inside the screen.
-
-1) Apply drag (the “coast down”)
-	- Think of drag as friction in air: if you stop touching the stick, the cursor
-	  shouldn’t stop instantly—it should glide and then settle.
-	- The code makes a “drag” value that’s basically half of the current speed,
-	  with sign preserved.
-	- It then subtracts that drag from the speed. Result: speed shrinks toward zero
-	  smoothly every frame (nice easing).
-
-2) Read joystick and add acceleration
-	- It looks up the stick direction (neutral / 8 directions).
-	- Each direction maps to a tiny delta: +1, −1, or 0 per axis.
-	- That delta is turned into a tuned fractional step (using masks),
-	  then added to the current speed.
-		• If you hold the stick, these tiny steps accumulate, so the cursor accelerates.
-		• If you let go, there’s no new push—only drag—and the cursor coasts to a stop.
-
-3) Integrate velocity into position (fixed-point)
-	- Speed is kept as 8.8 fixed-point (integer byte = whole pixels,
-	  fractional byte = sub-pixels).
-	- It first adds the fractional parts (carrying into the integer when they overflow),
-	  then adds the integer parts to the on-screen position.
-	- This gives smooth, sub-pixel-feeling motion even though the screen is pixels.
-
-4) Clamp to screen edges
-	- If the new X or Y would go off-screen:
-		• It zeros the speed on that axis (so you stop “sliding” along the wall),
-		• and snaps the position to the nearest edge (left/right or top/bottom).
-		• The fractional accumulator is set to a “sticky” value so you don’t immediately
-		  re-overflow and jitter at the boundary.  
-
-5) Enforce a minimum Y
-	- Even after clamping, it guarantees the cursor never dips above a certain line
-	  (e.g., a UI band), by forcing Y ≥ Y_MIN_CLAMP.
-
-Mental model
-	- Drag: halves your current speed → smooth easing.
-	- Acceleration: tiny steps per frame from the joystick → ramps speed up/down.
-	- Integration: frac + frac (carry) then int + int → smooth sub-pixel feel.
-	- Bounds: if you hit the wall, kill speed on that axis and pin to the edge.
-
-Inputs it relies on (high-level)
-	- Current velocity (X/Y, integer + fractional bytes).
-	- Current position (X/Y pixels).
-	- Masks and the drag shift count chosen by set_cursor_physics
-	  (so regions can feel heavier/lighter).
-	- The joystick direction index → per-axis deltas.
-
-Outputs it updates
-	- New velocity (after drag + input).
-	- New position (after integration).
-	- Fractional accumulators (for sub-pixel smoothness).
-
-================================================================================
-
-Derive “half-speed” drag using a 7× left-shift trick
-
-	A 16-bit right shift would cleanly divide the velocity by 2,
-	but the 6502 has no direct 16-bit ROR pair instruction. Instead,
-	the code performs seven ASL/ROL steps, which pushes the low
-	byte’s high bits into the high byte. After seven shifts, the
-	new high byte (>drag) contains the same bit pattern as what
-	the low byte (<drag) would have had after one logical right
-	shift. In other words:
-
-	  result_hi = (orig_lo >> 1)
-	  carry     = original bit 9 of the value
-
-	This clever inversion makes “7× left” equal to “1× right”
-	for the portion we care about, and the carry bit now holds
-	the original sign information. Only >drag (the high byte) is
-	used afterward, effectively producing drag = speed ÷ 2.
-
-	drag_shift_count = 7 ensures this transformation is consistent
-	every frame.
 ================================================================================
 */
 * = $F6B6
@@ -248,16 +248,16 @@ cursor_physics_step:
         // Drag for X: drag := speed >> 1 using 7×(ASL/ROL), signed subtract
         // ------------------------------------------------------------
         lda     cursor_x_vel_frac
-        sta     drag
+        sta     drag_lo
         lda     cursor_x_vel_int
-        sta     drag + 1
+        sta     drag_hi
 
         ldx     drag_shift_count                // Load shift counter (normally 7 for ½-speed calc)
         beq     drag_x_finalize_sign            // Skip loop if zero (no shift needed)
 
 drag_x_shift_loop:
-        asl     drag                            // Shift low byte left, bit7 → carry
-        rol     drag + 1                        // Rotate carry into high byte (16-bit shift)
+        asl     drag_lo                         // Shift low byte left, bit7 → carry
+        rol     drag_hi                         // Rotate carry into high byte (16-bit shift)
         dex                                     // Decrement shift counter
         bne     drag_x_shift_loop               // Repeat until all 7 shifts completed
 
@@ -268,37 +268,40 @@ drag_x_finalize_sign:
         jmp     store_drag_hi_sub_x             // Use $FF as the high subtract byte
 
 drag_x_nonnegative:
-        cpx     drag                            // With X=0: set C=1 iff drag_lo==0 (avoid borrow on SBC)
+        cpx     drag_lo                         // With X=0: set C=1 iff drag_lo==0 (avoid borrow on SBC)
 
 store_drag_hi_sub_x:
         stx     drag_sub_hi                     // Store high subtract byte: $00 (non-neg) or $FF (neg)
 
-        // speed := speed − drag
+        // ------------------------------------------------------------
+        // speed := speed − drag (for X axis)
+		//
         //  - Uses C from prior step: C=1 → pure subtract, C=0 → borrow.
         //  - Low byte subtracts (>drag) which equals (orig lo >> 1).
         //  - High byte subtracts sign-extend byte ($00 or $FF) to keep sign.
-        lda     cursor_x_vel_frac              // A := X velocity fractional byte
-        sbc     drag + 1                       // A := A − (>drag)  (borrow per C)
-        sta     cursor_x_vel_frac              // commit new fractional velocity
+        // ------------------------------------------------------------
+        lda     cursor_x_vel_frac              	// A := X velocity fractional byte
+        sbc     drag_hi                       	// A := A − (>drag)  (borrow per C)
+        sta     cursor_x_vel_frac              	// commit new fractional velocity
 
-        lda     cursor_x_vel_int               // A := X velocity integer byte
-        sbc     drag_sub_hi                    // A := A − ($00/$FF)  (sign-correct subtract)
-        sta     cursor_x_vel_int               // commit new integer velocity
+        lda     cursor_x_vel_int               	// A := X velocity integer byte
+        sbc     drag_sub_hi                    	// A := A − ($00/$FF)  (sign-correct subtract)
+        sta     cursor_x_vel_int               	// commit new integer velocity
 
         // ------------------------------------------------------------
         // Drag for Y: same procedure
         // ------------------------------------------------------------
         lda     cursor_y_vel_frac
-        sta     drag
+        sta     drag_lo
         lda     cursor_y_vel_int
-        sta     drag + 1
+        sta     drag_hi
 
         ldx     drag_shift_count
         beq     drag_y_finalize_sign
 
 drag_y_shift_loop:
-        asl     drag
-        rol     drag + 1
+        asl     drag_lo
+        rol     drag_hi
         dex
         bne     drag_y_shift_loop
 
@@ -309,13 +312,13 @@ drag_y_finalize_sign:
         jmp     store_drag_hi_sub_y
 
 drag_y_nonnegative:
-        cpx     drag
+        cpx     drag_lo
 
 store_drag_hi_sub_y:
         stx     drag_sub_hi
 
         lda     cursor_y_vel_frac
-        sbc     drag + 1
+        sbc     drag_hi
         sta     cursor_y_vel_frac
         lda     cursor_y_vel_int
         sbc     drag_sub_hi
@@ -332,7 +335,7 @@ store_drag_hi_sub_y:
         // ------------------------------------------------------------
         // Horizontal acceleration from table delta → apply mask and add
         // ------------------------------------------------------------
-        lda     joy_dir_dx_tbl,y                // A := horizontal delta for this direction (0, $01, or $FF)
+        lda     joy_dir_dx_tbl,y                // A := horizontal delta for this direction: 0, +1 ($01), or -1 ($FF)
         beq     check_vertical_delta            // 0 → no horizontal accel; skip to vertical
 
         cmp     #$80                            // Prepare sign in C: $FF sets C=1, $01 leaves C=0
@@ -374,7 +377,7 @@ check_vertical_delta:
         // Integrate X: position += speed_hi; manage sub-pixel accumulator
         // ------------------------------------------------------------
 integrate_x_velocity:
-        clc                                     // Clear C: start fresh for frac+frac → carry into integer
+        clc                                     
         lda     x_frac_accum_prev               // A := prior sub-pixel accumulator (X axis)
         adc     cursor_x_vel_frac               // A := A + current fractional velocity (propagates carry)
         tax                                     // X := new sub-pixel accumulator for storage
@@ -425,6 +428,9 @@ commit_x_in_range:
         stx     cursor_y_vel_frac
         stx     cursor_y_vel_int
 
+        // ------------------------------------------------------------
+        // Enforce max Y
+        // ------------------------------------------------------------
         bpl     clamp_y_bottom_edge
         lda     #$00
 		jmp		commit_y_in_range
