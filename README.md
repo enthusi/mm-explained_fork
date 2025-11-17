@@ -163,7 +163,7 @@ A codebase of this size can feel overwhelming at first.
 There are several effective ways to begin exploring it:
 
 * **Script-first approach:**
-  Start with the game scripts (NOT included in this repo, see the 'Game engine vs. interpreter' section), check the, locate each corresponding operation in the interpreter (`ops_*.asm`), and then follow the chain down into the engine routines that implement those behaviors.
+  Start with the game scripts (NOT included in this repo, see the 'Game engine vs. interpreter' section), locate each corresponding operation in the interpreter (`ops_*.asm`), and then follow the chain down into the engine routines that implement those behaviors.
 
 * **Bottom-up approach:**
   Begin with the low-level modules - graphics, sound, input, disk I/O - and work upward toward the main loop and IRQ handlers.
