@@ -26405,11 +26405,11 @@ hotspot_highlighted_handlers:
 
 hotspot_click_handlers = $f2f2
 hotspot_click_handlers:
-;f427		0		click_room_scene_mark
-;f42d		1		click_set_verb_and_refresh
-;f452		2		click_inventory_item_set_do_or_io
-;f48f		3		click_inventory_scroll_page
-;f44d		4		click_sentence_bar_rebuild
+;f427		0		mark_room_scene_clicked
+;f42d		1		set_current_verb_and_refresh
+;f452		2		set_inv_item_as_do_or_io
+;f48f		3		scroll_inventory_page
+;f44d		4		rebuild_sentence
 
 
 hotspot_dehighlighted_handlers = $f2fc
@@ -26424,10 +26424,10 @@ hotspot_dehighlighted_handlers:
 hotspot_render_handlers = $f306
 hotspot_render_handlers:
 	; f3e8		0		do_nothing
-	; f407		1		enter_verb_hotspot_render
-	; f40d		2		enter_item_hotspot_render
-	; f413		3		enter_scroll_hotspot_render
-	; f419		4		enter_sentence_bar_render
+	; f407		1		render_verb_hotspot
+	; f40d		2		render_item_hotspot
+	; f413		3		render_scroll_arrow_hotspot
+	; f419		4		reset_sentence_bar_hotspot
 
 ;	Upper half of screen	0		
 ;	Verbs					1
@@ -26600,19 +26600,19 @@ apply_normal_color_and_fill:
 .C:f401  8D 8F CB    STA region_text_color
 .C:f404  4C 0A F6    JMP fill_hotspot_color_span
 ;===================================================
-enter_verb_hotspot_render:
+render_verb_hotspot:
 .C:f407  20 30 F5    JSR render_verb_label
 .C:f40a  4C F8 F3    JMP apply_normal_color_and_fill
 ;===================================================
-enter_item_hotspot_render:
+render_item_hotspot:
 .C:f40d  20 43 F5    JSR render_item_name_if_owned
 .C:f410  4C F8 F3    JMP apply_normal_color_and_fill
 ;===================================================
-enter_scroll_hotspot_render:
+render_scroll_arrow_hotspot:
 .C:f413  20 F7 F4    JSR render_scroll_arrow_if_eligible
 .C:f416  4C F8 F3    JMP apply_normal_color_and_fill
 ;===================================================
-enter_sentence_bar_render:
+reset_sentence_bar_hotspot:
 ;Point source to $F609, which contains a #00 
 ;Thus copying an empty string
 .C:f419  A9 09       LDA #$09
@@ -26622,12 +26622,12 @@ enter_sentence_bar_render:
 .C:f421  20 BB F5    JSR blit_text_to_hotspot_row
 .C:f424  4C F8 F3    JMP apply_normal_color_and_fill
 ;===================================================
-click_room_scene_mark:
+mark_room_scene_clicked:
 .C:f427  A9 01       LDA #$01
 .C:f429  8D 77 FD    STA room_scene_clicked_flag
 .C:f42c  60          RTS
 ;===================================================
-click_set_verb_and_refresh:
+set_current_verb_and_refresh:
 ;Fetch verb for the interaction region
 .C:f42d  AE 88 CB    LDX hotspot_entry_ofs
 .C:f430  BD 48 F2    LDA int_region_operand,X
@@ -26648,13 +26648,13 @@ refresh_sentence:
 .C:f449  8D 49 FE    STA sentence_bar_needs_refresh
 .C:f44c  60          RTS
 ;===================================================
-click_sentence_bar_rebuild:
+rebuild_sentence:
 ;Rebuild the action sentence
 .C:f44d  A9 01       LDA #$01
 .C:f44f  85 95       STA needs_sentence_rebuild
 .C:f451  60          RTS
 ;===================================================
-click_inventory_item_set_do_or_io:
+set_inv_item_as_do_or_io:
 .C:f452  AE 88 CB    LDX hotspot_entry_ofs
 .C:f455  BD 48 F2    LDA int_region_operand,X
 .C:f458  20 73 F5    JSR find_owned_slot_for_display
@@ -26689,7 +26689,7 @@ item_not_in_possession:
 ; Updates the display offset and then redraws
 ; the inventory items and scroll arrows.
 ;===================================================
-click_inventory_scroll_page:
+scroll_inventory_page:
 .C:f48f  AE 88 CB    LDX hotspot_entry_ofs
 ;The operand will be #00 if scroll up is clicked, #01 if scroll down is clicked
 .C:f492  BD 48 F2    LDA int_region_operand,X
