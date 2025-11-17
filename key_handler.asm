@@ -13,42 +13,44 @@
   keyboard_handle_one_key
 ================================================================================
 Summary
-	Keyboard dispatcher for gameplay. Polls one key, then handles: resume
-	interrupted script (F7), pause/resume (Space), restart (F8), text speed +/−,
-	save/load (F2 under guard), and kid switching (F1/F3/F5 in normal control).
+	Keyboard dispatcher for gameplay. Polls one key, then handles: 
+		-resume	interrupted script (F7)
+		-pause/resume (Space)
+		-restart (F8)
+		-text speed +/−
+		-save/load (F2 under guard)
+		-kid switching (F1/F3/F5 in normal control)
 
 Global Inputs
-	 interrupted_pc_lo/hi    saved PC for interrupted script
-	 interrupted_script_index           target script slot index
-	 script_2_mem_attr                  residency flag for global script #2
-	 control_mode                       engine control mode
-	 text_delay_factor                  current text speed
-	 sid_volfilt_reg_shadow            cached SID master volume
+	 interrupted_pc_lo/hi    		saved PC for interrupted script
+	 interrupted_script_index       target script slot index
+	 script_2_mem_attr              residency flag for global script #2
+	 control_mode                   engine control mode
+	 text_delay_factor              current text speed
+	 sid_volfilt_reg_shadow         cached SID master volume
 
 Global Outputs
-	 task_pc_ofs_lo_tbl/hi[X]            restored PC for resumed script
-	 task_state_tbl[X]    set to running when resuming
-	 interrupted_pc_lo/hi    cleared after resume attempt
-	 task_cur_idx                set to #$FF before restart/save-load
-	 sentence_bar_needs_refresh         flagged TRUE after unpause
-	 text_delay_factor                  clamped within [MIN..MAX]
-	 kbd_delay_lo/hi                    forced to zero in pause loop
-	 sid_master_volume                  muted on pause, restored on resume
+	 task_pc_ofs_lo_tbl/hi[X]       restored PC for resumed script
+	 task_state_tbl[X]    			set to running when resuming
+	 interrupted_pc_lo/hi    		cleared after resume attempt
+	 task_cur_idx                	set to #$FF before restart/save-load
+	 sentence_bar_needs_refresh     flagged TRUE after unpause
+	 text_delay_factor              clamped within [MIN..MAX]
+	 kbd_delay_lo/hi                forced to zero in pause loop
+	 sid_master_volume              muted on pause, restored on resume
 
 Description
 	* Read key once, store for reuse, then run a linear dispatch chain.
 	* F7: if an interrupted script PC exists, restore PC/state and clear saved PC.
-	* Space: draw “PAUSED”, map I/O on, mute audio, poll until Space, then restore
-	  audio/map, unpause, request UI refresh, and clear banner.
-	* F8: mark no current script and jump to restart.
+	* Space: print “PAUSED” msg, map I/O on, mute audio, poll until Space, 
+		then restore audio/map, unpause, request UI refresh, and clear pause msg.
+	* F8: mark no current script in execution and jump to restart.
 	* ‘+’/‘−’: adjust text speed with floor/ceiling clamps.
 	* F2: start save/load script only if not in cutscene and script #2 not resident.
 	* F1/F3/F5: switch active kid to 0/1/2 only in normal control mode.
 
 Notes
-	* Clobbers A, X, Y; flags are not preserved.
 	* Uses busy-wait polling during pause; kbd delays are forced to zero each tick.
-	* All tail-calls (`jmp`) are intentional to avoid extra RTS on hot paths.
 ================================================================================
 */
   
@@ -89,26 +91,26 @@ keyboard_handle_one_key:
         // ------------------------------------------------------------
         // Read one key and keep it for later condition checks
         // ------------------------------------------------------------
-        jsr     kbd_key_read                  // poll keyboard; A := keycode
-        sta     key_to_process                // latch key for later comparisons
+        jsr     kbd_key_read                // poll keyboard; A := keycode
+        sta     key_to_process              // latch key for later comparisons
 
         // ------------------------------------------------------------
         // F7: bypass a cutscene
 		//
 		// Resume an interrupted script if applicable
         // ------------------------------------------------------------
-        cmp     #KEY_F7                       // F7 pressed?
-        bne     space_key_check               // no → continue dispatch
+        cmp     #KEY_F7                     // F7 pressed?
+        bne     space_key_check             // no → continue dispatch
 		
-        lda     interrupted_pc_lo  // test saved offset lo
-        ora     interrupted_pc_hi  // merge with hi; Z=1 if both zero
-        beq     bypass_cutscene_return        // none saved → nothing to resume
+        lda     interrupted_pc_lo  			// test saved offset lo
+        ora     interrupted_pc_hi  			// merge with hi; Z=1 if both zero
+        beq     bypass_cutscene_return      // none saved → nothing to resume
 
 		//There was an interrupted script, resume it
-        ldx     interrupted_script_index      // X := target script index
-        lda     interrupted_pc_lo  // restore script PC low
+        ldx     interrupted_script_index    // X := target script index
+        lda     interrupted_pc_lo  			// restore script PC low
         sta     task_pc_ofs_lo_tbl,x
-        lda     interrupted_pc_hi  // restore script PC high
+        lda     interrupted_pc_hi  			// restore script PC high
         sta     task_pc_ofs_hi_tbl,x
 		
 		// Set script state to running
@@ -169,7 +171,7 @@ pause_wait_for_space_loop:
         // ------------------------------------------------------------
         // Restore audio and memory map, then unpause and refresh UI
         // ------------------------------------------------------------
-        lda     sid_volfilt_reg_shadow       // restore cached volume
+        lda     sid_volfilt_reg_shadow        // restore cached volume
         sta     sid_master_volume
 		
         ldy     #MAP_IO_OUT                   // normal mapping value
@@ -198,10 +200,10 @@ f8_key_check:
         cmp     #KEY_F8                       // F8 pressed?
         bne     plus_key_check                // no → next key
 		
-        lda     #$FF                          // sentinel "no current script"
+        lda     #TASK_IDX_NONE                // sentinel "no current script"
         sta     task_cur_idx
 		
-        jmp     op_restart_game                  // tail-call restart
+        jmp     op_restart_game               // tail-call restart
 
 plus_key_check:
         // ------------------------------------------------------------
@@ -248,15 +250,15 @@ fkeys_dispatch_check:
         cmp     #KEY_F2                       // F2 pressed?
         bne     kid_switch_mode_check         // no → skip
 		
-		// F2 pressed - run save/load script
+		// F2 pressed - run save/load script (#2)
         lda     script_2_mem_attr             // script #2 resident?
         bne     kid_switch_mode_check         // yes → we're already running it, skip
 		
-        lda     #$FF                          // set "no current script"
+        lda     #TASK_IDX_NONE                // set "no current script"
         sta     task_cur_idx
 		
         lda     #SCRIPT_ID_SAVELOAD           // A := script #2 id
-        jmp     launch_global_script           // tail-call launcher
+        jmp     launch_global_script          // tail-call launcher
 
 kid_switch_mode_check:
         // ------------------------------------------------------------
