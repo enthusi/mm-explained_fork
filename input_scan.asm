@@ -185,6 +185,7 @@ C64 / 6502 / 8-bit Techniques
 .label kbd_keymap_base     	= $205E    // 0 or $40: selects normal vs shifted key matrix
 .label kbd_col_mask   		= $205F    // OR-mask applied to columns when shifted
 .label kbd_row_mask   		= $2060    // OR-mask applied to rows when shifted
+.label prev_fire_bit        = $CB89    // Latched FIRE bit from previous frame (masked to bit4)
 .label kbd_delay_lo        	= $FE4D    // lo byte of polling delay
 .label kbd_delay_hi        	= $FE4E    // hi byte of polling delay
 
@@ -199,6 +200,7 @@ C64 / 6502 / 8-bit Techniques
 .const KBD_RSHIFT_ROW_MASK          = %0100_0000// Row bitmask for Right Shift line (used to suppress ghosting)
 .const KBD_KEYMAP_SHIFT_BASE        = $40       // Base offset into keymap table for shifted matrix
 .const JOY2_MASK                    = %0001_1111// Mask for joystick #2 bits (directions + fire, active-low)
+.const MSK_JOY_FIRE            	    = $10       // Mask for FIRE button (active-low)
 .const ALL_OUTPUTS                  = $FF       // DDRA/DDR B value: all pins configured as outputs
 .const ALL_INPUTS                   = $00       // DDRA/DDR B value: all pins configured as inputs
 .const KEY_SPACE               		= $20    	// pause/resume
@@ -764,6 +766,67 @@ keycode_is_ready:
 		// Return the key in A
 		lda kbd_keycode
 		rts
+/*
+================================================================================
+  detect_fire_press_edge
+================================================================================
+Summary
+        Detect a new joystick FIRE press (active-low) by comparing the current
+        state to the previous frame’s stored bit. Returns with A = $10 on a
+        fresh press, or A = $00 if unchanged or released.
+
+Global Inputs
+        joy_state              	raw joystick state (bit4 = FIRE, active-low)
+        prev_fire_bit          	previous frame’s masked FIRE bit
+
+Global Outputs
+        prev_fire_bit          	updated to current FIRE bit
+
+Returns
+        A  						$10  if FIRE was newly pressed (transition 1→0)
+								$00  otherwise
+					
+        Z  						0 if pressed this frame
+								1 if not
+
+Description
+        - FIRE line is active-low: 1 = released, 0 = pressed.
+        - The expression (curr XOR prev) AND prev isolates a 1→0 transition:
+              prev=1, curr=0 → new press → A=$10
+              otherwise → A=$00
+        - Stores the current FIRE bit for next-frame comparison.
+
+Notes
+        This routine provides edge detection, not level detection.
+================================================================================
+*/		
+* = $F7CB
+detect_fire_press_edge:
+        // ------------------------------------------------------------
+        // Mask current FIRE bit (active-low) and keep a copy in X
+        // ------------------------------------------------------------
+        lda     joy_state                      // A := raw joystick state
+        and     #MSK_JOY_FIRE                  // A := FIRE bit only (bit4)
+        tax                                    // X := current FIRE bit (for state latch)
+
+        // ------------------------------------------------------------
+        // Edge detect
+		//
+		// (curr XOR prev) AND prev → 1→0 transition only
+        //  - Unpressed=1, Pressed=0 → detect new press this frame
+        // ------------------------------------------------------------
+        eor     prev_fire_bit                  // A := curr ⊕ prev (changed?)
+        and     prev_fire_bit                  // A := (changed) ∧ prev → 1→0 edge → $10 else $00
+
+        // ------------------------------------------------------------
+        // Latch current FIRE bit for next frame
+		//
+        //  - A=$10 ⇒ new press this frame (Z=0)
+        //  - A=$00 ⇒ no new press (Z=1)
+        // ------------------------------------------------------------
+        stx     prev_fire_bit
+        rts
+		
 /*
   C64 INPUT MODULE - FLOW
   =======================================================
