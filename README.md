@@ -293,3 +293,132 @@ The **`loader`** directory contains all components of the disk loader.
 Begin by reading **`loader overview.txt`**, which explains the structure and flow of the loader code.
 
 The **`diagrams`** directory provides visual diagrams that accompany and clarify the loader’s operation.
+
+### ** Game engine components **
+
+Even though the original engine is not perfectly modular (there is some unavoidable coupling between layers), it can be conceptually understood as a collection of subsystems:
+
+* **Disk I/O system** — Loads sectors from disk through custom fastloader routines.
+
+* **Memory manager** — Allocates and frees memory blocks for resources, tracks free space, and performs housekeeping (compaction and coalescing).
+
+* **Resource manager** — Loads resources from disk, tracks their usage, and evicts them when memory is needed.
+
+* **Sound system** — Plays sound effects and music stored as resources.
+
+* **UI system**, composed of:
+
+  * the **top bar**, which displays dialogue messages,
+  * the **cursor**, used for player interaction,
+  * the **sentence bar**, which shows the current action sentence,
+  * the **interaction area**, where verbs and inventory items are displayed.
+
+* **Video rendering system**, composed of:
+
+  * an **object renderer**,
+  * a **room renderer**,
+
+    * including a **virtual camera** subsystem for horizontal scrolling,
+  * a **costume renderer**,
+  * a **flashlight subsystem** for rendering the narrow beam of light when only the flashlight is active.
+
+* **Animation system** — Handles costume animation using limbs and cel definitions.
+
+* **Blitter system**, composed of:
+
+  * a **cel-to-sprite blitter**,
+  * a **foreground/background masking system** for costume–room occlusion,
+  * a **front-to-back ordering system** for correct costume–costume occlusion.
+
+* **Walkbox-based pathfinding system** — Computes realistic walking paths between two points within a room.
+
+* **Sentence system** — Represents player actions using a simple grammar:
+  *verb → direct object → preposition → indirect object.*
+
+* **Script/task subsystem** — Executes game-logic scripts and manages multiple concurrent tasks.
+
+* **Raster-IRQ sprite rendering subsystem** — Uses timed raster interrupts to blit actor graphics to the screen each frame.
+
+A slightly simplified dependency diagram, where an arrow means "depends on":
+	
+                    +-------------------------+
+                    |     Game Scripts / VM   |
+                    | (script_engine, ops_*)  |
+                    +-----------+-------------+
+                                |
+                                v
+                    +-------------------------+
+                    |     Sentence System     |
+                    | (sentence_action/text)  |
+                    +-----------+-------------+
+                                |
+                                v
++-----------------------------------------------------------+
+|                     High-Level Logic                      |
++-----------------------------------------------------------+
+|                |                     |                    |
+|                v                     v                    v
+|      +----------------+    +------------------+   +------------------+
+|      |  Actors /      |    | UI System        |   | Pathfinding      |
+|      |  Animation     |    | (verbs, cursor)  |   | (walkboxes)      |
+|      +-------+--------+    +---------+--------+   +---------+--------+
+|              |                         |                    |
++--------------+-------------------------+--------------------+---------+
+                               |                        |
+                               v                        v
+                    +------------------+      +-------------------+
+                    | Rendering System |----->|  Camera System    |
+                    | (rooms, objs,    |      |  (viewport/scroll)|
+                    |  costumes, light)|      +-------------------+
+                    +--------+---------+
+                             |
+                             v
+                  +------------------------+
+                  |     Blitter System     |
+                  | (cel blits, masking,   |
+                  |  front/back ordering)  |
+                  +-----------+------------+
+                              |
+                              v
+                  +-------------------------+
+                  |   Decompressor System   |
+                  +-------------------------+
+
++-----------------------------------------------------------------------+
+|                           Resource Management                         |
++-----------------------------------------------------------------------+
+|     +---------------------+        +---------------------+            |
+|     |   Resource Manager  |<------>|   Memory Manager    |            |
+|     |  (load, evict)      |        |  (alloc/free/GC)    |            |
+|     +----------+----------+        +---------------------+            |
+|                |                                                       |
++----------------+-------------------------------------------------------+
+                 |
+                 v
+       +----------------------+
+       |    Disk I/O System   |
+       | (high-level + low)   |
+       +----------+-----------+
+                  |
+                  v
+       +----------------------+
+       |   Drive Setup / HW   |
+       +----------------------+
+
++---------------------+
+|    Sound System     |
++---------------------+
+| voice alloc/prims   |
+| sound engine        |
+| music               |
++----------+----------+
+           |
+           v
+ +---------------------+
+ | SID Voice Controller|
+ +---------------------+
+           |
+           v
+     (C64 Hardware)
+	
+
