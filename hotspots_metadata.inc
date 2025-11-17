@@ -124,7 +124,7 @@ hotspot_normal_colors:
         .byte $00, $05, $04, $06, $04
 
 * = $F2D2
-hotspot_apply_highlight_color_and_fill:
+hotspot_highlight_colors:
         .byte $00, $07, $07, $07, $07
 
 * = $F2DC
@@ -161,18 +161,18 @@ inv_arrow_ptr_hi:
         .byte   >inv_arrow_row_up, >inv_arrow_row_down
 
 * = $F2E8
-hotspot_highlight_handlers:
+hotspot_highlighted_handlers:
         // ------------------------------------------------------------
         // Word table of hotspot HIGHLIGHT handlers (lo, hi per entry)
         // Indexed by hotspot_type:
         //   [0]=ROOM_SCENE, [1]=VERB, [2]=INVENTORY_ITEM,
         //   [3]=INVENTORY_SCROLL, [4]=SENTENCE_BAR
         // ------------------------------------------------------------
-        .byte   $E8, $F3    // [0] ROOM_SCENE          → do_nothing           ($F3E8)
-        .byte   $E9, $F3    // [1] VERB                → apply_highlight_color_and_fill     ($F3E9)
-        .byte   $E9, $F3    // [2] INVENTORY_ITEM      → apply_highlight_color_and_fill     ($F3E9)
-        .byte   $E9, $F3    // [3] INVENTORY_SCROLL    → apply_highlight_color_and_fill     ($F3E9)
-        .byte   $E9, $F3    // [4] SENTENCE_BAR        → apply_highlight_color_and_fill     ($F3E9)
+        .byte   $E8, $F3    // [0] ROOM_SCENE          → do_nothing           
+        .byte   $E9, $F3    // [1] VERB                → apply_highlight_color_and_fill     
+        .byte   $E9, $F3    // [2] INVENTORY_ITEM      → apply_highlight_color_and_fill     
+        .byte   $E9, $F3    // [3] INVENTORY_SCROLL    → apply_highlight_color_and_fill     
+        .byte   $E9, $F3    // [4] SENTENCE_BAR        → apply_highlight_color_and_fill     
 
 * = $F2F2
 hotspot_click_handlers:
@@ -182,25 +182,25 @@ hotspot_click_handlers:
         //   [0]=ROOM_SCENE, [1]=VERB, [2]=INVENTORY_ITEM,
         //   [3]=INVENTORY_SCROLL, [4]=SENTENCE_BAR
         // ------------------------------------------------------------
-        .byte   $27, $F4    // [0] ROOM_SCENE          → click_room_scene_mark       ($F427)
-        .byte   $2D, $F4    // [1] VERB                → click_set_verb_and_refresh     ($F42D)
-        .byte   $52, $F4    // [2] INVENTORY_ITEM      → click_inventory_item_set_do_or_io   ($F452)
-        .byte   $8F, $F4    // [3] INVENTORY_SCROLL    → click_inventory_scroll_page ($F48F)
-        .byte   $4D, $F4    // [4] SENTENCE_BAR        → click_sentence_bar_rebuild     ($F44D)
+        .byte   $27, $F4    // [0] ROOM_SCENE          → click_room_scene_mark       
+        .byte   $2D, $F4    // [1] VERB                → click_set_verb_and_refresh     
+        .byte   $52, $F4    // [2] INVENTORY_ITEM      → click_inventory_item_set_do_or_io   
+        .byte   $8F, $F4    // [3] INVENTORY_SCROLL    → click_inventory_scroll_page 
+        .byte   $4D, $F4    // [4] SENTENCE_BAR        → click_sentence_bar_rebuild     
 
 * = $F2FC
-hotspot_dehighlight_handlers:
+hotspot_dehighlighted_handlers:
         // ------------------------------------------------------------
         // Word table of hotspot DEHIGHLIGHT handlers (lo, hi per entry)
         // Indexed by hotspot_type:
         //   [0]=ROOM_SCENE, [1]=VERB, [2]=INVENTORY_ITEM,
         //   [3]=INVENTORY_SCROLL, [4]=SENTENCE_BAR
         // ------------------------------------------------------------
-        .byte   $E8, $F3    // [0] ROOM_SCENE          → do_nothing              ($F3E8)
-        .byte   $F8, $F3    // [1] VERB                → apply_normal_color_and_fill      ($F3F8)
-        .byte   $F8, $F3    // [2] INVENTORY_ITEM      → apply_normal_color_and_fill      ($F3F8)
-        .byte   $F8, $F3    // [3] INVENTORY_SCROLL    → apply_normal_color_and_fill      ($F3F8)
-        .byte   $F8, $F3    // [4] SENTENCE_BAR        → apply_normal_color_and_fill      ($F3F8)
+        .byte   $E8, $F3    // [0] ROOM_SCENE          → do_nothing              
+        .byte   $F8, $F3    // [1] VERB                → apply_normal_color_and_fill      
+        .byte   $F8, $F3    // [2] INVENTORY_ITEM      → apply_normal_color_and_fill      
+        .byte   $F8, $F3    // [3] INVENTORY_SCROLL    → apply_normal_color_and_fill      
+        .byte   $F8, $F3    // [4] SENTENCE_BAR        → apply_normal_color_and_fill      
 
 * = $F306
 hotspot_render_handlers:
@@ -210,11 +210,11 @@ hotspot_render_handlers:
         //   [0]=ROOM_SCENE, [1]=VERB, [2]=INVENTORY_ITEM,
         //   [3]=INVENTORY_SCROLL, [4]=SENTENCE_BAR
         // ------------------------------------------------------------
-        .byte   $E8, $F3    // [0] ROOM_SCENE          → do_nothing                        ($F3E8)
-        .byte   $07, $F4    // [1] VERB                → enter_verb_hotspot_render             ($F407)
-        .byte   $0D, $F4    // [2] INVENTORY_ITEM      → enter_item_hotspot_render             ($F40D)
-        .byte   $13, $F4    // [3] INVENTORY_SCROLL    → enter_scroll_hotspot_render     ($F413)
-        .byte   $19, $F4    // [4] SENTENCE_BAR        → enter_sentence_bar_render     ($F419)
+        .byte   $E8, $F3    // [0] ROOM_SCENE          → do_nothing                        
+        .byte   $07, $F4    // [1] VERB                → enter_verb_hotspot_render             
+        .byte   $0D, $F4    // [2] INVENTORY_ITEM      → enter_item_hotspot_render             
+        .byte   $13, $F4    // [3] INVENTORY_SCROLL    → enter_scroll_hotspot_render     
+        .byte   $19, $F4    // [4] SENTENCE_BAR        → enter_sentence_bar_render     
 
 * = $F609
 empty_string:
