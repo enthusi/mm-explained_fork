@@ -1167,7 +1167,7 @@ sprite_row_offsets_hi = $d508
 sprite_row_offsets_lo = $d5a8
 room_scene_row_offsets_lo = $d640
 room_scene_row_offsets_hi = $d659
-actor_text_color = $d672
+costume_text_color = $d672
 
 ;D800 = Color RAM in _normal_ text mode
 ;Each byte controls foreground color of character
@@ -9860,12 +9860,12 @@ check_if_color_needed:
 ;Determine the message text color to use
 ;Does the message have an owner?
 .C:27fe  AE 9B FE    LDX msg_owner_costume
-.C:2801  10 05       BPL use_actor_text_color
+.C:2801  10 05       BPL use_costume_text_color
 ;It doesn't - use #0E color by default
 .C:2803  A9 0E       LDA #$0E
 .C:2805  4C 0B 28    JMP text_color_determined
-use_actor_text_color:
-.C:2808  BD 72 D6    LDA actor_text_color,X
+use_costume_text_color:
+.C:2808  BD 72 D6    LDA costume_text_color,X
 text_color_determined:
 ;map_in_io
 .C:280b  A0 25       LDY #$25
@@ -25839,7 +25839,7 @@ d659:
 01 01 01 01 01 02 02 02 
 02 02 02 02 03 03 03 03 03 
 
-actor_text_color:
+costume_text_color:
 01 07 02 0e 08 0f 03 07 07 0f 
 01 0d 01 04 05 05 04 03 01 05 
 01 01 01 01 
