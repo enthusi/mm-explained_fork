@@ -215,10 +215,10 @@ drag_shift_counts:
 .const Y_BOTTOM_LIMIT              = $C0     // compare threshold (valid if < $C0)
 .const Y_MAX_CLAMP                 = $BF     // max in-range Y after clamp
 .const Y_MIN_CLAMP                 = $08     // minimum allowed Y
-.const OUT_OF_BOUNDS_REGION = $8A
-.const MSK_JOY_FIRE            = $10     // Mask for FIRE button (active-low)
+.const OUT_OF_BOUNDS_REGION 	   = $8A
+.const MSK_JOY_FIRE            	   = $10     // Mask for FIRE button (active-low)
 
-.label prev_fire_bit           = $CB89   // Latched FIRE bit from previous frame (masked to bit4)
+.label prev_fire_bit           	= $CB89   // Latched FIRE bit from previous frame (masked to bit4)
 .label drag                    = $CB8C   // temp 16-bit drag (lo/hi)
 .label drag_sub_hi             = $CB8E   // temp: sign-extend byte for hi subtract ($00/$FF)
 .label x_frac_accum_prev       = $CB7E   // prior X fractional accumulator (smoothing)
@@ -551,7 +551,6 @@ integrate_x_velocity:
 
         bpl     clamp_x_right_edge              // If prior vel_int ≥ 0 → we were moving right → clamp to right edge
         lda     #$00                            // Else moving left → clamp X to left boundary (0)
-//F785		
         jmp		commit_x_in_range
 
 clamp_x_right_edge:
