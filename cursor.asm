@@ -523,3 +523,285 @@ load_constants:
         lda     drag_shift_counts,x             // Load drag shift count
         sta     drag_shift_count                
         rts                                     
+
+/*
+================================================================================
+Pseudo-code for cursor_physics_step() (keeping all the 8-bit wizardry):
+================================================================================
+    //----------------------------------------------------------------------
+    // 1) Apply drag to X velocity (approximately vel := vel * 0.5)
+    //----------------------------------------------------------------------
+    // Make a copy of X velocity into a temporary 16-bit value (drag_hi:drag_lo)
+    drag_lo = cursor_x_vel_frac      // low byte
+    drag_hi = cursor_x_vel_int       // high byte
+
+    count = drag_shift_count         // normally 7
+
+    if count != 0:
+        // Perform 7× {ASL lo; ROL hi}, tracking sign via carry.
+        for i in 1..count:
+            // Shift left: (drag_hi:drag_lo) <<= 1
+            [drag_hi, drag_lo, carry] = shift_left_16(drag_hi, drag_lo)
+
+        // After shifting, carry encodes original sign (bit 9) of the velocity.
+        // Negative velocities leave carry=1 here.
+        if carry == 1:
+            // Negative velocity: set sign-extend byte to $FF
+            drag_sub_hi = 0xFF
+        else:
+            // Non-negative velocity: special case logic to avoid underflow
+            // C is set to 1 iff drag_lo == 0, else 0.
+            // We only need the effect: choose a carry that keeps subtraction sane.
+            carry = (drag_lo == 0) ? 1 : 0
+            drag_sub_hi = 0x00
+    else:
+        // No drag shifts: treat as zero drag
+        drag_lo = 0
+        drag_hi = 0
+        drag_sub_hi = 0
+        carry = 1
+
+    // speed := speed − drag   (X axis)
+    // low byte subtracts drag_hi (≈ original low >> 1)
+    // high byte subtracts drag_sub_hi (0 or 0xFF) for sign correction
+    [cursor_x_vel_frac, carry] =
+        subtract_with_borrow(cursor_x_vel_frac, drag_hi, carry)
+    [cursor_x_vel_int, carry] =
+        subtract_with_borrow(cursor_x_vel_int,  drag_sub_hi, carry)
+
+
+    //----------------------------------------------------------------------
+    // 2) Apply drag to Y velocity (same idea as X)
+    //----------------------------------------------------------------------
+    drag_lo = cursor_y_vel_frac
+    drag_hi = cursor_y_vel_int
+
+    count = drag_shift_count
+
+    if count != 0:
+        for i in 1..count:
+            [drag_hi, drag_lo, carry] = shift_left_16(drag_hi, drag_lo)
+
+        if carry == 1:
+            drag_sub_hi = 0xFF
+        else:
+            carry = (drag_lo == 0) ? 1 : 0
+            drag_sub_hi = 0x00
+    else:
+        drag_lo = 0
+        drag_hi = 0
+        drag_sub_hi = 0
+        carry = 1
+
+    [cursor_y_vel_frac, carry] =
+        subtract_with_borrow(cursor_y_vel_frac, drag_hi, carry)
+    [cursor_y_vel_int, carry] =
+        subtract_with_borrow(cursor_y_vel_int,  drag_sub_hi, carry)
+
+
+    //----------------------------------------------------------------------
+    // 3) Decode joystick direction and add acceleration
+    //----------------------------------------------------------------------
+    // Extract low nibble from joy_state
+    dir_nibble = joy_state & 0x0F
+
+    // Map raw nibble to compressed direction index (0..8)
+    dir_index = joy_dir_idx_tbl[dir_nibble]
+
+    // Horizontal delta: {0, +1, -1}
+    dx = joy_dir_dx_tbl[dir_index]
+
+    if dx != 0:
+        // dx is either +1 (0x01) or -1 (0xFF)
+        // Determine sign; C will carry sign info
+        // (conceptually: sign = (dx < 0) ? -1 : +1)
+        sign = sign_of(dx)          // +1 or -1
+
+        // hi_contrib is 0 for +1, 0xFF for -1
+        hi_contrib = (dx < 0) ? 0xFF : 0x00
+
+        // Map selector to tuned fractional step via accel_h_mask
+        // Effectively: some profile-dependent magnitude with sign.
+        frac_step = map_delta_with_mask(dx, accel_h_mask)
+
+        // Apply fractional acceleration
+        [cursor_x_vel_frac, carry] =
+            add_signed_byte(cursor_x_vel_frac, frac_step, sign)
+
+        // Apply integer acceleration
+        cursor_x_vel_int =
+            cursor_x_vel_int + hi_contrib + carry_as_signed(sign)
+
+    // Vertical delta: {0, +1, -1}
+    dy = joy_dir_dy_tbl[dir_index]
+
+    if dy != 0:
+        sign = sign_of(dy)
+        hi_contrib = (dy < 0) ? 0xFF : 0x00
+
+        frac_step = map_delta_with_mask(dy, accel_v_mask)
+
+        [cursor_y_vel_frac, carry] =
+            add_signed_byte(cursor_y_vel_frac, frac_step, sign)
+
+        cursor_y_vel_int =
+            cursor_y_vel_int + hi_contrib + carry_as_signed(sign)
+
+
+    //----------------------------------------------------------------------
+    // 4) Integrate X: fixed-point Euler integration
+    //----------------------------------------------------------------------
+    // X fractional accumulator
+    tmp = x_frac_accum_prev + cursor_x_vel_frac
+    new_frac_accum_x = (tmp & 0xFF)
+    carry = (tmp > 0xFF) ? 1 : 0
+
+    // X position: add integer velocity + carry from fractional part
+    new_x = cursor_x_pos + cursor_x_vel_int + carry
+
+    // Check right boundary
+    if new_x >= X_RIGHT_LIMIT:
+        // Out of bounds on X: kill speed and clamp to left or right edge
+        old_int_vel_x = cursor_x_vel_int
+
+        cursor_x_vel_frac = 0
+        cursor_x_vel_int  = 0
+
+        if old_int_vel_x >= 0:
+            // Moving right → clamp to max X
+            new_x = X_MAX_CLAMP   // 0x9F
+        else:
+            // Moving left → clamp to zero
+            new_x = 0
+
+        // Sticky fractional accumulator at edge
+        new_frac_accum_x = 0xFF
+
+    // Commit X updates
+    cursor_x_pos         = new_x
+    x_frac_accum_prev    = new_frac_accum_x
+
+
+    //----------------------------------------------------------------------
+    // 5) Integrate Y: fixed-point Euler integration + clamp
+    //----------------------------------------------------------------------
+    tmp = y_frac_accum_prev + cursor_y_vel_frac
+    new_frac_accum_y = (tmp & 0xFF)
+    carry = (tmp > 0xFF) ? 1 : 0
+
+    new_y = cursor_y_pos + cursor_y_vel_int + carry
+
+    if new_y >= Y_BOTTOM_LIMIT:
+        // Out of bounds on bottom/top side: kill speed and clamp
+        old_int_vel_y = cursor_y_vel_int
+
+        cursor_y_vel_frac = 0
+        cursor_y_vel_int  = 0
+
+        if old_int_vel_y >= 0:
+            // Moving down → clamp to bottom edge
+            new_y = Y_MAX_CLAMP    // 0xBF
+        else:
+            // Moving up beyond the upper clamp path → clamp to 0
+            new_y = 0
+
+        new_frac_accum_y = 0xFF
+
+    // Commit Y position and accumulator
+    cursor_y_pos      = new_y
+    y_frac_accum_prev = new_frac_accum_y
+
+    //----------------------------------------------------------------------
+    // 6) Enforce minimum Y (top clamp for UI band)
+    //----------------------------------------------------------------------
+    if cursor_y_pos < Y_MIN_CLAMP:
+        cursor_y_pos = Y_MIN_CLAMP
+
+    // done
+
+================================================================================
+Pseudo-code for cursor_physics_step(), abstracting away the 8-bit limitations:
+================================================================================
+
+    //------------------------------------------------------------------
+    // 1) Apply drag to velocity (smoothly reduce speed toward zero)
+    //------------------------------------------------------------------
+    // Drag is roughly: velocity = velocity - velocity * 0.5
+    // (i.e., exponential decay / easing toward 0)
+    cursor_x_velocity *= 0.5
+    cursor_y_velocity *= 0.5
+
+    //------------------------------------------------------------------
+    // 2) Read joystick and apply acceleration
+    //------------------------------------------------------------------
+    // Decode joystick into a direction vector:
+    //    dir = (dx, dy) where each component is -1, 0, or +1
+    direction_index = decode_joystick_direction(joy_state)
+    (dx, dy) = direction_from_index(direction_index)
+
+    // Map direction into tuned acceleration per axis.
+    // accel_h_mask / accel_v_mask effectively scale how strong the
+    // fractional acceleration step is. Here we just represent them
+    // as scalar multipliers.
+    ax = map_direction_to_accel(dx, accel_h_mask)  // small value: e.g., -a, 0, +a
+    ay = map_direction_to_accel(dy, accel_v_mask)
+
+    // Add acceleration into velocity
+    cursor_x_velocity += ax
+    cursor_y_velocity += ay
+
+    //------------------------------------------------------------------
+    // 3) Integrate velocity into position (Euler integration)
+    //------------------------------------------------------------------
+    // Conceptually:
+    //    position ← position + velocity
+    // In the real code, velocity is 8.8 fixed-point and there are
+    // separate fractional accumulators, but we can treat it as a float.
+    cursor_x_pos += cursor_x_velocity
+    cursor_y_pos += cursor_y_velocity
+
+    //------------------------------------------------------------------
+    // 4) Clamp horizontally and kill speed when hitting walls
+    //------------------------------------------------------------------
+    // Clamp to [0, X_MAX_CLAMP], but with different behavior depending
+    // on which side we hit and which way we were moving.
+    if cursor_x_pos >= X_RIGHT_LIMIT:
+        // We’re trying to go past the right side
+        if cursor_x_velocity >= 0:
+            // Moving right → snap to right edge
+            cursor_x_pos = X_MAX_CLAMP
+        else:
+            // Moving left but numerically past limit → snap to left
+            cursor_x_pos = 0
+
+        // Stop horizontal motion when we hit the wall
+        cursor_x_velocity = 0
+        // Fractional accumulator is made “sticky” at the edge in the
+        // real code; at this level: we just say “no further drift.”
+
+    //------------------------------------------------------------------
+    // 5) Clamp vertically and kill speed when hitting floor/ceiling
+    //------------------------------------------------------------------
+    // Clamp to [0, Y_MAX_CLAMP] first…
+    if cursor_y_pos >= Y_BOTTOM_LIMIT:
+        if cursor_y_velocity >= 0:
+            // Moving down → snap to bottom edge
+            cursor_y_pos = Y_MAX_CLAMP
+        else:
+            // Moving up but out of range → snap to top (0)
+            cursor_y_pos = 0
+
+        // Stop vertical motion on impact
+        cursor_y_velocity = 0
+        // Same as X: real code tweaks fractional accumulator; we just
+        // say “no further drift.”
+
+    //------------------------------------------------------------------
+    // 6) Enforce minimum Y (don’t let cursor go above a UI band)
+    //------------------------------------------------------------------
+    if cursor_y_pos < Y_MIN_CLAMP:
+        cursor_y_pos = Y_MIN_CLAMP
+
+    // Done: cursor_x_pos / cursor_y_pos / cursor_*_velocity now reflect
+    // drag + joystick acceleration + boundary constraints.
+*/
