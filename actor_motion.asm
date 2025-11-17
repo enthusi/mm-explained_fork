@@ -1,10 +1,3 @@
-#importonce
-#import "globals.inc"
-#import "constants.inc"
-#import "registers.inc"
-#import "pathing.asm"
-#import "actor_animation.asm"
-
 /*
 ================================================================================
 Actor Motion
@@ -247,9 +240,53 @@ Operational notes
 	  depth/masking after the handler returns. 
 	* The ladder “Up” facing comes from writing $C1 into facing override, which masks to
 	  $81 when applied as a one-shot facing override. 
+	  
+================================================================================
+Actor Motion — techniques and algorithms used
+================================================================================
+
+• Destination/waypoint staging:
+    Scripted destinations are snapped into valid walkbox coordinates; off-screen
+    actors cache destinations, on-screen actors enter the path/waypoint system.
+
+• Integer DDA stepping:
+    init_dda_for_path derives |ΔX|, |ΔY|, dominant axis, and sign bits; per-frame
+    stepping uses integer accumulators to emit 1-pixel moves that preserve the
+    ΔX:ΔY ratio with no multiplies or divides.
+
+• Packed motion state machine:
+    actor_motion_state’s low nibble encodes walk/stop/traversal modes, while
+    high bits encode turning/facing; update_actor_motion branches on this packed
+    state to coordinate motion, facing, and transitions.
+
+• Direction and traversal masks:
+    DDA sign bits are compressed into small axis/sign masks; traversal masks
+    normalize left/right/up/down handling and drive both stepping logic and
+    animation state.
+
+• Walkbox traversal integration:
+    When a DDA step crosses a walkbox boundary, horizontal/vertical traversal
+    handlers cooperate with the walkbox/pathing layer to keep motion constrained
+    to valid boxes and update box-derived attributes.
+
+• Facing/animation resolution:
+    resolve_turning_and_facing merges DDA direction with box overrides (e.g.,
+    ladders) to select canonical facing; standing/walking clips map these states
+    to animation limb sets.
+
+• Attribute-driven dispatch:
+    High bits of walkbox attributes select optional behavior handlers (ladder,
+    slopes, etc.) via a small table-driven JSR stub; low bits provide depth/mask
+    info for layering.
+
 ================================================================================
 */
-
+#importonce
+#import "globals.inc"
+#import "constants.inc"
+#import "registers.inc"
+#import "pathing.asm"
+#import "actor_animation.asm"
 
 .label box_attr_ptr              = $17  // ZP: box-attribute table base pointer (lo=$17, hi=$18)
 .label dbg_gate                  = $2F  // Debug gate: bit7=1 bypass waits; write #$00 to enable waits
