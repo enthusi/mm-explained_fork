@@ -341,20 +341,17 @@ Even though the original engine is not perfectly modular (there is some unavoida
 
 A slightly simplified dependency diagram, where an arrow means "depends on":
 	
+```	
                     +-------------------------+
                     |     Game Scripts / VM   |
                     | (script_engine, ops_*)  |
                     +-----------+-------------+
                                 |
-                                v
-                    +-------------------------+
-                    |     Sentence System     |
-                    | (sentence_action/text)  |
-                    +-----------+-------------+
-                                |
+                                |  (drives)
                                 v
 +-----------------------------------------------------------+
 |                     High-Level Logic                      |
+|  (Actors / Animation, UI, Pathfinding, Sentence System)   |
 +-----------------------------------------------------------+
 |                |                     |                    |
 |                v                     v                    v
@@ -366,16 +363,16 @@ A slightly simplified dependency diagram, where an arrow means "depends on":
 +--------------+-------------------------+--------------------+---------+
                                |                        |
                                v                        v
-                    +------------------+      +-------------------+
-                    | Rendering System |----->|  Camera System    |
-                    | (rooms, objs,    |      |  (viewport/scroll)|
+                    +------------------+      +------------------+
+                    | Rendering System |----->|  Camera System   |
+                    | (rooms, objs,    |      | (viewport/scroll)|
                     |  costumes, light)|      +-------------------+
                     +--------+---------+
                              |
                              v
                   +------------------------+
                   |     Blitter System     |
-                  | (cel blits, masking,   |
+                  | (cel blits, masking,   |----> C64 Video
                   |  front/back ordering)  |
                   +-----------+------------+
                               |
@@ -384,6 +381,7 @@ A slightly simplified dependency diagram, where an arrow means "depends on":
                   |   Decompressor System   |
                   +-------------------------+
 
+
 +-----------------------------------------------------------------------+
 |                           Resource Management                         |
 +-----------------------------------------------------------------------+
@@ -391,8 +389,8 @@ A slightly simplified dependency diagram, where an arrow means "depends on":
 |     |   Resource Manager  |<------>|   Memory Manager    |            |
 |     |  (load, evict)      |        |  (alloc/free/GC)    |            |
 |     +----------+----------+        +---------------------+            |
-|                |                                                       |
-+----------------+-------------------------------------------------------+
+|                |                                                      |
++----------------+------------------------------------------------------+
                  |
                  v
        +----------------------+
@@ -404,6 +402,7 @@ A slightly simplified dependency diagram, where an arrow means "depends on":
        +----------------------+
        |   Drive Setup / HW   |
        +----------------------+
+
 
 +---------------------+
 |    Sound System     |
@@ -419,6 +418,6 @@ A slightly simplified dependency diagram, where an arrow means "depends on":
  +---------------------+
            |
            v
-     (C64 Hardware)
-	
+       C64 Sound
+```	
 
