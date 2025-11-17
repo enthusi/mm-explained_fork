@@ -145,6 +145,15 @@ C64/6502-specific techniques and optimizations
 .const Y_MIN_CLAMP                 	= $08     // minimum allowed Y
 .const OUT_OF_BOUNDS_REGION 	   	= $8A
 
+// ------------------------------------------------------------
+// Cursor render corrections (pixel/grid tuning)
+// ------------------------------------------------------------
+.const  Y_BUMP1_THRESH            	= $90    // If Y ≥ $90, add +1 to computed row
+.const  Y_BUMP2_THRESH            	= $08    // If (Y & $0F) ≥ $08, add +1 to computed row
+.const  Y_CORR_BIAS               	= $28    // Final row bias (+40 decimal)
+.const  POS16_LO_BIAS             	= $80    // Add to low byte of 16-bit row base
+.const  X_OFFSET_PIX              	= $06    // X pixel offset applied to cursor position
+
 .label drag_lo                 		= $CB8C   // temp 16-bit drag (lo)
 .label drag_hi						= $CB8D	  // temp 16-bit drag (hi)
 .label drag_sub_hi             		= $CB8E   // temp: sign-extend byte for hi subtract ($00/$FF)
