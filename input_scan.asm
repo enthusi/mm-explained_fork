@@ -828,118 +828,252 @@ detect_fire_press_edge:
         rts
 		
 /*
-  C64 INPUT MODULE - FLOW
-  =======================================================
- 
-  [kbd_scan]
-  ---------------
-  ENTRY
-    │
-    ├─ Clear cached snapshots → kbd_cols=$FF, kbd_rows=$FF
-    │
-    ├─ (Optional) Prime delay if saved_task_idx ≠ 0
-    │
-    ├─ JSR joy_latch  →  Z=0 (active) / Z=1 (idle)
-    │
-    ├─ IF Z=0 (joystick active) THEN
-    │      ├─ Refresh kbd_delay_hi:lo
-    │      └─ RETURN
-    │
-    └─ ELSE (Z=1: joystick idle)
-           │
-           ├─ IF (kbd_delay_hi:lo == 0) THEN
-           │      └─ GOTO KEYBOARD_SCAN
-           │
-           ├─ Decrement 16-bit kbd_delay_hi:lo
-           │
-           ├─ IF (kbd_delay_hi:lo == 0) THEN
-           │      └─ GOTO KEYBOARD_SCAN
-           │
-           └─ RETURN
- 
- 
-  KEYBOARD_SCAN
-  -------------
-    ├─ Quick probe:
-    │    DDRA=$FF (A out), DDRB=$00 (B in), PRA=$00 (select all columns)
-    │    IF (PRB == $FF) THEN
-    │       └─ NO_RELEVANT_INPUT
-    │
-    ├─ Precise snapshots:
-    │    1) Columns: (A drives low, B reads) → kbd_cols = PRB
-    │    2) Rows:    (B drives low, A reads) → kbd_rows    = PRA
-    │
-    ├─ Count zeros:
-    │    col = kbd_count_zero_bits(kbd_cols)
-    │          (A = (#zeros−1); kbd_lsb0_idx = least-significant zero)
-    │          → if A=$FF → NO_RELEVANT_INPUT
-    │          → save kbd_col_zeros_m1, save kbd_col_lsb0_idx
-    │
-    │    row = kbd_count_zero_bits(kbd_rows)
-    │          (A = (#zeros−1); kbd_lsb0_idx = least-significant zero)
-    │          → if A=$FF → NO_RELEVANT_INPUT
-    │          → save kbd_row_zeros_m1
-    │
-    ├─ Need adjustment?  (row>0 OR col>0)
-    │    ├─ YES → kbd_apply_shift_masks → then re-count (same as above)
-    │    └─ NO  → continue
-    │
-    ├─ Build index:
-    │    idx = (kbd_col_lsb0_idx * 8) + (kbd_lsb0_idx) + kbd_keymap_base  ; base 0 or $40
-    │    Y   = idx
-    │
-    ├─ Lookup:
-    │    A = kbd_keymap[Y]
-    │    IF (A == $5F) THEN → NO_RELEVANT_INPUT
-    │
-    ├─ De-duplicate:
-    │    IF (A == kbd_last_keycode) THEN → RETURN
-    │    kbd_last_keycode = A
-    │
-    ├─ Shift handling:
-    │    IF (A == KBD_KEY_LSHIFT) THEN
-    │        kbd_keymap_base=$40; col_mask=%1000_0000; row_mask=%0000_0010; RETURN
-    │    IF (A == KBD_KEY_RSHIFT) THEN
-    │        kbd_keymap_base=$40; col_mask=%0001_0000; row_mask=%0100_0000; RETURN
-    │
-    └─ Publish:
-         kbd_keycode = A
-         kbd_key_ready    = #$01
-         RETURN
- 
- 
-  NO_RELEVANT_INPUT
-  -----------------
-    kbd_keymap_base       = #$00
-    kbd_last_keycode= #$FF
-    RETURN
- 
- 
-  [kbd_apply_shift_masks]
-  --------------------------
-    IF (kbd_keymap_base bit6 == 0) THEN RETURN
-    X = kbd_col_mask
-    Y = kbd_row_mask
-    IF (kbd_col_zeros_m1 > 0) THEN kbd_cols |= X   ; mask columns when multiple active
-    IF (kbd_row_zeros_m1 > 0) THEN kbd_rows   |= Y   ; mask rows    when multiple active
-    RETURN (to re-count step in KEYBOARD_SCAN)
- 
- 
-  [joy_latch]
-  ---------------
-    DDRA=$FF; PRA=$FF     ; release matrix (drive A high)
-    DDRB=$00               ; Port B inputs
-    raw = PRB
-    joy_state = raw
-    mask = raw & $1F
-    Z = (mask == $1F)      ; Z=1 idle, Z=0 any pressed
-    RETURN
- 
- 
-  [kbd_key_read]
-  -------------
-    IF (kbd_key_ready == 0) THEN RETURN
-    kbd_key_ready = 0
-    A = kbd_keycode
-    RETURN
- */
+procedure kbd_scan(savedTaskIdx):
+    // Initialize cached snapshots to "no activity" (all lines released)
+    keyboardColumnsSnapshot = ALL_LINES_IDLE      // equivalent to $FF
+    keyboardRowsSnapshot    = ALL_LINES_IDLE      // equivalent to $FF
+
+    // Optionally prime the delay counter
+    if savedTaskIdx != 0:
+        keyboardDelay = INITIAL_KEYBOARD_DELAY    // 16-bit value
+
+    // 1) Poll joystick first (priority)
+    joystickIsIdle = joy_latch()   // returns true if no joystick direction/fire is active
+
+    if not joystickIsIdle:
+        // Joystick is active → refresh delay and exit early
+        keyboardDelay = INITIAL_KEYBOARD_DELAY
+        return
+
+    // 2) If delay is non-zero, decrement it and maybe synthesize a SPACE key
+    if keyboardDelay != 0:
+        keyboardDelay = keyboardDelay - 1
+
+        if keyboardDelay == 0:
+            // Special behavior: as soon as the delay reaches zero, pretend
+            // the SPACE key was pressed and go straight to "publish"
+            candidateKey = KEY_SPACE
+            goto PUBLISH_GATE
+        else:
+            // Delay not yet expired; nothing more to do this call
+            return
+
+    // 3) Delay has expired and joystick is idle → probe keyboard matrix
+
+    // 3a) Quick probe: check if *any* key/line is active
+    anyLineActive = quickKeyboardProbe()
+    if not anyLineActive:
+        // No relevant input; reset some state and exit
+        clearShiftMapping()
+        invalidateLastKey()
+        return
+
+    // 3b) Precise snapshots: capture columns and rows
+    keyboardColumnsSnapshot = captureColumnSnapshot()
+    keyboardRowsSnapshot    = captureRowSnapshot()
+
+    // 3c) Count zero bits in columns (active lines) and remember least-significant one
+    (colZeroCountMinus1, colLeastSignificantIndex) =
+        countZeroBits(keyboardColumnsSnapshot)
+
+    if noZeros(colZeroCountMinus1):
+        // No active columns → treat as no input
+        clearShiftMapping()
+        invalidateLastKey()
+        return
+
+    // Save column count and index
+    columnActiveCountMinus1 = colZeroCountMinus1
+    columnIndexLSB          = colLeastSignificantIndex
+
+    // 3d) Count zeros for rows
+    (rowZeroCountMinus1, rowLeastSignificantIndex) =
+        countZeroBits(keyboardRowsSnapshot)
+
+    if noZeros(rowZeroCountMinus1):
+        // No active rows → treat as no input
+        clearShiftMapping()
+        invalidateLastKey()
+        return
+
+    rowActiveCountMinus1 = rowZeroCountMinus1
+    rowIndexLSB          = rowLeastSignificantIndex
+
+    // 3e) If either side has multiple active lines, we may need to apply
+    // shift-aware masks to suppress ghosting
+    if (rowActiveCountMinus1 > 0) or (columnActiveCountMinus1 > 0):
+        applyShiftMasksIfNeeded()   // calls kbd_apply_shift_masks, then re-counts bits
+        // After this call, we conceptually re-execute the "count bits" phase
+        // and end up again with:
+        //   columnIndexLSB, rowIndexLSB, columnActiveCountMinus1, rowActiveCountMinus1
+
+    // 3f) Build matrix index and look up key
+    matrixIndex = (columnIndexLSB * 8) + rowIndexLSB + keymapBaseOffset
+    candidateKey = keymap[matrixIndex]
+
+    // Ignore "unused" entries
+    if candidateKey == KEY_IGNORED:
+        clearShiftMapping()
+        invalidateLastKey()
+        return
+
+    // 3g) De-duplicate: only publish when key changes
+    if candidateKey == lastKeycode:
+        // No new key
+        return
+    lastKeycode = candidateKey
+
+    // 3h) Shift handling: if we just detected a Shift key,
+    // enable shifted base and masks and exit (no key published yet)
+    if candidateKey == KEY_LSHIFT:
+        keymapBaseOffset = SHIFT_BASE_OFFSET
+        columnMask       = LSHIFT_COLUMN_MASK
+        rowMask          = LSHIFT_ROW_MASK
+        return
+
+    if candidateKey == KEY_RSHIFT:
+        keymapBaseOffset = SHIFT_BASE_OFFSET
+        columnMask       = RSHIFT_COLUMN_MASK
+        rowMask          = RSHIFT_ROW_MASK
+        return
+
+    // 3i) Normal publish path
+PUBLISH_GATE:
+    if candidateKey == 0:
+        // A=0 → nothing to publish
+        return
+
+    keycode   = candidateKey
+    keyReady  = TRUE
+    return
+
+procedure applyShiftMasksIfNeeded():
+    // If shifted mapping is not active (bit6 of keymapBaseOffset is clear),
+    // skip adjustments and force an exit from the scan.
+    if not shiftMappingEnabled(keymapBaseOffset):
+        clearShiftMapping()
+        return
+
+    // Load precomputed masks set by the Shift key handlers
+    columnAdjustmentMask = columnMask
+    rowAdjustmentMask    = rowMask
+
+    // Adjust columns only if there are multiple active columns
+    if columnActiveCountMinus1 > 0:
+        // Force masked columns to "inactive" (logic-high) so they no longer count
+        keyboardColumnsSnapshot =
+            keyboardColumnsSnapshot OR columnAdjustmentMask
+
+    // Adjust rows only if there are multiple active rows
+    if rowActiveCountMinus1 > 0:
+        keyboardRowsSnapshot =
+            keyboardRowsSnapshot OR rowAdjustmentMask
+
+    // After masking, we recompute zero counts and least-significant indices
+    (columnActiveCountMinus1, columnIndexLSB) =
+        countZeroBits(keyboardColumnsSnapshot)
+
+    (rowActiveCountMinus1, rowIndexLSB) =
+        countZeroBits(keyboardRowsSnapshot)
+
+    // Control then flows back into the “re-counted” logic in kbd_scan
+    return
+
+function countZeroBits(byteValue):
+    // Scan bits from most significant to least significant.
+    // We track how many bits are zero, and we remember the index
+    // of the least-significant zero bit we see.
+
+    zeroCount     = 0
+    leastZeroIndex = NONE   // will end up 0..7 if any zero is found
+
+    // Bits are indexed [7..0], 7=MSB, 0=LSB
+    for bitIndex from 7 down to 0:
+        if bitAt(byteValue, bitIndex) == 0:
+            zeroCount += 1
+            // Because we scan MSB-first but overwrite the index every time,
+            // the final stored index will be the least-significant zero bit.
+            leastZeroIndex = bitIndex
+
+    if zeroCount == 0:
+        // Encoded as A=$FF in the assembly
+        return (NO_ZEROS_SENTINEL, leastZeroIndex)
+    else:
+        // Return (#zeros − 1), mirroring the original convention
+        return (zeroCount - 1, leastZeroIndex)
+
+function noZeros(countMinus1):
+    return (countMinus1 == NO_ZEROS_SENTINEL)
+
+
+function joy_latch() -> bool:
+    // 1) Configure ports:
+    //    - Port A as outputs, all lines driven HIGH (release matrix)
+    //    - Port B as inputs
+    setPortADirection(OUTPUT_ALL)
+    writePortA(ALL_HIGH)
+    setPortBDirection(INPUT_ALL)
+
+    // 2) Read joystick raw state from Port B
+    rawState = readPortB()
+    joy_state = rawState            // stored globally
+
+    // 3) Mask out joystick bits (directions + fire)
+    masked = rawState AND JOYSTICK_MASK   // bits 0..4 only
+
+    // 4) Interpret active-low:
+    //    - masked == all-ones → no joystick switch is pressed
+    //    - any bit 0          → at least one switch pressed
+    if masked == JOYSTICK_MASK:
+        joystickIsIdle = true
+    else:
+        joystickIsIdle = false
+
+    return joystickIsIdle
+
+
+function kbd_key_read() -> byte:
+    if keyReady == FALSE:
+        // No key pending; return without changing state
+        return NO_KEY_AVAILABLE     // (caller can ignore this or check keyReady directly)
+
+    // A key is waiting:
+    keyReady = FALSE
+    return keycode
+
+
+function detect_fire_press_edge() -> byte:
+    // FIRE bit is active-low:
+    //   1 = released, 0 = pressed
+
+    // 1) Extract current FIRE bit from global joystick state
+    currentFireBit = joy_state AND FIRE_BIT_MASK    // usually mask = $10
+
+    // 2) Edge detection: detect transition from released (1) to pressed (0).
+    //
+    // The original code uses:
+    //   A = (current XOR previous) AND previous
+    //
+    // Truth table (for FIRE bit):
+    //   prev=1, curr=1 → no change → result=0
+    //   prev=1, curr=0 → falling edge → result=$10
+    //   prev=0, curr=1 → rising edge → result=0
+    //   prev=0, curr=0 → no change → result=0
+    //
+    // We preserve this behavior conceptually:
+    fireChanged     = (currentFireBit != prev_fire_bit)
+    wasReleasedLast = (prev_fire_bit != 0)          // i.e., bit was 1
+    isPressedNow    = (currentFireBit == 0)
+
+    if fireChanged and wasReleasedLast and isPressedNow:
+        result = FIRE_BIT_MASK      // $10: newly pressed this frame
+    else:
+        result = 0                  // no new press
+
+    // 3) Latch current FIRE bit for next frame’s comparison
+    prev_fire_bit = currentFireBit
+
+    // result is returned in A in the original; here we just return it
+    return result
+
+*/
