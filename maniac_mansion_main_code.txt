@@ -155,21 +155,21 @@ BLACK_COLOR = #$00
 ;=========================
 ;Verbs
 ;=========================
-OPEN_VERB = #$01
-CLOSE_VERB = #$02
-GIVE_VERB = #$03
-TURN_ON_VERB = #$04
-TURN_OFF_VERB = #$05
-FIX_VERB = #$06
-NEW_KID_VERB = #$07
-UNLOCK_VERB = #$08
-PUSH_VERB = #$09
-PULL_VERB = #$0A
-USE_VERB = #$0B
+VERB_OPEN = #$01
+VERB_CLOSE = #$02
+VERB_GIVE = #$03
+VERB_TURN_ON = #$04
+VERB_TURN_OFF = #$05
+VERB_FIX = #$06
+VERB_NEW_KID = #$07
+VERB_UNLOCK = #$08
+VERB_PUSH = #$09
+VERB_PULL = #$0A
+VERB_USE = #$0B
 READ_VERB = #$0C
-WALK_TO_VERB = #$0D
-PICK_UP_VERB = #$0E
-WHAT_IS_VERB = #$0F
+VERB_WALK_TO = #$0D
+VERB_PICK_UP = #$0E
+VERB_WHAT_IS = #$0F
 
 ;=========================
 ;Prepositions
@@ -2535,7 +2535,7 @@ limit_verbs:
 ;Kid is dead or in a suit, only "new kid" is allowed
 ;Is the verb "new kid"? If so, continue
 .C:07a2  AD 1F FE    LDA current_verb_id
-.C:07a5  C9 07       CMP NEW_KID_VERB
+.C:07a5  C9 07       CMP VERB_NEW_KID
 .C:07a7  F0 05       BEQ check_control_mode
 ;Otherwise clear the verb
 .C:07a9  A9 00       LDA #$00
@@ -2559,7 +2559,7 @@ check_keypad_mode:
 ;Case #01 - keypad mode (keypads and start screen)
 ;-------------------------------------------
 ;Force the verb to "Push" (as you can only push buttons)
-.C:07bc  A9 09       LDA PUSH_VERB
+.C:07bc  A9 09       LDA VERB_PUSH
 .C:07be  8D 1F FE    STA current_verb_id
 ;-------------------------------------------
 ;Case #02 and #03 (normal play)
@@ -2567,7 +2567,7 @@ check_keypad_mode:
 normal_mode:
 ;Is the verb "what is"?
 .C:07c1  AD 1F FE    LDA current_verb_id
-.C:07c4  C9 0F       CMP WHAT_IS_VERB
+.C:07c4  C9 0F       CMP VERB_WHAT_IS
 .C:07c6  D0 05       BNE check_trigger_sentence
 ;Verb "What is" - force a trigger of a sentence
 .C:07c8  A9 01       LDA #$01
@@ -2588,7 +2588,7 @@ sentence_forced_triggered:
 .C:07d9  8D 8E FE    STA forced_sentence_trigger
 ;If the verb is "Give", handle it separately (as it requires an actor as indirect object)
 .C:07dc  AD 1F FE    LDA current_verb_id
-.C:07df  C9 03       CMP GIVE_VERB
+.C:07df  C9 03       CMP VERB_GIVE
 ;Otherwise, handle all other verbs normally
 .C:07e1  D0 0B       BNE find_object_under_cursor
 ;-------------------------------------------
@@ -2619,7 +2619,7 @@ check_if_object_found:
 ;Is the verb "walk to"? 
 ;It doesn't strictly require a direct object, it can simply use the cursor's location
 .C:07f5  AD 1F FE    LDA current_verb_id
-.C:07f8  C9 0D       CMP WALK_TO_VERB
+.C:07f8  C9 0D       CMP VERB_WALK_TO
 .C:07fa  D0 0B       BNE finalize_processing_3
 ;-------------------------------------------
 ;Verb "Walk to"
@@ -2702,7 +2702,7 @@ finalize_processing:
 .C:0861  8D 49 FE    STA sentence_bar_needs_refresh
 ;Is the verb "walk to"?
 .C:0864  AD 1F FE    LDA current_verb_id
-.C:0867  C9 0D       CMP WALK_TO_VERB
+.C:0867  C9 0D       CMP VERB_WALK_TO
 .C:0869  D0 09       BNE run_sentence_if_complete
 ;Verb is "Walk to"
 ;Clear destination entity
@@ -2742,7 +2742,7 @@ run_sentence_if_complete:
 .C:0884  4C F0 0A    JMP refresh_sentence_bar_trampoline	;This is a JMP refresh_sentence_bar
 check_new_kid_verb:
 ;Verb set - is it the "new kid" verb?
-.C:0887  C9 07       CMP NEW_KID_VERB
+.C:0887  C9 07       CMP VERB_NEW_KID
 .C:0889  D0 03       BNE check_walk_to_verb
 ;-----------------------
 ; "New kid" verb
@@ -2752,7 +2752,7 @@ check_new_kid_verb:
 ;-----------------------
 check_walk_to_verb:
 ;Is the verb "walk to"?
-.C:088e  C9 0D       CMP WALK_TO_VERB
+.C:088e  C9 0D       CMP VERB_WALK_TO
 .C:0890  D0 03       BNE check_direct_object
 ;-----------------------
 ; "Walk to" verb
@@ -2848,7 +2848,7 @@ print_sentence_bar_text:
 .C:08e2  8D 72 0E    STA sentence_bar_len_used
 ;Check if the verb is "New Kid"
 .C:08e5  AD 1F FE    LDA current_verb_id
-.C:08e8  C9 07       CMP NEW_KID_VERB		
+.C:08e8  C9 07       CMP VERB_NEW_KID		
 .C:08ea  D0 03       BNE is_verb_empty
 ;----------------------------
 ;"New kid" verb - print the kids' names on the sentence bar and exit
@@ -2858,7 +2858,7 @@ is_verb_empty:
 .C:08ef  C9 00       CMP #$00
 .C:08f1  D0 05       BNE append_verb
 ;Verb is empty - set "walk to" as default
-.C:08f3  A9 0D       LDA WALK_TO_VERB
+.C:08f3  A9 0D       LDA VERB_WALK_TO
 .C:08f5  8D 1F FE    STA current_verb_id
 append_verb:
 ;Append the verb to the sentence text
@@ -2908,7 +2908,7 @@ check_preposition:
 ;----------------------------
 ;Check if the verb is "Give", as it's a special case
 .C:093f  AD 1F FE    LDA current_verb_id
-.C:0942  C9 03       CMP GIVE_VERB		
+.C:0942  C9 03       CMP VERB_GIVE		
 .C:0944  D0 0F       BNE append_indirect_object
 ;----------------------------
 ;"Give" verb
@@ -3029,7 +3029,7 @@ select_kid:
 ;Save the selected kid index in the stack
 .C:09bb  48          PHA
 ;Reset the sentence back to "walk to"
-.C:09bc  A9 0D       LDA WALK_TO_VERB
+.C:09bc  A9 0D       LDA VERB_WALK_TO
 .C:09be  8D 1F FE    STA current_verb_id
 ;Refresh the sentence bar
 .C:09c1  A9 01       LDA #$01
@@ -3041,7 +3041,7 @@ select_kid:
 ;--------------------------------------
 ;Set verb to "walk to", refresh sentence again, and exit
 set_walk_and_exit:
-.C:09cd  A9 0D       LDA WALK_TO_VERB
+.C:09cd  A9 0D       LDA VERB_WALK_TO
 .C:09cf  8D 1F FE    STA current_verb_id
 .C:09d2  A9 01       LDA #$01
 .C:09d4  8D 49 FE    STA sentence_bar_needs_refresh
@@ -3329,7 +3329,7 @@ exit:
 
 select_preposition_for_verb:
 .C:0abd  AD 1F FE    LDA current_verb_id
-.C:0ac0  C9 0B       CMP USE_VERB		
+.C:0ac0  C9 0B       CMP VERB_USE		
 .C:0ac2  D0 13       BNE give_verb_check
 ;The "Use" verb varies the preposition depending on the object
 ;Fetch the object index
@@ -3349,7 +3349,7 @@ select_preposition_for_verb:
 .C:0ad6  60          RTS
 give_verb_check:
 ;Is it the "give" verb?
-.C:0ad7  C9 03       CMP GIVE_VERB	
+.C:0ad7  C9 03       CMP VERB_GIVE	
 .C:0ad9  D0 03       BNE check_preposition_with
 ;If so, use the "to" preposition
 .C:0adb  A9 04       LDA PREPOSITION_TO
@@ -3357,11 +3357,11 @@ give_verb_check:
 ;Does the verb use the preposition "with"?
 ;This includes "unlock", "fix" and "new kid"(?)
 check_preposition_with:
-.C:0ade  C9 07       CMP NEW_KID_VERB		
+.C:0ade  C9 07       CMP VERB_NEW_KID		
 .C:0ae0  F0 0B       BEQ preposition_with
-.C:0ae2  C9 08       CMP UNLOCK_VERB
+.C:0ae2  C9 08       CMP VERB_UNLOCK
 .C:0ae4  F0 07       BEQ preposition_with
-.C:0ae6  C9 06       CMP FIX_VERB	
+.C:0ae6  C9 06       CMP VERB_FIX	
 .C:0ae8  F0 03       BEQ preposition_with
 ;The verb doesn't use a preposition
 .C:0aea  A9 00       LDA PREPOSITION_NONE_NEEDED
@@ -3392,11 +3392,11 @@ dispatch_or_enqueue_action:
 .C:0afa  8D 17 FE    STA sentstk_top_idx
 ;If verb is "What is", return, as there's nothing else to do
 .C:0afd  AD 1F FE    LDA current_verb_id
-.C:0b00  C9 0F       CMP WHAT_IS_VERB
+.C:0b00  C9 0F       CMP VERB_WHAT_IS
 .C:0b02  D0 01       BNE is_verb_walk_to
 .C:0b04  60          RTS
 is_verb_walk_to:
-.C:0b05  C9 0D       CMP WALK_TO_VERB
+.C:0b05  C9 0D       CMP VERB_WALK_TO
 .C:0b07  D0 4D       BNE queue_sentence
 ;----------------------------------------------
 ;Verb is "Walk to"
@@ -3465,10 +3465,10 @@ queue_sentence:
 ;Reset sentence parts after queuing
 ;If verb is "Walk to", we don't need to reset anything already, just exit
 .C:0b80  AD 1F FE    LDA current_verb_id
-.C:0b83  C9 0D       CMP WALK_TO_VERB
+.C:0b83  C9 0D       CMP VERB_WALK_TO
 .C:0b85  F0 0F       BEQ exit
 ;Reset verb to "walk to", clear direct object and preposition
-.C:0b87  A9 0D       LDA WALK_TO_VERB
+.C:0b87  A9 0D       LDA VERB_WALK_TO
 .C:0b89  8D 1F FE    STA current_verb_id
 .C:0b8c  A9 00       LDA #$00
 .C:0b8e  8D 20 FE    STA direct_object_idx_lo
@@ -3956,7 +3956,7 @@ execute_verb_handler_for_object:
 .C:0ddf  D0 35       BNE check_read_verb
 ;We didn't - run the default handlers
 .C:0de1  AD 19 FE    LDA active_verb_id
-.C:0de4  C9 03       CMP GIVE_VERB
+.C:0de4  C9 03       CMP VERB_GIVE
 .C:0de6  D0 19       BNE check_walk_verb
 ;---------------------------------------
 ; "Give" verb processing
@@ -3981,7 +3981,7 @@ exit:
 ;---------------------------------------
 check_walk_verb:
 ;If verb is "walk to", exit
-.C:0e01  C9 0D       CMP WALK_TO_VERB
+.C:0e01  C9 0D       CMP VERB_WALK_TO
 .C:0e03  F0 10       BEQ exit_2
 run_verb_defaults_script:
 ;Copy verb to debugging variable
@@ -4147,7 +4147,7 @@ check_if_recipient:
 can_be_recipient:
 ;It might - see if we can get a script handling the "Pick Up" verb
 .C:0e96  20 05 0A    JSR resolve_object_resource
-.C:0e99  A9 0E       LDA PICK_UP_VERB
+.C:0e99  A9 0E       LDA VERB_PICK_UP
 .C:0e9b  20 4A 0E    JSR find_object_verb_handler_offset
 ;Is there any script?
 .C:0e9e  D0 05       BNE return_01
@@ -4260,7 +4260,7 @@ hangup_loop:
 ;---------------------------------------------
 queue_pickup:
 ;Queue the "pick up" sentence for the object
-.C:0f1a  A9 0E       LDA PICK_UP_VERB
+.C:0f1a  A9 0E       LDA VERB_PICK_UP
 .C:0f1c  9D 25 FE    STA queued_verb_ids,X
 .C:0f1f  A9 00       LDA #$00
 .C:0f21  9D 37 FE    STA queued_prep_ids,X

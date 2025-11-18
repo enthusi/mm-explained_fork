@@ -135,7 +135,7 @@ Helper scans and guards
 	has_pickup_script_for_sentence_part:
 
 		* Select DO or IO from the stacked entry at sentstk_top_idx. Reject actors.
-		  Resolve the object and check for a PICK_UP_VERB handler. Returns 1 if
+		  Resolve the object and check for a VERB_PICK_UP handler. Returns 1 if
 		  present.
 
 	is_sentence_object_owned_by_current_kid:
@@ -187,9 +187,9 @@ Typical traces
   │
   ├─· no verb ·───────────────▶ refresh_sentence_bar_trampoline
   │
-  ├─· NEW_KID_VERB ·──────────▶ handle_new_kid_verb
+  ├─· VERB_NEW_KID ·──────────▶ handle_new_kid_verb
   │
-  ├─· WALK_TO_VERB ·──────────▶ dispatch_or_push_action
+  ├─· VERB_WALK_TO ·──────────▶ dispatch_or_push_action
   │
   └─· other verbs ·
         │
@@ -217,7 +217,7 @@ Typical traces
 └─┬────────────────────────────┘
   │ reset stack bookkeeping
   │
-  ├─· WHAT_IS_VERB ·───────────▶ rts
+  ├─· VERB_WHAT_IS ·───────────▶ rts
   │
   ├─· WALK_TO + no DO ·────────▶ (bare walk)
   │       set active_costume from current_kid
@@ -314,7 +314,7 @@ Typical traces
 └─────────────────────────────────────────────┘
   Select DO or IO from stack top.
   Reject if object type is ACTOR.
-  resolve_object_resource → find handler for PICK_UP_VERB.
+  resolve_object_resource → find handler for VERB_PICK_UP.
   Return TRUE/FALSE.
 
 ┌─────────────────────────────────────────────┐
@@ -378,7 +378,7 @@ Typical traces
 
 .const GLOBAL_DEFAULTS_SCRIPT_ID  = $03    // Global “verb defaults” script identifier
 
-.const DEFAULT_VERB_WALK_TO       = WALK_TO_VERB    // Verb id for “Walk to” default case
+.const DEFAULT_VERB_WALK_TO       = VERB_WALK_TO    // Verb id for “Walk to” default case
 
 .const SECOND_KID_NAME_COLUMN     = $0B    // Column threshold for kid #2 selection in UI
 .const THIRD_KID_NAME_COLUMN      = $18    // Column threshold for kid #3 selection in UI
@@ -423,8 +423,8 @@ Description
 		  NEW_KID behavior by zeroing current_verb_id unless it is NEW_KID.
 	* Control-mode dispatch:
 		  • CUTSCENE → jump to run_sentence_if_complete.
-		  • KEYPAD   → force current_verb_id = PUSH_VERB, then fall through.
-		  • NORMAL   → if WHAT_IS_VERB, set forced_sentence_trigger.
+		  • KEYPAD   → force current_verb_id = VERB_PUSH, then fall through.
+		  • NORMAL   → if VERB_WHAT_IS, set forced_sentence_trigger.
 	* Forced trigger:
 		  • If forced_sentence_trigger == SET:
 			  – If verb == GIVE and a preposition exists, select an actor under the
@@ -480,7 +480,7 @@ enforce_verb_limits_if_incapacitated:
 		// Kid incapacitated - force-disable all verbs except “New Kid”
 		// New kid verb?
         lda     current_verb_id             
-        cmp     #NEW_KID_VERB               
+        cmp     #VERB_NEW_KID               
         beq     dispatch_by_control_mode    // If equal → allow verb, continue normal flow
 		
 		//All other verbs disallowed
@@ -505,7 +505,7 @@ handle_keypad_mode_or_fallthrough:
         bne     handle_normal_mode          		// If not keypad mode → handle normal mode next
 
         // Keypad control mode forces the “Push” verb regardless of cursor or UI state
-        lda     #PUSH_VERB                  		
+        lda     #VERB_PUSH                  		
         sta     current_verb_id             		
 
         // ------------------------------------------------------------
@@ -514,7 +514,7 @@ handle_keypad_mode_or_fallthrough:
 handle_normal_mode:                        
 		// Verb is 'What is?'
         lda     current_verb_id             	
-        cmp     #WHAT_IS_VERB               	
+        cmp     #VERB_WHAT_IS               	
         bne     handle_click_trigger_or_defer 	// If not, skip forced-trigger setup
 
 		//What-is verb - force a sentence trigger
@@ -539,7 +539,7 @@ on_forced_trigger:
 
 		//Verb is "Give"?
         lda     current_verb_id             
-        cmp     #GIVE_VERB                  
+        cmp     #VERB_GIVE                  
         bne     pick_object_under_cursor
 
         // GIVE path: IO must be an actor when a preposition is present
@@ -563,7 +563,7 @@ branch_on_cursor_hit:
         // ------------------------------------------------------------
 		// Verb is "Walk to"?
         lda     current_verb_id             
-        cmp     #WALK_TO_VERB               
+        cmp     #VERB_WALK_TO               
         bne     finalize_after_walkto_nohit // If not, proceed to general finalization
 
         // Bare “Walk to” with no hit → clear complements
@@ -655,7 +655,7 @@ finalize_and_maybe_execute:           			// Finalize selections, then run comple
 
 		// Verb is "Walk to"?
         lda     current_verb_id        			
-        cmp     #WALK_TO_VERB
+        cmp     #VERB_WALK_TO
         bne     run_sentence_if_complete 		// Not “Walk to” → proceed to completeness checks
 
 		// Clear any active destination entity marker
@@ -708,8 +708,8 @@ Description
 	* Always refresh the sentence bar first so the UI stays in sync.
 	* If a one-shot sentence rebuild was requested, clear the flag and continue.
 	* If no verb is selected, refresh again and exit.
-	* If verb = NEW_KID_VERB, delegate to handle_new_kid_verb.
-	* If verb = WALK_TO_VERB, execute immediately (no DO required) via
+	* If verb = VERB_NEW_KID, delegate to handle_new_kid_verb.
+	* If verb = VERB_WALK_TO, execute immediately (no DO required) via
 	  dispatch_or_push_action.
 	* For all other verbs:
 		  • Require a direct object; if missing, refresh and exit.
@@ -759,7 +759,7 @@ check_verb_validity:
         // New kid → jump to dedicated handler. Otherwise continue flow.
         // ------------------------------------------------------------
 dispatch_new_kid_or_next:
-        cmp     #NEW_KID_VERB                    
+        cmp     #VERB_NEW_KID                    
         bne     dispatch_walkto_or_need_do       // not NEW_KID → check WALK_TO / DO path
         jmp     handle_new_kid_verb              // NEW_KID → delegate to handler
 
@@ -769,7 +769,7 @@ dispatch_walkto_or_need_do:
 		//
         // Walk to? Execute immediately.
         // ------------------------------------------------------------
-        cmp     #WALK_TO_VERB                    
+        cmp     #VERB_WALK_TO                    
         bne     require_direct_object_or_refresh // not WALK_TO → must require a DO or refresh
         jmp     dispatch_or_push_action          // WALK_TO → execute without objects
 
@@ -852,13 +852,13 @@ Global Inputs
 	cursor_x_pos_quarter_relative    Cursor X on the sentence bar (quarter-pixel units)
 
 Global Outputs
-	current_verb_id                  Set to WALK_TO_VERB
+	current_verb_id                  Set to VERB_WALK_TO
 	sentence_bar_needs_refresh       Set to TRUE
 	(current_kid_idx)                May change via switch_active_kid_if_different
 
 Description
 	* If control_mode ≠ CONTROL_MODE_NORMAL:
-		  • Normalize UI: set current_verb_id = WALK_TO_VERB and request a bar refresh.
+		  • Normalize UI: set current_verb_id = VERB_WALK_TO and request a bar refresh.
 		  • Return.
 	* Otherwise:
 		  • Determine kid by cursor X:
@@ -913,7 +913,7 @@ second_kid_selected:
 select_kid:
         pha                                      // preserve selected kid index across UI refresh
 		
-        lda     #WALK_TO_VERB
+        lda     #VERB_WALK_TO
         sta     current_verb_id                  // normalize verb to "Walk to" before switching
         lda     #TRUE
         sta     sentence_bar_needs_refresh       // request sentence-bar redraw
@@ -929,7 +929,7 @@ set_walk_and_exit:
         // Ensures parser leaves NEW KID flow in a standard "Walk to" state
         // and refreshes the UI to reflect that.
         // ------------------------------------------------------------
-        lda     #WALK_TO_VERB                    // restore default verb
+        lda     #VERB_WALK_TO                    // restore default verb
         sta     current_verb_id                  // update parser verb state
         lda     #TRUE
         sta     sentence_bar_needs_refresh       // flag UI for redraw
@@ -1237,7 +1237,7 @@ Global Outputs
 	stacked_do_id_lo/hi[x]            written on push
 	stacked_prep_ids[x]               written on push
 	stacked_io_id_lo/hi[x]            written on push
-	current_verb_id                   reset to WALK_TO_VERB after pushing non-walk verbs
+	current_verb_id                   reset to VERB_WALK_TO after pushing non-walk verbs
 	direct_object_idx_lo              cleared after pushing non-walk verbs
 	preposition                       cleared after pushing non-walk verbs
 	destination_entity                cleared before exit
@@ -1248,7 +1248,7 @@ Global Outputs
 
 Description
 	* Reset sentence-stack bookkeeping: set sentstk_free_slots to the maximum
-	  and sentstk_top_idx to “empty”. If the verb is WHAT_IS_VERB, return.
+	  and sentstk_top_idx to “empty”. If the verb is VERB_WHAT_IS, return.
 
 	* If the verb is WALK_TO and no direct object is selected, treat it as a
 	  bare walk:
@@ -1262,7 +1262,7 @@ Description
 		  • Increment sentstk_top_idx and write verb, DO, prep, IO into the
 		  stacked_* arrays at index X.
 		  • If the verb was not WALK_TO, reset UI defaults by setting
-		  current_verb_id = WALK_TO_VERB and clearing DO and preposition.
+		  current_verb_id = VERB_WALK_TO and clearing DO and preposition.
 		  • Clear destination_entity and return.
 
 Notes
@@ -1290,12 +1290,12 @@ dispatch_or_push_action:
         // ------------------------------------------------------------
         // Early exit for “What is” verb
 		//
-        // If verb is WHAT_IS_VERB, no action is performed and the routine returns immediately. 
+        // If verb is VERB_WHAT_IS, no action is performed and the routine returns immediately. 
 		// Otherwise, control falls through to walk-to handling.
         // ------------------------------------------------------------
 		// Is verb "What is"?
         lda     current_verb_id
-        cmp     #WHAT_IS_VERB                   
+        cmp     #VERB_WHAT_IS                   
         bne     handle_walk_to                  // Not "What is" → continue handling
 		
 		// "What is" has no action → return
@@ -1310,7 +1310,7 @@ dispatch_or_push_action:
         // bare walk-to proceeds to immediate movement.
         // ------------------------------------------------------------
 handle_walk_to:
-        cmp     #WALK_TO_VERB                   // Z=1 if current verb is "Walk to"
+        cmp     #VERB_WALK_TO                   // Z=1 if current verb is "Walk to"
         bne     push_sentence                	// Different verb → push full sentence
 
         lda     direct_object_idx_lo            // Test DO presence using low byte
@@ -1424,20 +1424,20 @@ push_sentence:
         // ------------------------------------------------------------
         // Post-stack verb reset gate
 		//
-        // If current_verb_id == WALK_TO_VERB, skip UI reset and exit;
+        // If current_verb_id == VERB_WALK_TO, skip UI reset and exit;
         // otherwise fall through to reset defaults.
         // ------------------------------------------------------------
         lda     current_verb_id                 // Reload current verb for post-stack reset test
-        cmp     #WALK_TO_VERB                  	// Z=1 if it was already "Walk to"
+        cmp     #VERB_WALK_TO                  	// Z=1 if it was already "Walk to"
         beq     finalize_and_exit              	// If so, skip UI verb reset and exit
 
         // ------------------------------------------------------------
         // Reset UI verb defaults after pushing
 		//
-        // Revert current_verb_id to WALK_TO_VERB and clear DO/preposition
+        // Revert current_verb_id to VERB_WALK_TO and clear DO/preposition
         // so the input bar idles on a neutral “Walk to” state.
         // ------------------------------------------------------------
-        lda     #WALK_TO_VERB                   // Default UI verb after pushing
+        lda     #VERB_WALK_TO                   // Default UI verb after pushing
         sta     current_verb_id                 // Reset current verb to "Walk to"
 
         lda     #$00                            
@@ -1535,7 +1535,7 @@ execute_verb_handler_for_object:
 		
 		// Check if verb is "Give"
         lda     active_verb_id                  
-        cmp     #GIVE_VERB                      
+        cmp     #VERB_GIVE                      
         bne     guard_walk_to_early_exit        // if not "Give" → skip to walk-to check
 
         // ------------------------------------------------------------
@@ -1560,7 +1560,7 @@ guard_walk_to_early_exit:
         // ------------------------------------------------------------
         // If verb is "Walk to", exit
         // ------------------------------------------------------------
-        cmp     #WALK_TO_VERB                   
+        cmp     #VERB_WALK_TO                   
         beq     return_after_walk_to            
 
 launch_global_defaults_script:
@@ -1652,7 +1652,7 @@ Description
 	  VERB_TABLE_START_OFS: each entry is {verb_id, handler_ofs}.
 	* Loop over entries:
 	  • If verb_id == #$00 → end of table:
-		  – If requested verb == WALK_TO_VERB, return #$0D.
+		  – If requested verb == VERB_WALK_TO, return #$0D.
 		  – Else return NO_HANDLER_RET.
 	  • If verb_id == DEFAULT_VERB → match any verb: return its handler_ofs.
 	  • If verb_id == requested verb → return its handler_ofs.
@@ -1692,15 +1692,15 @@ scan_next_verb_entry:
         // ------------------------------------------------------------
         // Reached end of handlers list
 		//
-        // Return #$0D if WALK_TO_VERB, else #$00
+        // Return #$0D if VERB_WALK_TO, else #$00
         // ------------------------------------------------------------
         lda     verb_index                  // A := requested verb id
-        cmp     #WALK_TO_VERB               // if requested verb is WALK TO, branch with A unchanged (WALK_TO_VERB)
+        cmp     #VERB_WALK_TO               // if requested verb is WALK TO, branch with A unchanged (VERB_WALK_TO)
         beq     return_no_handler           // else continue
 		
         lda     #NO_HANDLER_RET             // A := $00 (no handler sentinel)
 return_no_handler:
-        rts                                 // return; if WALK TO path taken, A == WALK_TO_VERB
+        rts                                 // return; if WALK TO path taken, A == VERB_WALK_TO
 
 evaluate_default_handler:
         // ------------------------------------------------------------
@@ -1750,7 +1750,7 @@ Description
 	* Read the current stack entry (sentstk_top_idx) and select DO or IO per .A.
 	* If the object type equals OBJ_TYPE_ACTOR, return FALSE (actors aren’t pickable).
 	* Otherwise resolve the object resource, then scan its handler table for
-	  PICK_UP_VERB using find_object_verb_handler_offset.
+	  VERB_PICK_UP using find_object_verb_handler_offset.
 	* Return TRUE if a nonzero handler offset is found; else return FALSE.
 	* X and Y are preserved via temp_x_2 and temp_y_2.
 ================================================================================
@@ -1802,7 +1802,7 @@ resolve_and_check_pickup_handler:
         // Resolve object and query Pick Up handler
         // ------------------------------------------------------------
         jsr     resolve_object_resource         // set object context using A:hi, X:lo id
-        lda     #PICK_UP_VERB                    // A := verb id for "Pick Up"
+        lda     #VERB_PICK_UP                    // A := verb id for "Pick Up"
         jsr     find_object_verb_handler_offset // A := handler offset (0 if none)
 
         // Nonzero → script exists
@@ -1936,7 +1936,7 @@ Summary
 	Push a new “Pick Up <object>” sentence onto the sentence stack for either the
 	direct object (DO) or the indirect object (IO) selected in the current stack
 	entry. Copies the chosen object ID, clears the preposition, and writes the
-	PICK_UP_VERB into the stacked verb list.
+	VERB_PICK_UP into the stacked verb list.
 
 Arguments
 	.A      Complement selector:
@@ -1953,7 +1953,7 @@ Global Inputs
 
 Global Outputs
 	sentstk_top_idx         Incremented on successful push
-	stacked_verb_ids[x]     Written with PICK_UP_VERB
+	stacked_verb_ids[x]     Written with VERB_PICK_UP
 	stacked_prep_ids[x]     Cleared to "no preposition"
 	stacked_do_id_lo/hi[x]  Written with selected object id
 
@@ -1964,7 +1964,7 @@ Description
 	* Increment sentstk_top_idx and range-check against SENT_STACK_MAX_TOKENS.
 		  • On overflow: write debug_error_code (#$2D), map I/O (cpu_port ← MAP_IO_IN),
 		  set vic_border_color_reg and loop forever.
-		  • Otherwise: write PICK_UP_VERB, clear stacked_prep_ids, and store the
+		  • Otherwise: write VERB_PICK_UP, clear stacked_prep_ids, and store the
 		  object id into stacked_do_id_lo/hi at the new top.
 	* Restore X and return.
 
@@ -2030,7 +2030,7 @@ push_pickup_obj:
         // Push a new “Pick Up” sentence for the selected object
         // ------------------------------------------------------------
         // push "Pick up" verb
-		lda     #PICK_UP_VERB                    
+		lda     #VERB_PICK_UP                    
         sta     stacked_verb_ids,x              
 		
 		// clear preposition for this entry
@@ -2109,14 +2109,14 @@ commit_kid_change:
 ================================================================================
 Summary
 	Reset the verb/sentence UI to a known baseline and clear any pending
-	command. Set default verb to WALK_TO_VERB and mark the UI for redraw.
+	command. Set default verb to VERB_WALK_TO and mark the UI for redraw.
 
 Global Outputs
 	destination_entity             ← ENTITY_NONE
 	sentence_bar_needs_refresh     ← TRUE
 	sentstk_free_slots   		   ← SENT_STACK_MAX_TOKENS
 	sentstk_top_idx           	   ← SENT_STACK_EMPTY_IDX
-	current_verb_id                ← WALK_TO_VERB
+	current_verb_id                ← VERB_WALK_TO
 	direct_object_idx_lo           ← $00
 	direct_object_idx_hi           ← $00
 	preposition                    ← $00
@@ -2149,7 +2149,7 @@ init_sentence_ui_and_stack:
         sta     sentstk_top_idx                // mark stack as empty
 
 		//Set default verb
-        lda     #WALK_TO_VERB                  
+        lda     #VERB_WALK_TO                  
         sta     current_verb_id                // set current verb to WALK TO
 
 		//Clear DO, IO and preposition

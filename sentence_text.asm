@@ -33,7 +33,6 @@
 ================================================================================
   refresh_sentence_bar
 ================================================================================
-
 Summary
 	Conditionally rebuild the sentence bar. Proceeds only if the refresh flag
 	is set and the control mode is neither CUTSCENE nor KEYPAD. Clears the
@@ -51,7 +50,7 @@ Description
 	• Test sentence_bar_needs_refresh. If zero, return immediately.
 	• Clear sentence_bar_needs_refresh.
 	• Gate by control_mode:
-		– control_mode == KEYPAD_CONTROL_MODE → return.
+		– control_mode == CONTROL_MODE_KEYPAD → return.
 		– control_mode <= CUTSCENE → return.
 		– control_mode ≥ first normal mode → jump build_sentence_bar_text.
 ================================================================================
@@ -78,7 +77,7 @@ gate_by_control_mode:
         lda     #$00                           // A := 0
         sta     sentence_bar_needs_refresh      // clear refresh flag
         lda     control_mode                   // A := control mode
-        cmp     #KEYPAD_CONTROL_MODE           // compare with keypad mode
+        cmp     #CONTROL_MODE_KEYPAD           // compare with keypad mode
         beq     return_no_refresh              // keypad → exit
         bcs     build_sentence_bar_text        // > keypad (i.e., >$01) → build
 
@@ -98,7 +97,7 @@ build_sentence_bar_text:
         // If so, directly print kid names and exit routine
         // ------------------------------------------------------------
         lda     current_verb_id                      // load currently selected verb id
-        cmp     #NEW_KID_VERB                     // compare against "NEW KID" verb id
+        cmp     #VERB_NEW_KID                     // compare against "NEW KID" verb id
         bne     ensure_default_verb               // not equal → continue with regular sentence build
         jmp     write_kid_names_to_sentence_bar   // equal → delegate to kid-name writer and return
 
@@ -108,7 +107,7 @@ ensure_default_verb:
         // ------------------------------------------------------------
         cmp     #$00                              // check if no verb currently selected
         bne     append_verb                       // if not zero → a verb already exists, skip default
-        lda     #WALK_TO_VERB                     // load default verb id ("WALK TO")
+        lda     #VERB_WALK_TO                     // load default verb id ("WALK TO")
         sta     current_verb_id                      // store it as the active verb
 
 append_verb:
@@ -163,7 +162,7 @@ append_preposition_if_any:
         // "Give" verb special case: validate indirect object type
         // ------------------------------------------------------------
         lda     current_verb_id                  // A := current verb id
-        cmp     #GIVE_VERB                    // GIVE verb?
+        cmp     #VERB_GIVE                    // GIVE verb?
         bne     append_indirect_if_present    // no → skip validation
 
         lda     indirect_object_idx_hi        // A := indirect object's hi-id
@@ -762,7 +761,7 @@ select_preposition_for_verb:
 		// GIVE → "to". NEW_KID/UNLOCK/FIX → "with". Otherwise none.
 		// ------------------------------------------------------------
 		lda     current_verb_id
-		cmp     #USE_VERB
+		cmp     #VERB_USE
 		bne     verb_is_give
 
 
@@ -790,7 +789,7 @@ verb_is_give:
 		// ------------------------------------------------------------
 		// GIVE → "to"
 		// ------------------------------------------------------------
-		cmp     #GIVE_VERB
+		cmp     #VERB_GIVE
 		bne     verbs_using_with_prep
 		lda     #PREPOSITION_TO
 		rts
@@ -799,11 +798,11 @@ verbs_using_with_prep:
 		// ------------------------------------------------------------
 		// NEW_KID/UNLOCK/FIX → "with"; else no preposition
 		// ------------------------------------------------------------
-		cmp     #NEW_KID_VERB
+		cmp     #VERB_NEW_KID
 		beq     return_with_prep
-		cmp     #UNLOCK_VERB
+		cmp     #VERB_UNLOCK
 		beq     return_with_prep
-		cmp     #FIX_VERB
+		cmp     #VERB_FIX
 		beq     return_with_prep
 
 		// ------------------------------------------------------------

@@ -954,7 +954,7 @@ Global Outputs
 	 sentstk_free_slots         set to SENT_STACK_MAX_TOKENS
 	 std_msg_countdown          set to STD_MSG_DEFAULT_TICKS (16-bit)
 	 text_delay_factor          set to TEXT_DELAY_DEFAULT
-	 current_verb_id            set to WALK_TO_VERB
+	 current_verb_id            set to VERB_WALK_TO
 	 sentence_bar_needs_refresh set to TRUE
 	 global_lights_state        set to LIGHTS_FLASHLIGHT_ONLY
 	 active_side_id             set to GAME_DISK_ID_SIDE2
@@ -1005,7 +1005,7 @@ init_game_engine:
         // ------------------------------------------------------------
         // Set current verb to "Walk to"
         // ------------------------------------------------------------
-        lda     #WALK_TO_VERB
+        lda     #VERB_WALK_TO
         sta     current_verb_id
 
         // ------------------------------------------------------------
