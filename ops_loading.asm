@@ -72,8 +72,6 @@ Shared behavior
 #import "ops_primitives.asm"
 #import "room_loader.asm"
 
-.label obj_idx_lo = $15      // Low byte of object index (used in room/object lookup routines)
-.label obj_idx_hi = $16      // High byte of object index (used for 16-bit object identifiers)
 .label room_idx   = $d0      // Zero-page temp storage for current or target room index
 
 /*
