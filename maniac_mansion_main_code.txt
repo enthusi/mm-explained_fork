@@ -2842,7 +2842,7 @@ word_to_append = $15
 
 print_sentence_bar_text:
 ;Clear the sentence text
-.C:08dd  20 82 0A    JSR sentence_bar_init_and_clear
+.C:08dd  20 82 0A    JSR clear_sentence_bar
 ;Set text length to #00
 .C:08e0  A9 00       LDA #$00
 .C:08e2  8D 72 0E    STA sentence_bar_len_used
@@ -3242,7 +3242,7 @@ next_room_object:
 ; can append text to it correctly.
 ;===========================================
 sentence_bar_ptr = $19
-sentence_bar_init_and_clear:
+clear_sentence_bar:
 ;Point sentence_bar_ptr to the beginning of the sentence bar
 .C:0a82  A9 D0       LDA #<SENTENCE_BAR_BASE
 .C:0a84  85 19       STA <sentence_bar_ptr
