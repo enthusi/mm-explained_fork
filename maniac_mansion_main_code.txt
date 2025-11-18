@@ -183,10 +183,10 @@ MAX_INVENTORY_INDEX = #$2C
 ;=========================
 ;Control modes
 ;=========================
-CUTSCENE_CONTROL_MODE = #$00
-KEYPAD_CONTROL_MODE = #$01
+CONTROL_MODE_CUTSCENE = #$00
+CONTROL_MODE_KEYPAD = #$01
 NO_KID_CHANGE_CONTROL_MODE = #$02
-NORMAL_CONTROL_MODE = #$03
+CONTROL_MODE_NORMAL = #$03
 
 ;=========================
 ; Actor vars bitmasks
@@ -2544,7 +2544,7 @@ limit_verbs:
 check_control_mode:
 ;Switch based on control_mode
 .C:07ae  AD A8 FE    LDA control_mode
-.C:07b1  C9 00       CMP CUTSCENE_CONTROL_MODE
+.C:07b1  C9 00       CMP CONTROL_MODE_CUTSCENE
 .C:07b3  D0 03       BNE check_keypad_mode
 ;-------------------------------------------
 ;Case #00 - cutscene
@@ -2553,7 +2553,7 @@ check_control_mode:
 .C:07b5  4C 74 08    JMP run_sentence_if_complete
 ;-------------------------------
 check_keypad_mode:
-.C:07b8  C9 01       CMP KEYPAD_CONTROL_MODE			
+.C:07b8  C9 01       CMP CONTROL_MODE_KEYPAD			
 .C:07ba  D0 05       BNE normal_mode
 ;-------------------------------------------
 ;Case #01 - keypad mode (keypads and start screen)
@@ -2664,7 +2664,7 @@ set_new_indirect_object:
 ;-------------------------------------------
 ;If we're in keypad mode, the sentence is not rendered, so don't rebuild it
 .C:082d  AD A8 FE    LDA control_mode
-.C:0830  C9 01       CMP KEYPAD_CONTROL_MODE
+.C:0830  C9 01       CMP CONTROL_MODE_KEYPAD
 .C:0832  D0 04       BNE finalize_processing_2
 ;Rebuild the action sentence
 .C:0834  A9 01       LDA #$01
@@ -2690,7 +2690,7 @@ set_new_direct_object:
 ;-------------------------------------------
 ;If we're in keypad mode, the sentence is not rendered, so don't rebuild it
 .C:0854  AD A8 FE    LDA control_mode
-.C:0857  C9 01       CMP KEYPAD_CONTROL_MODE
+.C:0857  C9 01       CMP CONTROL_MODE_KEYPAD
 .C:0859  D0 04       BNE finalize_processing
 .C:085b  A9 01       LDA #$01
 .C:085d  85 95       STA needs_sentence_rebuild
@@ -3677,7 +3677,7 @@ do_verb_handler:
 check_walk_to_direct_object:
 ;Are we in keypad control mode? If so, execute the verb handler directly as there's no walking
 .C:0c90  AD A8 FE    LDA control_mode
-.C:0c93  C9 01       CMP KEYPAD_CONTROL_MODE
+.C:0c93  C9 01       CMP CONTROL_MODE_KEYPAD
 ;If not, try to walk to the direct object
 .C:0c95  D0 09       BNE walk_to_direct_object
 ;--------------------------------------------------

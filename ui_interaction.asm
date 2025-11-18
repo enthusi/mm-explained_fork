@@ -293,12 +293,12 @@ Description
 * = $5F2B
 refresh_inventory:
         lda     control_mode                 // load current control mode
-        cmp     #CUTSCENE_CONTROL_MODE       // are we already in cutscene mode?
+        cmp     #CONTROL_MODE_CUTSCENE       // are we already in cutscene mode?
         beq     ri_exit						 // yes → nothing to redraw safely here
 
         lda     control_mode                 // save previous control mode
         pha
-        lda     #CUTSCENE_CONTROL_MODE       // force cutscene mode to suppress input/side effects
+        lda     #CONTROL_MODE_CUTSCENE       // force cutscene mode to suppress input/side effects
         sta     control_mode
 
         ldy     #MAP_IO_IN                   // map in I/O and color RAM ($D000–$DFFF)
@@ -1753,11 +1753,11 @@ Pseudo-code
 // refresh_inventory
 // -----------------------------------------------------------------------------
 function refresh_inventory():
-    if control_mode == CUTSCENE_CONTROL_MODE:
+    if control_mode == CONTROL_MODE_CUTSCENE:
         return
 
     oldMode = control_mode
-    control_mode = CUTSCENE_CONTROL_MODE
+    control_mode = CONTROL_MODE_CUTSCENE
 
     // Map I/O + color RAM
     cpu_port = MAP_IO_IN

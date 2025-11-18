@@ -65,7 +65,7 @@ Completion gate
 “New kid”
 	handle_new_kid_verb:
 
-		* Only in NORMAL_CONTROL_MODE. Cursor X chooses kid0/1/2 by name columns.
+		* Only in CONTROL_MODE_NORMAL. Cursor X chooses kid0/1/2 by name columns.
 		* Refresh UI, call switch_active_kid_if_different, then normalize back to
 		  WALK TO and request refresh.
 
@@ -493,7 +493,7 @@ enforce_verb_limits_if_incapacitated:
 dispatch_by_control_mode:      
 		//Cutscene mode?
         lda     control_mode               			// A := current control mode
-        cmp     #CUTSCENE_CONTROL_MODE     			// Cutscene mode?
+        cmp     #CONTROL_MODE_CUTSCENE     			// Cutscene mode?
         bne     handle_keypad_mode_or_fallthrough 	// If not, check keypad/normal next
 		
 		//Cutscene mode
@@ -501,7 +501,7 @@ dispatch_by_control_mode:
 
 handle_keypad_mode_or_fallthrough:          
 		//Keypad mode?
-        cmp     #KEYPAD_CONTROL_MODE        		// Compare current control mode against keypad
+        cmp     #CONTROL_MODE_KEYPAD        		// Compare current control mode against keypad
         bne     handle_normal_mode          		// If not keypad mode → handle normal mode next
 
         // Keypad control mode forces the “Push” verb regardless of cursor or UI state
@@ -607,7 +607,7 @@ commit_new_indirect_object:
 
 		//Keypad control mode?
         lda     control_mode               		
-        cmp     #KEYPAD_CONTROL_MODE       		
+        cmp     #CONTROL_MODE_KEYPAD       		
         bne     finalize_after_io_update   		// If not keypad mode → skip manual rebuild handling
 
 		//Force rebuild sentence
@@ -638,7 +638,7 @@ commit_new_direct_object:
 
 		//Keypad control mode?
         lda     control_mode               		// Load current control mode for rebuild decision
-        cmp     #KEYPAD_CONTROL_MODE       		// Is this keypad (manual input) mode?
+        cmp     #CONTROL_MODE_KEYPAD       		// Is this keypad (manual input) mode?
         bne     finalize_and_maybe_execute 		// If not keypad mode → continue to finalization
 		
 		//Force rebuild sentence
@@ -848,7 +848,7 @@ Summary
 	just normalize the verb/UI and exit.
 
 Global Inputs
-	control_mode                     Current control mode (must be NORMAL_CONTROL_MODE)
+	control_mode                     Current control mode (must be CONTROL_MODE_NORMAL)
 	cursor_x_pos_quarter_relative    Cursor X on the sentence bar (quarter-pixel units)
 
 Global Outputs
@@ -857,7 +857,7 @@ Global Outputs
 	(current_kid_idx)                May change via switch_active_kid_if_different
 
 Description
-	* If control_mode ≠ NORMAL_CONTROL_MODE:
+	* If control_mode ≠ CONTROL_MODE_NORMAL:
 		  • Normalize UI: set current_verb_id = WALK_TO_VERB and request a bar refresh.
 		  • Return.
 	* Otherwise:
@@ -881,7 +881,7 @@ handle_new_kid_verb:
         // Normal control mode?
         // ------------------------------------------------------------
         lda     control_mode                 
-        cmp     #NORMAL_CONTROL_MODE         // gate: only allow kid change in normal mode
+        cmp     #CONTROL_MODE_NORMAL         // gate: only allow kid change in normal mode
         bne     set_walk_and_exit            // not normal → skip selection; normalize verb/UI and exit
 
         // ------------------------------------------------------------
@@ -1174,7 +1174,7 @@ execute_active_verb:
         // ------------------------------------------------------------
 check_walk_to_direct_object:
         lda     control_mode                    // read input mode
-        cmp     #KEYPAD_CONTROL_MODE             // keypad mode disables auto-walk
+        cmp     #CONTROL_MODE_KEYPAD             // keypad mode disables auto-walk
         bne     init_walk_to_direct_object      // not keypad → walk toward DO if needed
 
         jsr     execute_verb_handler_for_object // keypad mode → execute immediately, no walking

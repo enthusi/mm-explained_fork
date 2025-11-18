@@ -243,7 +243,7 @@ fkeys_dispatch_check:
         // F2 save/load: only when not in cutscene and save/load script not resident
         // ------------------------------------------------------------
         lda     control_mode                  // read current mode
-        cmp     #CUTSCENE_CONTROL_MODE        // cutscene mode?
+        cmp     #CONTROL_MODE_CUTSCENE        // cutscene mode?
         beq     kid_switch_mode_check         // yes → can't save/load now
 
         lda     key_to_process                // reuse latched key
@@ -265,7 +265,7 @@ kid_switch_mode_check:
         // Kid switching only allowed in normal player control
         // ------------------------------------------------------------
         lda     control_mode                  // read mode
-        cmp     #NORMAL_CONTROL_MODE          // mode == player control?
+        cmp     #CONTROL_MODE_NORMAL          // mode == player control?
         bne     keyboard_handler_return       // no → exit
 
         // ------------------------------------------------------------
