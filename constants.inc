@@ -181,6 +181,7 @@ Only 2 bits are used, bit 5 (#20) and bit 0 (#01).
 .const SENTENCE_BAR_BASE 			= $ced0
 
 // Verbs
+.const VERB_NONE					= $00
 .const VERB_OPEN 					= $01
 .const VERB_CLOSE 					= $02
 .const VERB_GIVE 					= $03
@@ -207,8 +208,6 @@ Only 2 bits are used, bit 5 (#20) and bit 0 (#01).
 .const CONTROL_MODE_KEYPAD        = $01    // Keypad entry mode
 .const CONTROL_MODE_DISABLE_KID   = $02    // Normal play but kid switching disabled
 .const CONTROL_MODE_NORMAL        = $03    // Normal play mode
-
-
 
 // Lights_status values
 .const LIGHTS_DARKNESS 				= $00
