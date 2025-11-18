@@ -1,3 +1,104 @@
+/*
+================================================================================
+ Sentence bar text builder
+================================================================================
+Summary
+    Builds and maintains the on-screen sentence bar text (VERB [DO] [PREP] [IO])
+    for the UI. Gated by refresh flags and control mode, it assembles a readable
+    sentence from the current verb, direct object, preposition, and indirect
+    object, including special cases such as NEW KID.
+
+Public routines
+    refresh_sentence_bar
+        Top-level entry point; checks refresh flags and control mode, then
+        rebuilds the sentence bar string or leaves it unchanged.
+
+    write_kid_names_to_sentence_bar
+        Specialized builder for the NEW KID verb; populates the three kid name
+        slots in fixed screen positions.
+
+    clear_sentence_bar
+        Clears the sentence bar region in screen RAM and resets the internal
+        destination pointer to the bar’s base.
+
+    append_word_to_sentence_bar
+        Appends a single word (zero-terminated, with optional hard-stop) into
+        the sentence bar, trimming at the visible width and advancing the
+        destination pointer past the word terminator.
+
+    resolve_costume_name
+        Maps a costume index to its name pointer so it can be appended to the
+        sentence bar (used for kid names and costume-based IO for GIVE).
+
+    resolve_object_name
+        Locates an object’s resource (inventory or room), computes its name
+        pointer from the object header, and prepares it as the next sentence
+        word. Resets the sentence system if the object cannot be resolved.
+
+    resolve_object_if_not_costume
+        Dispatch helper that bypasses resource lookup when the object hi-byte
+        marks a costume; otherwise falls through to resolve_object_resource.
+
+    resolve_object_resource
+        Core lookup routine: given an object id, first tries to find it in the
+        active inventory (if movable and owned by room), then searches the
+        current room’s object list. On success, computes obj_ptr to the object
+        header within either inventory or room resource.
+
+    select_preposition_for_verb
+        Chooses or infers a preposition for the current verb and DO. Handles
+        data-driven USE prepositions from the object’s prep byte and hard-coded
+        mappings for verbs like GIVE, NEW KID, UNLOCK, and FIX.
+
+Description
+    The file revolves around a single refresh entry point, refresh_sentence_bar.
+    It first checks sentence_bar_needs_refresh and returns early if no rebuild
+    is requested. It then gates by control_mode so that cutscene/keypad states
+    either skip or fully rebuild the textual sentence only when appropriate. In
+    normal gameplay, it clears the sentence bar, resets internal length and
+    destination pointer, and branches into either a generic sentence builder or
+    the special NEW KID layout.
+
+    For standard verbs, the builder ensures there is always a sensible verb
+    (promoting VERB_NONE to VERB_WALK_TO), then looks up and appends the verb
+    text. If no direct object is selected, the sentence stops there. Otherwise
+    it resolves and appends the DO name via resolve_object_name, which in turn
+    uses resolve_object_resource to find the object in inventory or in the
+    current room and then derives the name pointer from the object header.
+
+    Prepositions are handled in two paths: if the script has already chosen a
+    preposition, it is used directly; otherwise select_preposition_for_verb
+    infers one from the verb and DO. For USE, the decision is data-driven via a
+    packed preposition index in the object’s prep byte. For other verbs like
+    GIVE, NEW KID, UNLOCK, and FIX, the mapping is hard-coded to the expected
+    preposition or to “none needed”. When a new preposition is inferred, any
+    existing indirect object is cleared so the sentence structure stays
+    consistent.
+
+    After a preposition is chosen, it may be appended as another word. Finally,
+    if an indirect object is present, the builder resolves its name either via
+    the costume path (for GIVE recipients) or the same object-resource path
+    used for the DO, and appends that name as the last component of the
+    sentence.
+
+    Words are appended using append_word_to_sentence_bar, which reads a
+    zero-terminated word from sentence_word_ptr and writes it into the sentence
+    bar up to a logical limit defined by SENTENCE_BAR_END_IDX. It respects a
+    hard-stop marker that terminates the word early without storing the marker,
+    maintains a logical “used length” counter for trimming, and advances the
+    destination pointer past the terminator so subsequent words automatically
+    chain.
+
+    The object-resolution routines encapsulate the engine’s underlying layout:
+    movable objects with OWNER_IS_ROOM are searched in inventory first,
+    otherwise the current room’s object index table is used. On a match, a
+    per-room offset is combined with the room resource base so callers receive
+    a canonical obj_ptr into the object header independent of where it resides.
+    Failure to resolve an object triggers a reset of the sentence UI, ensuring
+    broken references do not leave half-built sentences on screen.
+================================================================================
+*/
+
 #importonce
 #import "globals.inc"
 #import "constants.inc"
@@ -5,29 +106,34 @@
 #import "text_data.inc"
 #import "sentence_action.asm"
 
-.const SENTENCE_BAR_LAST_IDX    = $27    // Last valid cell index (0..$27 ⇒ 40 cells wide)
-.const SENTENCE_BAR_END_IDX     = SENTENCE_BAR_LAST_IDX + 1  // One past last cell (#$28 sentinel)
+.const SENTENCE_BAR_LAST_IDX    	= $27    // Last valid cell index (0..$27 ⇒ 40 cells wide)
+.const SENTENCE_BAR_END_IDX     	= SENTENCE_BAR_LAST_IDX + 1  // One past last cell (#$28 sentinel)
 
-.const OBJ_PREP_BYTE_OFS        = $0B    // Object byte +$0B: USE preposition encoded in bits 7..5
-.const OBJ_FOUND_IN_INV         = $00    // Resolver status: found in inventory; obj_ptr_* valid
-.const OBJ_FOUND_IN_ROOM        = $01    // Resolver status: found in room; obj_ptr_* valid
-.const OBJ_NOT_FOUND            = $FF    // Resolver status: not found; obj_ptr_* unspecified
+.const OBJ_PREP_BYTE_OFS        	= $0B    // Object byte +$0B: USE preposition encoded in bits 7..5
+.const OBJ_FOUND_IN_INV         	= $00    // Resolver status: found in inventory; obj_ptr_* valid
+.const OBJ_FOUND_IN_ROOM        	= $01    // Resolver status: found in room; obj_ptr_* valid
+.const OBJ_NOT_FOUND            	= $FF    // Resolver status: not found; obj_ptr_* unspecified
 
-.const OWNER_IS_ROOM            = $0F    // Owner nibble value meaning “room/no owner”
-.const MAX_INVENTORY_INDEX      = $2C    // Highest inventory slot index (scan starts here)
+.const OWNER_IS_ROOM            	= $0F    // Owner nibble value meaning “room/no owner”
+.const MAX_INVENTORY_INDEX      	= $2C    // Highest inventory slot index (scan starts here)
 
-.const OBJ_NAME_FOUND           = $00    // Return code: name pointer resolved successfully
+.const OBJ_NAME_FOUND           	= $00    // Return code: name pointer resolved successfully
 
-.const KID2_NAME_OFS            = $CEDD  // Sentence bar absolute address of kid #2 name slot
-.const KID3_NAME_OFS            = $CEEA  // Sentence bar absolute address of kid #3 name slot
+.const KID2_NAME_OFS            	= $CEDD  // Sentence bar absolute address of kid #2 name slot
+.const KID3_NAME_OFS            	= $CEEA  // Sentence bar absolute address of kid #3 name slot
 
-.label sentence_bar_len_used     = $0E72  // Tracks number of characters currently used in the sentence bar
-.label sentence_bar_ptr          = $19    // ZP pointer to destination buffer for sentence bar text (lo=$19, hi=$1A)
-.label sentence_word_ptr         = $15    // ZP pointer to source word string being appended (lo=$15, hi=$16)
+.label sentence_bar_len_used     	= $0E72  // Tracks number of characters currently used in the sentence bar
+.label sentence_bar_ptr_lo       	= $19    // ZP pointer to destination buffer for sentence bar text (lo)
+.label sentence_bar_ptr_hi       	= $1A    // ZP pointer to destination buffer for sentence bar text (hi)
+.label sentence_word_ptr_lo      	= $15    // ZP pointer to source word string being appended (lo)
+.label sentence_word_ptr_hi      	= $16    // ZP pointer to source word string being appended (hi)
 
-.label obj_idx                   = $15    // ZP: temporary index/pointer used for object id or resource lookup
-.label obj_ptr                   = $15    // ZP pointer to resolved object resource or name (lo/hi shared alias)
-.label room_obj_ofs              = $17    // ZP: temporary 16-bit offset to object data within room resource
+.label obj_idx_lo                   = $15    // ZP: temporary index/pointer used for object id or resource lookup
+.label obj_idx_hi                   = $16    // ZP: temporary index/pointer used for object id or resource lookup
+.label obj_ptr_lo                   = $15    // ZP pointer to resolved object resource or name (lo/hi shared alias)
+.label obj_ptr_hi                   = $16    // ZP pointer to resolved object resource or name (lo/hi shared alias)
+.label room_obj_ofs_lo              = $17    // ZP: temporary 16-bit offset to object data within room resource
+.label room_obj_ofs_hi              = $18    // ZP: temporary 16-bit offset to object data within room resource
 
 /*
 ================================================================================
@@ -39,12 +145,11 @@ Summary
 	refresh flag, then either exits or tail-calls the builder.
 
 Vars/State
-	sentence_bar_needs_refresh   nonzero → refresh requested
-	control_mode                0=CUTSCENE, 1=KEYPAD, ≥2=normal gameplay
+	sentence_bar_needs_refresh  	true → refresh requested
+	control_mode                	0=CUTSCENE, 1=KEYPAD, ≥2=normal gameplay
 
 Global Outputs
-	sentence_bar_needs_refresh   cleared on entry
-	(sentence bar buffer updated indirectly via build_sentence_bar_text)
+	sentence_bar_needs_refresh   	cleared on entry
 
 Description
 	• Test sentence_bar_needs_refresh. If zero, return immediately.
@@ -58,141 +163,170 @@ Description
 * = $08C6
 refresh_sentence_bar:
 		// ------------------------------------------------------------
-		// Refresh gate - proceed only if refresh flag is set
-		//
-		// If zero → jump return_no_refresh; else → control-mode gate
+		// Refresh gate - proceed only if refresh is needed
 		// ------------------------------------------------------------	
-        lda     sentence_bar_needs_refresh      // A := refresh flag
-        bne     gate_by_control_mode           // nonzero → proceed
-        jmp     return_refreshed_sentence              // zero → exit
+        lda     sentence_bar_needs_refresh      
+        bne     gate_by_control_mode       		// true → proceed
+        jmp     rsb_exit              			// false → exit
 
 		// ------------------------------------------------------------
-		// Control-mode gate — refresh allowed only in normal modes
+		// Control-mode gate - refresh allowed only in normal modes
 		//
 		// if control_mode == CUTSCENE or KEYPAD → exit;
 		// else jump to build_sentence_bar_text
 		// ------------------------------------------------------------
 gate_by_control_mode:
-        // Clear flag, then gate by control mode
-        lda     #$00                           // A := 0
-        sta     sentence_bar_needs_refresh      // clear refresh flag
-        lda     control_mode                   // A := control mode
-        cmp     #CONTROL_MODE_KEYPAD           // compare with keypad mode
-        beq     return_no_refresh              // keypad → exit
-        bcs     build_sentence_bar_text        // > keypad (i.e., >$01) → build
+        // Clear flag
+        lda     #$00                           	
+        sta     sentence_bar_needs_refresh      
+		
+		// Gate by control mode
+        lda     control_mode                   	
+        cmp     #CONTROL_MODE_KEYPAD           	
+        beq     return_no_refresh              	// keypad or cutscene mode → exit
+        bcs     build_sentence_bar_text        	// otherwise → continue
 
 return_no_refresh:
-        rts                                    // done
+        rts                                    	
 
 build_sentence_bar_text:
         // ------------------------------------------------------------
         // Build full sentence bar string from active verb and object data
         // ------------------------------------------------------------
-        jsr     sentence_bar_init_and_clear       // initialize and clear sentence bar text buffer
+        jsr     clear_sentence_bar     // initialize and clear sentence bar text buffer
         lda     #$00                              
-        sta     sentence_bar_len_used             // clear accumulated text length
+        sta     sentence_bar_len_used           // clear accumulated text length
 
         // ------------------------------------------------------------
         // Check if current verb is "NEW KID"
         // If so, directly print kid names and exit routine
         // ------------------------------------------------------------
-        lda     current_verb_id                      // load currently selected verb id
-        cmp     #VERB_NEW_KID                     // compare against "NEW KID" verb id
-        bne     ensure_default_verb               // not equal → continue with regular sentence build
-        jmp     write_kid_names_to_sentence_bar   // equal → delegate to kid-name writer and return
+        lda     current_verb_id                	
+        cmp     #VERB_NEW_KID                   
+        bne     ensure_default_verb             // not equal → continue with regular sentence build
+        jmp     write_kid_names_to_sentence_bar // equal → delegate to kid-name writer and return
 
 ensure_default_verb:
         // ------------------------------------------------------------
         // Ensure a valid verb is set before sentence construction
         // ------------------------------------------------------------
-        cmp     #$00                              // check if no verb currently selected
-        bne     append_verb                       // if not zero → a verb already exists, skip default
-        lda     #VERB_WALK_TO                     // load default verb id ("WALK TO")
-        sta     current_verb_id                      // store it as the active verb
+		// Is there a verb selected?
+        cmp     #VERB_NONE                      
+        bne     append_verb                     
+		
+		// No verb -> force "Walk to"
+        lda     #VERB_WALK_TO                   
+        sta     current_verb_id                 
 
 append_verb:
         // ------------------------------------------------------------
         // Append the current verb token to the sentence bar
         // ------------------------------------------------------------
+		// Resolve verb string pointer
         tax                                     // X := verb id (index into verb pointer tables)
         lda     verb_pointers_hi,x              
-        sta     sentence_word_ptr+1             
+        sta     sentence_word_ptr_hi             
         lda     verb_pointers_lo,x              
-        sta     sentence_word_ptr               
-        jsr     append_word_to_sentence_bar     // append verb string to sentence bar
+        sta     sentence_word_ptr_lo            
+		
+		// Append verb string to sentence bar
+        jsr     append_word_to_sentence_bar     
 
         // ------------------------------------------------------------
         // Append direct object if present
         // ------------------------------------------------------------
         lda     direct_object_idx_lo            // A := direct object lo-id; zero → no object
-        beq     return_refreshed_sentence       // none → finish sentence build
+        beq     rsb_exit       					// none → finish sentence build
+		
+		// Resolve object string pointer
         tax                                     // X := lo-id (resolver requires X)
-        lda     direct_object_idx_hi            // A := hi-id (resolver requires A)
+        lda     direct_object_idx_hi            // A := hi-id (resolver requires A)		
         jsr     resolve_object_name             // obj_ptr → object name string
-        jsr     append_word_to_sentence_bar     // append name at obj_ptr to sentence bar
+		
+		// Append object string
+        jsr     append_word_to_sentence_bar     
 
         // ------------------------------------------------------------
-        // Determine and append preposition
+        // Resolve and append preposition, if any
         // ------------------------------------------------------------
-        lda     current_preposition                     // A := current preposition index (0 = unset)
+        lda     current_preposition             // A := current preposition index (0 = unset)
         bne     append_preposition_if_any       // already set → skip inference
 
-        jsr     select_preposition_for_verb     // infer preposition from verb/object context → A
-        cmp     #PREPOSITION_NONE_NEEDED        // is inference "none needed"?
-        beq     append_preposition_if_any       // yes → do not set, just skip append
+		// Resolve preposition based on the verb -> A
+        jsr     select_preposition_for_verb     
+		
+		// If none needed, skip
+        cmp     #PREPOSITION_NONE_NEEDED        
+        beq     append_preposition_if_any       
 
-        sta     current_preposition                     // cache inferred preposition for later reuse
+		// Cache inferred preposition for later reuse
+        sta     current_preposition                     
 
-        lda     #$00                            // clear any prior indirect object because
-        sta     indirect_object_idx_lo          // grammar changed after inference
+		// Clear indirect object references as the preposition changed
+        lda     #$00                            
+        sta     indirect_object_idx_lo          
         sta     indirect_object_idx_hi
 
 append_preposition_if_any:
-        lda     current_preposition                     // A := preposition index; 0 → none selected
-        beq     return_refreshed_sentence       // no preposition → finish sentence build
+		// Any preposition set? If not, exit
+        lda     current_preposition                     
+        beq     rsb_exit       
 
-        tax                                     // X := preposition index (table selector)
+		// Resolve preposition string
+        tax                                     // X := preposition index (table selector)		
         lda     preposition_pointers_hi,x       
-        sta     sentence_word_ptr+1             
+        sta     sentence_word_ptr_hi             
         lda     preposition_pointers_lo,x       
-        sta     sentence_word_ptr               
-        jsr     append_word_to_sentence_bar     // append preposition string to sentence bar
+        sta     sentence_word_ptr_lo               
+		
+		// Append preposition string to sentence bar
+        jsr     append_word_to_sentence_bar     
 
         // ------------------------------------------------------------
-        // "Give" verb special case: validate indirect object type
+        // "Give" verb special case: validate indirect object is a costume
         // ------------------------------------------------------------
-        lda     current_verb_id                  // A := current verb id
-        cmp     #VERB_GIVE                    // GIVE verb?
-        bne     append_indirect_if_present    // no → skip validation
+		// Verb is 'Give'? If not, skip validation
+        lda     current_verb_id            		
+        cmp     #VERB_GIVE                    	
+        bne     append_indirect_if_present    	
 
-        lda     indirect_object_idx_hi        // A := indirect object's hi-id
-        cmp     #OBJ_HI_COSTUME               // valid only if hi-id is a costume
-        beq     append_indirect_if_present    // valid recipient → keep as-is
+		// Indirect object is a costume? If so, continue
+        lda     indirect_object_idx_hi        	
+        cmp     #OBJ_HI_COSTUME               	
+        beq     append_indirect_if_present    	
 
-        lda     #$00                          // invalid recipient → clear indirect object
+		// It's not a costume so it's invalid, clear it
+        lda     #$00                          	
         sta     indirect_object_idx_lo        
         sta     indirect_object_idx_hi        
 
 append_indirect_if_present:
         // ------------------------------------------------------------
-        // Append indirect object (costume or object)
+        // Append indirect object
         // ------------------------------------------------------------
-        lda     indirect_object_idx_lo        // A := indirect lo-id; 0 → none present
-        beq     return_refreshed_sentence     // no indirect → finish sentence build
+		// Indirect object present? If not, exit
+        lda     indirect_object_idx_lo        
+        beq     rsb_exit     
 
+		// Dispatch indirect object resolution (costume vs. object)
         tax                                   // X := indirect lo-id (resolver input)
         lda     indirect_object_idx_hi        // A := indirect hi-id (type selector)
-        cmp     #OBJ_HI_COSTUME               // costume type? (#$02 = costume)
+        cmp     #OBJ_HI_COSTUME               // costume type?
         bne     resolve_and_append_object_name// no → handle as object
 
-        jsr     resolve_costume_name          // set source ptr to costume name
-        jmp     commit_append                 // append and exit this branch
+		// Resolve costume
+        jsr     resolve_costume_name          
+        jmp     commit_append                 
 
 resolve_and_append_object_name:
-        jsr     resolve_object_name            // obj_ptr → object name string for current (X/A) id
+		// Resolve object
+        jsr     resolve_object_name            
+		
 commit_append:
-        jsr     append_word_to_sentence_bar    // append string at sentence_word_ptr/obj_ptr to bar
-return_refreshed_sentence:
+		// Append indirect object token
+        jsr     append_word_to_sentence_bar    
+		
+rsb_exit:
         rts                                     
 /*
 ================================================================================
@@ -209,20 +343,6 @@ Global Inputs
 	 kid2_costume_id                 costume id for kid #2
 	 kid3_costume_id                 costume id for kid #3
 	 sentence_bar_ptr                ZP dest pointer for sentence text
-
-Global Outputs
-	 sentence_bar_ptr                advanced by append routine as it writes
-
-Description
-	• Kid #1: X := kid1_costume_id → resolve_costume_name → append_word_to_sentence_bar.
-	• Kid #2: set sentence_bar_ptr := slot #2 address → X := kid2_costume_id →
-	resolve_costume_name → append_word_to_sentence_bar.
-	• Kid #3: set sentence_bar_ptr := slot #3 address → X := kid3_costume_id →
-	resolve_costume_name → append_word_to_sentence_bar.
-
-Notes
-	• First slot relies on the caller’s initial sentence_bar_ptr configuration.
-	• Name length handling and truncation are owned by append_word_to_sentence_bar.
 ================================================================================
 */
 * = $096F
@@ -238,9 +358,9 @@ write_kid_names_to_sentence_bar:
 		// Second kid: reposition buffer pointer to slot #2 and print
 		// ------------------------------------------------------------
 		lda     #<KID2_NAME_OFS
-		sta     sentence_bar_ptr
+		sta     sentence_bar_ptr_lo
 		lda     #>KID2_NAME_OFS
-		sta     sentence_bar_ptr + 1
+		sta     sentence_bar_ptr_hi
 		ldx     kid2_costume_id
 		jsr     resolve_costume_name
 		jsr     append_word_to_sentence_bar
@@ -249,9 +369,9 @@ write_kid_names_to_sentence_bar:
 		// Third kid: reposition buffer pointer to slot #3 and print
 		// ------------------------------------------------------------
 		lda     #<KID3_NAME_OFS
-		sta     sentence_bar_ptr
+		sta     sentence_bar_ptr_lo
 		lda     #>KID3_NAME_OFS
-		sta     sentence_bar_ptr + 1
+		sta     sentence_bar_ptr_hi
 		ldx     kid3_costume_id
 		jsr     resolve_costume_name
 		jsr     append_word_to_sentence_bar
@@ -266,28 +386,20 @@ Summary
 	name can be appended to the sentence bar.
 
 Arguments
-	.X  		Character index (0..N)
+	.X  		Character index
 ================================================================================
 */
 * = $09D8
 resolve_costume_name:
-        // ------------------------------------------------------------
-        // Resolve costume name pointer from index
-        //
-        // - Use .X as costume index into pointer tables.
-        // - Load high and low bytes from name_ptr_hi_tbl/lo.
-        // - Combine into sentence_word_ptr for later append.
-        // ------------------------------------------------------------
         lda     name_ptr_hi_tbl,x      
-        sta     sentence_word_ptr + 1
+        sta     sentence_word_ptr_hi
         lda     name_ptr_lo_tbl,x      
-        sta     sentence_word_ptr        
+        sta     sentence_word_ptr_lo        
         rts                          
 /*
 ================================================================================
   resolve_object_name
 ================================================================================
-
 Summary
 	Resolves an object’s name pointer by reading its name offset from the object
 	resource. Returns A = OBJ_NAME_FOUND if successful. If the object cannot be
@@ -325,8 +437,10 @@ resolve_object_name:
 		// ------------------------------------------------------------
 		// Resolve object resource pointer from given object index/hi-id
 		// ------------------------------------------------------------
-		jsr     resolve_object_resource          // sets object_pointer to base
-		cmp     #OBJ_NOT_FOUND                   // found?
+		jsr     resolve_object_resource     
+		
+		// Did we find the object? If so, continue
+		cmp     #OBJ_NOT_FOUND
 		bne     object_found
 
 		// ------------------------------------------------------------
@@ -337,17 +451,17 @@ resolve_object_name:
 
 object_found:
 		// ------------------------------------------------------------
-		// Add name offset (+OBJ_NAME_OFS) to object base pointer → points to name
+		// Add name offset to object base pointer
 		// ------------------------------------------------------------
-		ldy     #OBJ_NAME_OFS                    // offset of name pointer byte
-		lda     (obj_ptr),y               		 // A := name offset
+		ldy     #OBJ_NAME_OFS               // offset of name pointer byte
+		lda     (obj_ptr_lo),y              // A := name offset
 		clc
-		adc     obj_ptr                   		 // add to base pointer (lo)
-		sta     obj_ptr
-		bcc     done                             // no carry → done
-		inc     obj_ptr + 1                		 // carry → increment hi byte
+		adc     obj_ptr_lo                  // add to base pointer (lo)
+		sta     obj_ptr_lo
+		bcc     resolve_object_name_exit    // no carry → done
+		inc     obj_ptr_hi                	// carry → increment hi byte
 
-done:
+resolve_object_name_exit:
 		lda     #OBJ_NAME_FOUND
 		rts
 /*
@@ -380,21 +494,18 @@ Notes
 resolve_object_if_not_costume:
         // ------------------------------------------------------------
         // Guard against costume objects
-        //
-        // - Compares hi-id in A against OBJ_HI_COSTUME sentinel.
-        // - If not a costume, delegate to resolve_object_resource.
-        // - Costume objects are excluded from resolution (return #$FF).
         // ------------------------------------------------------------
-        cmp     #OBJ_HI_COSTUME          // is hi-id the costume sentinel?
-        bne     resolve_object_resource   // no → resolve as regular object
+		// Is object a costume? (Hi-id == costume)
+        cmp     #OBJ_HI_COSTUME          
+        bne     resolve_object_resource  // no → resolve as regular object
 
-        lda     #OBJ_NOT_FOUND           // costume objects not handled here
-        rts                               // return “not found / not applicable”
+		// Yes - return not found
+        lda     #OBJ_NOT_FOUND           
+        rts                              
 /*
 ================================================================================
   resolve_object_resource
 ================================================================================
-
 Summary
 	Resolve an object’s absolute data pointer (obj_ptr_lo/hi) from an incoming
 	object id pair {lo, hi}. Prefer inventory for movable items owned by the
@@ -402,21 +513,23 @@ Summary
 	code in .A indicating where the object was found or if it was not found.
 
 Arguments
-	.X  		obj_idx_lo   Lo-id of target object
-	.A  		obj_idx_hi   Hi-id of target object 
+	.X  						Lo-id of target object
+	.A  						Hi-id of target object 
 
 Vars/State
-	obj_idx		               scratch: latched id input
-	obj_ptr            		   absolute pointer to object data
-	room_obj_ofs		       room-local offset to object data
+	obj_idx		               	scratch: latched id input
+	obj_ptr            		   	absolute pointer to object data
+	room_obj_ofs		       	room-local offset to object data
 
 Returns
-	.A		OBJ_FOUND_IN_INV        Found in inventory, obj_ptr_* valid
-			OBJ_FOUND_IN_ROOM       Found in current room, obj_ptr_* valid
-			OBJ_NOT_FOUND           No match, obj_ptr_* unspecified
+	.A		OBJ_FOUND_IN_INV    Found in inventory, obj_ptr_* valid
+			OBJ_FOUND_IN_ROOM   Found in current room, obj_ptr_* valid
+			OBJ_NOT_FOUND       No match, obj_ptr_* unspecified
 
 Global Inputs
 	current_room              Current room index
+	
+State	
 	room_obj_count            Count of objects in current room
 	inventory_objects[]       Inventory slot id list
 	object_ptr_lo/hi_tbl[]    Inventory object pointer table
@@ -445,72 +558,67 @@ Description
 
 Notes
 	• Ownership semantics: movable presence in-room is validated via the owner
-	nibble. Immovable objects always reside in the room resource.
+	nibble. Immovable objects always reside in a room resource.
 ================================================================================
 */
 * = $0A05
 resolve_object_resource:
         // Store incoming object indices into ZP vars that double as result pointers
-        stx     obj_idx                 
-        sta     obj_idx + 1
+        stx     obj_idx_lo                 
+        sta     obj_idx_hi
 
         // ------------------------------------------------------------
-        // Determine search path based on obj hi-id
-		//
-        // hi ≠ 0 → immovable → search room only
+        // Determine search path based on whether the object is movable or not
         // ------------------------------------------------------------
         cmp     #OBJ_HI_MOVABLE
-        bne     dispatch_to_room_search     // immovable object → skip inventory lookup
+        bne     dispatch_to_room_search // immovable object → skip inventory lookup
 
         // ------------------------------------------------------------
         // Movable object ownership dispatch
-        //
-        // - Read owner nibble to choose source.
-        // - OWNER_IS_ROOM → search room; otherwise search inventory.
         // ------------------------------------------------------------
-        lda     object_attributes,x            // load full attribute byte
-        and     #OWNER_NIBBLE_MASK             // isolate owner nibble (low 4 bits)
-        cmp     #OWNER_IS_ROOM                 // is owner = room/no owner?
-        beq     dispatch_to_room_search        // yes → object resides in room, skip inventory
+        // Resolve owner
+        lda     object_attributes,x     // load full attribute byte
+        and     #OWNER_NIBBLE_MASK      // isolate owner nibble
+        cmp     #OWNER_IS_ROOM          // is owner = room/no owner?
+		
+		// Is it a room?
+        beq     dispatch_to_room_search // yes → object resides in room, skip inventory
 
         // ------------------------------------------------------------
-        // Inventory search
-        //
-        // - Start from the last slot and scan downward.
-        // - Match on lo-id only
-        // - On miss, fall through to room search.
-        // ------------------------------------------------------------
-        ldy     #MAX_INVENTORY_INDEX       // Y := last inventory slot; scan desc
+        // Movable object not in room -> Inventory search
+        // ------------------------------------------------------------		
+        // Start from the last inventory slot and scan downward.
+        ldy     #MAX_INVENTORY_INDEX       
 inv_scan_loop:
-        lda     inventory_objects,y        // A := lo-id at slot Y
-        cmp     obj_idx                 // matches target lo-id?
-        bne     inv_scan_advance           // no → check previous slot
+        // Match on lo-id only
+        lda     inventory_objects,y     // A := lo-id at slot Y
+        cmp     obj_idx_lo              // matches target lo-id?
+        bne     inv_scan_advance        // no → check previous slot
 
         // ------------------------------------------------------------
         // Inventory hit: commit pointer and return
-        //
-        // - Load obj_ptr_* from per-slot tables.
-        // - Zero room_obj_ofs_* (not applicable to inventory items).
-        // - Return with A = OBJ_FOUND_IN_INV.
         // ------------------------------------------------------------
         // Found in inventory → copy object pointer from object tables
         lda     object_ptr_hi_tbl,y    
-        sta     obj_ptr + 1
+        sta     obj_ptr_hi
         lda     object_ptr_lo_tbl,y    
-        sta     obj_ptr             
+        sta     obj_ptr_lo             
 
         // No room offset for inventory objects
         lda     #$00                   
-        sta     room_obj_ofs
+        sta     room_obj_ofs_lo
         lda     #$00                   
-        sta     room_obj_ofs + 1
+        sta     room_obj_ofs_hi
 
-        lda     #OBJ_FOUND_IN_INV      // return code: found in inventory
-        rts                            // exit with obj_ptr_* already set
+		// Return that we found the object in the inventory
+        lda     #OBJ_FOUND_IN_INV      
+        rts                            
 
 inv_scan_advance:
-        dey                         // move to previous inventory slot
-        bpl     inv_scan_loop       // continue scan while Y ≥ 0
+		// Continue scan while Y ≥ 0
+        dey                         
+        bpl     inv_scan_loop       
+		
         // fall through to room search if inventory scan exhausted
 
         // ------------------------------------------------------------
@@ -522,50 +630,38 @@ inv_scan_advance:
         // ------------------------------------------------------------
 * = $0A37		
 dispatch_to_room_search:
-        ldy     room_obj_count          // Y := last room object index for descending scan
+		// Resolve total count of objects in this room
+        ldy     room_obj_count          
 room_scan_loop:
         lda     room_obj_idx_lo,y       // A := candidate object's lo-id at index Y
-        cmp     obj_idx              // match target lo-id?
+        cmp     obj_idx_lo              // match target lo-id?
         bne     room_scan_advance       // no → check previous entry
 
         lda     room_obj_idx_hi,y       // A := candidate object's hi-id at index Y
-        cmp     obj_idx + 1             // equal to target hi-id?
+        cmp     obj_idx_hi       		// equal to target hi-id?
         bne     room_scan_advance       // no → continue scanning
 
         // ------------------------------------------------------------
-        // Presence check for movable matches
-        //
-        // - After match, if hi-id == OBJ_HI_MOVABLE, verify the
-        //   object is actually present in the room (owner = ROOM).
-        // - If immovable (hi-id ≠ 0), accept match and build pointer.
+        // Presence check for movable objects
         // ------------------------------------------------------------
         cmp     #OBJ_HI_MOVABLE
-        beq     verify_object_present      // movable → validate presence via owner nibble
+        beq     verify_object_present   // movable → validate presence via owner nibble
 
-        jmp     room_match_commit          // immovable → accept match and build pointer
+        jmp     room_match_commit       // immovable → accept match and build pointer
 
         // ------------------------------------------------------------
-        // Verify movable object's in-room presence
-        //
-        // - Index attributes by lo-id.
-        // - Check owner nibble equals OWNER_IS_ROOM.
-        // - If not present in room, continue scanning.
+        // Verify object's in-room presence
         // ------------------------------------------------------------
 verify_object_present:
-        ldx     obj_idx             // X := object lo-id to index attributes
-        lda     object_attributes,x    // A := attribute byte for this object
-        and     #OWNER_NIBBLE_MASK     // isolate owner nibble (low 4 bits)
-        cmp     #OWNER_IS_ROOM         // owner must be ROOM/no-owner sentinel
-        bne     room_scan_advance      // not present → continue scan
+        // Resolve owner
+        ldx     obj_idx_lo             			
+        lda     object_attributes,x     
+        and     #OWNER_NIBBLE_MASK      
+        cmp     #OWNER_IS_ROOM          // owner must be ROOM
+        bne     room_scan_advance       // not present → continue scan
 
         // ------------------------------------------------------------
-        // Commit room match and build absolute object pointer
-        //
-        // - Convert matched room object index (Y) to byte index (Y*2)
-        //   for 16-bit offset table lookup.
-        // - Load room-relative offset (lo/hi) from room_obj_ofs_tbl.
-        // - Add offset to current room base pointer to produce obj_ptr_*.
-        // - Return with A = OBJ_FOUND_IN_ROOM and obj_ptr_* valid.
+        // Found in room: commit match and build absolute object pointer
         // ------------------------------------------------------------
 room_match_commit:
         // Compute table index X = Y * 2 to address 16-bit offset entries
@@ -573,41 +669,40 @@ room_match_commit:
         asl                                 
         tax                                 
 
-        // Load 16-bit offset of object data within the room resource
+        // Resolve offset of object data within the room resource
         lda     room_obj_ofs_tbl,x          
-        sta     room_obj_ofs
+        sta     room_obj_ofs_lo
         lda     room_obj_ofs_tbl+1,x        
-        sta     room_obj_ofs + 1
+        sta     room_obj_ofs_hi
 
-        // Build absolute object pointer: room_base[current_room] + room_obj_ofs
+        // Resolve absolute object pointer: room_base[current_room] + room_obj_ofs
         ldx     current_room                
         lda     room_ptr_lo_tbl,x           
         clc                                 
-        adc     room_obj_ofs             
-        sta     obj_ptr                  
+        adc     room_obj_ofs_lo             
+        sta     obj_ptr_lo                  
 
         lda     room_ptr_hi_tbl,x           
-        adc     room_obj_ofs + 1
-        sta     obj_ptr + 1
+        adc     room_obj_ofs_hi
+        sta     obj_ptr_hi
 
-        lda     #OBJ_FOUND_IN_ROOM          // return code: found in room
-        rts                                 // obj_ptr_* now points at object data
+		// Return: object found in room
+        lda     #OBJ_FOUND_IN_ROOM      
+        rts                             
 
 room_scan_advance:
-        dey                         // step to previous room object entry
-        bpl     room_scan_loop      // continue scan while Y ≥ 0
+        dey                         	// step to previous room object entry
+        bpl     room_scan_loop      	// continue scan while Y ≥ 0
 
         // ------------------------------------------------------------
         // Not found in room
-        //
-        // - Room scan exhausted without a match.
-        // - Return OBJ_NOT_FOUND; obj_ptr_* remains unspecified.
         // ------------------------------------------------------------
-        lda     #OBJ_NOT_FOUND      // return code: no matching object
-        rts                         // exit with obj_ptr_* undefined
+		// Return code: object not found
+        lda     #OBJ_NOT_FOUND      	
+        rts                         	
 /*
 ================================================================================
- sentence_bar_init_and_clear
+ clear_sentence_bar
 ================================================================================
 Summary
 	Initialize the sentence bar pointer and clear the sentence bar text region
@@ -617,20 +712,21 @@ Description
 	* Load SENTENCE_BAR_BASE into pointer sentence_bar_ptr (lo, hi).
 	* Clear all chars from SENTENCE_BAR_LAST_IDX down to 0 with #$00.
 	* Leave sentence_bar_ptr initialized for subsequent appends.
+================================================================================
 */
 * = $0A82
-sentence_bar_init_and_clear:
+clear_sentence_bar:
         // Set pointer to start of sentence bar
         lda     #<SENTENCE_BAR_BASE
-        sta     sentence_bar_ptr
+        sta     sentence_bar_ptr_lo
         lda     #>SENTENCE_BAR_BASE
-        sta     sentence_bar_ptr + 1
+        sta     sentence_bar_ptr_hi
 
         // Clear 40 bytes: Y := last index, A := 0, then descend to 0
         ldy     #SENTENCE_BAR_LAST_IDX
         lda     #$00
 clear_descend_loop:
-        sta     (sentence_bar_ptr),y
+        sta     (sentence_bar_ptr_lo),y
         dey
         bpl     clear_descend_loop
         rts
@@ -641,8 +737,8 @@ clear_descend_loop:
 
 Summary
 	Appends a NUL-terminated word into the sentence bar at the current write pointer.
-	Stops on WORD_TERMINATOR (#$00) or WORD_HARD_STOP (#$40). Writes are trimmed to
-	the visible width; the append pointer advances by the total bytes processed.
+	Stops on WORD_TERMINATOR or WORD_HARD_STOP. Writes are trimmed to the visible width; 
+	the append pointer advances by the total bytes processed.
 
 Global Inputs
 	sentence_word_ptr          ptr to source word (lo/hi)
@@ -650,7 +746,6 @@ Global Inputs
 	sentence_bar_len_used      Logical chars processed (including trimmed)
 
 Global Outputs
-	(sentence bar memory)      Characters written where width allows
 	sentence_bar_ptr           Advanced by processed length (data + terminator)
 	sentence_bar_len_used      Incremented per byte processed
 
@@ -674,52 +769,54 @@ append_word_to_sentence_bar:
 
 		// ------------------------------------------------------------
 		// Read next character from word source and process append
-		//
-		// - Each byte increments logical sentence length
-		// - Writes occur only while within visible width
-		// - Terminates on WORD_TERMINATOR or WORD_HARD_STOP
 		// ------------------------------------------------------------
 loop_read_byte:
         inc     sentence_bar_len_used      // count processed characters (even if trimmed)
         iny                                // advance to next source position
 
-        lda     (sentence_word_ptr),y      // fetch character from sentence_word_ptr[Y]
+        // Fetch character from sentence word
+		lda     (sentence_word_ptr_lo),y      
 
         // Detect explicit hard-stop marker (#$40); skip to termination logic if matched
         cmp     #WORD_HARD_STOP
         beq     check_terminator
 
-        // Compare against NUL terminator (#$00) and save Z flag for later restoration
+        // Compare against terminator (#$00) and save Z flag for later restoration
         cmp     #WORD_TERMINATOR
         php
 
         // Check if append within visible width before writing
+		// If so, emit char; otherwise, skip it
         ldx     sentence_bar_len_used
-        cpx     #SENTENCE_BAR_END_IDX       // equal → permit final cell write
+        cpx     #SENTENCE_BAR_END_IDX       
         beq     emit_char_if_visible
         bcs     restore_z                   // beyond limit → skip store (trim only)
 
 emit_char_if_visible:
-        sta     (sentence_bar_ptr),y        // store A into visible cell Y; width already validated
+		// Store A into visible cell Y; width already validated
+        sta     (sentence_bar_ptr_lo),y        
 
 restore_z:
-        plp                                 // restore saved Z from NUL compare to control termination
+        // Restore saved Z from NUL compare to control termination
+		plp                                 
 
 check_terminator:
-        bne     loop_read_byte              // Z=0 → not a terminator, keep reading; Z=1 → stop
+        // Z=0 → not a terminator, keep reading; Z=1 → stop
+		bne     loop_read_byte              
 
 		// ------------------------------------------------------------
-		// Advance append pointer by processed length (Y+1 bytes total)
+		// String terminated - advance append pointer by processed length (Y+1 bytes total)
 		// ------------------------------------------------------------
         iny                                 // include the terminator in count (advance delta by +1)
         tya                                 // A := total bytes processed (data + terminator)
         clc                                 
-        adc     sentence_bar_ptr           // add delta to write pointer
-        sta     sentence_bar_ptr           
+        adc     sentence_bar_ptr_lo    		// add delta to write pointer
+        sta     sentence_bar_ptr_lo           
         bcc     exit_append                 
-        inc     sentence_bar_ptr + 1
+        inc     sentence_bar_ptr_hi
+		
 exit_append:
-        rts                                 // done: append ptr now points to next free cell
+        rts                                 
 /*
 ================================================================================
   select_preposition_for_verb
@@ -730,15 +827,16 @@ Summary
 	fixed prepositions. Otherwise return none.
 
 Arguments
-	current_verb_id                  verb selector
-	direct_object_idx_lo/hi       object id used only when verb = USE
+	current_verb_id         		verb selector
+	direct_object_idx_lo/hi       	object id used only when verb = USE
 
 Returns
-	.A = 0..7                     For USE: 3-bit index read from object byte
+	A
+		PREPOSITION_TO/WITH        	For USE: 3-bit index read from object byte
 									at OBJ_PREP_BYTE_OFS (bits 7..5)
-	.A = PREPOSITION_TO           For GIVE
-	.A = PREPOSITION_WITH         For NEW_KID, UNLOCK, FIX
-	.A = PREPOSITION_NONE_NEEDED  For all other verbs
+		PREPOSITION_TO           	For GIVE
+		PREPOSITION_WITH         	For NEW_KID, UNLOCK, FIX
+		PREPOSITION_NONE_NEEDED  	For all other verbs
 
 Description
 	• If verb = USE: call resolve_object_resource with direct object id,
@@ -748,8 +846,6 @@ Description
 	• Else: return PREPOSITION_NONE_NEEDED.
 
 Notes
-	• Assumes resolve_object_resource leaves a valid obj_ptr_* for the direct
-	object. No error handling here.
 	• Object layout: preposition for USE is encoded in bits 7..5 of the byte
 	at OBJ_PREP_BYTE_OFS.
 ================================================================================
@@ -757,18 +853,16 @@ Notes
 * = $0ABD
 select_preposition_for_verb:
 		// ------------------------------------------------------------
-		// Dispatch by verb. USE reads object’s preposition bits at +OBJ_PREP_BYTE_OFS.
-		// GIVE → "to". NEW_KID/UNLOCK/FIX → "with". Otherwise none.
+		// Dispatch by verb
 		// ------------------------------------------------------------
 		lda     current_verb_id
 		cmp     #VERB_USE
 		bne     verb_is_give
 
-
         // ------------------------------------------------------------
-		// USE verb
-        // Resolve object resource pointer for current direct object
+		// USE verb - object determines the preposition
         // ------------------------------------------------------------
+        // Resolve object 
         ldx     direct_object_idx_lo        // X := object id (lo)
         lda     direct_object_idx_hi        // A := object id (hi)
         jsr     resolve_object_resource     // sets obj_ptr_lo/hi → object data base
@@ -776,18 +870,18 @@ select_preposition_for_verb:
         // ------------------------------------------------------------
         // Read and decode preposition bits from object byte +OBJ_PREP_BYTE_OFS
         // ------------------------------------------------------------
-        ldy     #OBJ_PREP_BYTE_OFS          // Y := offset to preposition byte in object data
-        lda     (obj_ptr),y              // A := raw byte containing preposition (bits 7..5)
+        ldy     #OBJ_PREP_BYTE_OFS     		// Y := offset to preposition byte in object data
+        lda     (obj_ptr_lo),y              	// A := raw byte containing preposition (bits 7..5)
         lsr                                 
         lsr                                 
         lsr                                 
         lsr                                 
         lsr                                 
-        rts                                 // return index (0..7) in .A
+        rts                                 // return preposition index (0..7) in .A
 
 verb_is_give:
 		// ------------------------------------------------------------
-		// GIVE → "to"
+		// GIVE verb → preposition "to"
 		// ------------------------------------------------------------
 		cmp     #VERB_GIVE
 		bne     verbs_using_with_prep
@@ -796,7 +890,7 @@ verb_is_give:
 
 verbs_using_with_prep:
 		// ------------------------------------------------------------
-		// NEW_KID/UNLOCK/FIX → "with"; else no preposition
+		// NEW_KID/UNLOCK/FIX → preposition "with"
 		// ------------------------------------------------------------
 		cmp     #VERB_NEW_KID
 		beq     return_with_prep
@@ -814,3 +908,317 @@ verbs_using_with_prep:
 return_with_prep:
 		lda     #PREPOSITION_WITH
 		rts
+
+
+/*
+Pseudo-code
+
+// -----------------------------------------------------------------------------
+// refresh_sentence_bar
+// -----------------------------------------------------------------------------
+function refresh_sentence_bar():
+    if sentence_bar_needs_refresh == false:
+        return
+
+    sentence_bar_needs_refresh = false
+
+    // Gate by control mode: only rebuild in “normal” mode
+    if control_mode == CONTROL_MODE_KEYPAD:
+        return
+
+    if control_mode == CONTROL_MODE_CUTSCENE:
+        return
+
+    // Normal gameplay: rebuild the bar
+    clear_sentence_bar()
+    sentence_bar_len_used = 0
+
+    // NEW KID is a special layout: write three kid names into fixed slots
+    if current_verb_id == VERB_NEW_KID:
+        write_kid_names_to_sentence_bar()
+        return
+
+    // Ensure there is always a verb
+    if current_verb_id == VERB_NONE:
+        current_verb_id = VERB_WALK_TO
+
+    // 1) Append verb
+    set_sentence_word_ptr_to_verb(current_verb_id)
+    append_word_to_sentence_bar()
+
+    // 2) If there is no Direct Object, we’re done
+    if direct_object_idx_lo == 0:
+        return
+
+    // 3) Append Direct Object name
+    if not resolve_object_name(direct_object_idx_lo, direct_object_idx_hi):
+        // Object missing → sentence UI is reset inside resolve_object_name
+        return
+    append_word_to_sentence_bar()
+
+    // 4) Resolve/Infer preposition
+    if current_preposition != PREPOSITION_NONE:
+        prep = current_preposition
+    else:
+        prep = select_preposition_for_verb(current_verb_id, direct_object_idx_lo, direct_object_idx_hi)
+        if prep == PREPOSITION_NONE_NEEDED:
+            return
+
+        // Store inferred preposition; clear IO because semantics changed
+        current_preposition = prep
+        indirect_object_idx_lo = 0
+        indirect_object_idx_hi = 0
+    end if
+
+    // 5) Append preposition (if any)
+    if prep != PREPOSITION_NONE and prep != PREPOSITION_NONE_NEEDED:
+        set_sentence_word_ptr_to_preposition(prep)
+        append_word_to_sentence_bar()
+    end if
+
+    // 6) Enforce GIVE IO must be a costume; otherwise clear IO
+    if current_verb_id == VERB_GIVE:
+        if indirect_object_idx_hi != OBJ_HI_COSTUME:
+            indirect_object_idx_lo = 0
+            indirect_object_idx_hi = 0
+        end if
+    end if
+
+    // 7) Append IO name if present
+    if indirect_object_idx_lo == 0 and indirect_object_idx_hi == 0:
+        return
+
+    if current_verb_id == VERB_GIVE:
+        // IO is a costume recipient
+        resolve_costume_name(indirect_object_idx_lo)    // kid index
+        append_word_to_sentence_bar()
+    else:
+        // IO is an object
+        if not resolve_object_name(indirect_object_idx_lo, indirect_object_idx_hi):
+            return
+        append_word_to_sentence_bar()
+    end if
+end function
+
+
+// -----------------------------------------------------------------------------
+// write_kid_names_to_sentence_bar
+// -----------------------------------------------------------------------------
+function write_kid_names_to_sentence_bar():
+    // Kid #1: use whatever the current destination pointer is
+    resolve_costume_name(KID1_INDEX)
+    append_word_to_sentence_bar()
+
+    // Kid #2: force pointer to second name slot
+    sentence_bar_ptr = KID2_NAME_OFS
+    resolve_costume_name(KID2_INDEX)
+    append_word_to_sentence_bar()
+
+    // Kid #3: force pointer to third name slot
+    sentence_bar_ptr = KID3_NAME_OFS
+    resolve_costume_name(KID3_INDEX)
+    append_word_to_sentence_bar()
+end function
+
+
+// -----------------------------------------------------------------------------
+// clear_sentence_bar
+// -----------------------------------------------------------------------------
+function clear_sentence_bar():
+    sentence_bar_ptr = SENTENCE_BAR_BASE
+
+    for col from 0 to SENTENCE_BAR_LAST_IDX:
+        sentence_bar_ptr[col] = CLEAR_CHAR
+    end for
+
+    sentence_bar_len_used = 0
+end function
+
+
+// -----------------------------------------------------------------------------
+// append_word_to_sentence_bar
+// -----------------------------------------------------------------------------
+function append_word_to_sentence_bar():
+    // sentence_word_ptr points to a word encoded as:
+    //   chars..., WORD_TERMINATOR (0), optionally WORD_HARD_STOP somewhere before.
+    //
+    // - WORD_TERMINATOR ends the word.
+    // - WORD_HARD_STOP also ends the word but is not stored in the output.
+    // - sentence_bar_len_used tracks logical characters attempted, used to trim.
+    //
+    src_index = 0
+
+    while true:
+        sentence_bar_len_used += 1
+
+        ch = sentence_word_ptr[src_index]
+        src_index += 1
+
+        if ch == WORD_HARD_STOP:
+            // Hard stop: do not store this marker, but end the word
+            break
+        end if
+
+        // Decide if this character is within visible width
+        visible_slot = (sentence_bar_len_used - 1)   // conceptual position
+        if visible_slot < SENTENCE_BAR_END_IDX:
+            // Store this char into the current bar slot
+            sentence_bar_ptr[visible_slot] = ch
+        else:
+            // Beyond visible width: ignore the write but still advance len_used
+        end if
+
+        if ch == WORD_TERMINATOR:
+            break
+        end if
+    end while
+
+    // Advance the bar pointer past the entire word, including the terminator,
+    // so the next append starts after this word (no sentinel is written).
+    sentence_bar_ptr += src_index
+end function
+
+
+// -----------------------------------------------------------------------------
+// resolve_costume_name
+// -----------------------------------------------------------------------------
+function resolve_costume_name(costume_index):
+    // Lookup costume → name pointer and set sentence_word_ptr for append_word
+    sentence_word_ptr = costume_name_ptr_table[costume_index]
+end function
+
+
+// -----------------------------------------------------------------------------
+// resolve_object_name
+// -----------------------------------------------------------------------------
+function resolve_object_name(obj_lo, obj_hi) -> bool:
+    // Locate the object in inventory or the current room, then move its
+    // obj_ptr to the embedded name field and set sentence_word_ptr to it.
+    if not resolve_object_resource(obj_lo, obj_hi):
+        // Failed to find the object → reset sentence UI and abort
+        init_sentence_ui_and_stack()
+        return false
+    end if
+
+    // obj_ptr now points at the object header
+    name_offset = read_byte(obj_ptr + OBJ_NAME_OFS)
+    sentence_word_ptr = obj_ptr + name_offset
+    return true
+end function
+
+
+// -----------------------------------------------------------------------------
+// resolve_object_if_not_costume
+// -----------------------------------------------------------------------------
+function resolve_object_if_not_costume(obj_lo, obj_hi) -> bool:
+    // If this “object” is actually a costume id, treat as not-found here
+    if obj_hi == OBJ_HI_COSTUME:
+        return false
+    end if
+
+    return resolve_object_resource(obj_lo, obj_hi)
+end function
+
+
+// -----------------------------------------------------------------------------
+// resolve_object_resource
+// -----------------------------------------------------------------------------
+function resolve_object_resource(obj_lo, obj_hi) -> bool:
+    // Inputs: obj_lo/obj_hi describe an object id.
+    // Output: obj_ptr points to object header if found; returns true/false.
+
+    obj_idx_lo = obj_lo
+    obj_idx_hi = obj_hi
+
+    // 1) For movable objects, try inventory first (if candidate for inventory)
+    if obj_idx_hi == OBJ_HI_MOVABLE:
+        owner = object_owner_nibble(obj_idx_lo)    // from object_attributes[]
+        if owner != OWNER_IS_ROOM:
+            // Scan inventory slots top-down for a matching object id
+            for slot from MAX_INVENTORY_INDEX down to 0:
+                if inventory_objects[slot] == obj_idx_lo:
+                    // Found in inventory: object pointer comes from inventory table
+                    obj_ptr = inventory_object_ptr_table[slot]
+                    room_obj_ofs = 0
+                    return true
+                end if
+            end for
+        end if
+        // If movable and owned by room, we fall through to room search
+    end if
+
+    // 2) Search the current room’s object list
+    // room_obj_count is treated as “last valid object index” for this loop
+    max_index = room_obj_count
+
+    for i from max_index down to 0:
+        if room_obj_idx_lo[i] != obj_idx_lo:
+            continue
+        end if
+
+        if room_obj_idx_hi[i] != obj_idx_hi:
+            continue
+        end if
+
+        // For movable objects, verify it is actually present in the room
+        if obj_idx_hi == OBJ_HI_MOVABLE:
+            if not verify_object_present_in_room(obj_idx_lo):
+                continue
+            end if
+        end if
+
+        // Match found in room: compute pointer = room base + per-object offset
+        offset = room_obj_ofs_table[i]
+        room_base = room_ptr_table[current_room]
+        obj_ptr = room_base + offset
+        room_obj_ofs = offset
+        return true
+    end for
+
+    // Not found anywhere
+    return false
+end function
+
+
+// -----------------------------------------------------------------------------
+// verify_object_present_in_room (local helper, conceptual)
+// -----------------------------------------------------------------------------
+function verify_object_present_in_room(obj_lo) -> bool:
+    // Re-check the object’s owner nibble from its global attributes.
+    owner = object_owner_nibble(obj_lo)
+    return (owner == OWNER_IS_ROOM)
+end function
+
+
+// -----------------------------------------------------------------------------
+// select_preposition_for_verb
+// -----------------------------------------------------------------------------
+function select_preposition_for_verb(verb_id, do_lo, do_hi) -> Preposition:
+    // 1) Data-driven preposition for USE, based on the object’s prep byte
+    if verb_id == VERB_USE:
+        if not resolve_object_if_not_costume(do_lo, do_hi):
+            return PREPOSITION_NONE_NEEDED
+        end if
+
+        // obj_ptr points to object header; preposition index packed in one byte
+        prep_byte = read_byte(obj_ptr + OBJ_PREP_BYTE_OFS)
+        prep_index = (prep_byte >> 5) & 0b00000111   // high 3 bits
+
+        return preposition_from_index(prep_index)
+    end if
+
+    // 2) Hard-coded mappings for other verbs
+    if verb_id == VERB_GIVE:
+        return PREPOSITION_TO
+    end if
+
+    if verb_id == VERB_NEW_KID or
+       verb_id == VERB_UNLOCK  or
+       verb_id == VERB_FIX:
+        return PREPOSITION_WITH
+    end if
+
+    // 3) Default: no preposition needed
+    return PREPOSITION_NONE_NEEDED
+end function
+*/
