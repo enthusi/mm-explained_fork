@@ -294,3 +294,115 @@ f5_key_check:
 
 keyboard_handler_return:
         rts                                   // default path: no action
+
+/*
+procedure handleOneKey():
+    // Get at most one pending key event from the input system
+    key = readNextKey()          // returns null or a symbolic key value
+    if key is null:
+        return
+
+    // Keep a copy for places where we need to re-check it later
+    cachedKey = key
+
+    //-----------------------------------------------------------------
+    // F7 – Resume interrupted script / bypass cutscene
+    //-----------------------------------------------------------------
+    if key == KEY_F7:
+        if thereIsAnInterruptedScript():
+            resumeInterruptedScript()   // restore program counter & state
+            clearInterruptedScript()    // make resume one-shot
+        return
+
+    //-----------------------------------------------------------------
+    // SPACE – Pause/unpause the game
+    //-----------------------------------------------------------------
+    if key == KEY_SPACE:
+        enterPauseState()               // mark game as paused
+
+        // Show a "PAUSED" banner in the UI
+        showPausedBannerInSentenceBar()
+
+        // Mute all game audio while paused
+        muteMasterAudio()
+
+        // Busy-wait loop until SPACE is pressed again
+        loop:
+            // Force the input system to check the keyboard immediately
+            forceImmediateKeyboardPoll()
+
+            nextKey = readNextKey()
+            if nextKey == KEY_SPACE:
+                break loop
+            // otherwise, keep looping while game is paused
+
+        // Restore audio and leave pause state
+        restoreMasterAudioFromShadow()
+        leavePauseState()
+
+        // Tell the UI that the sentence bar needs to be redrawn
+        markSentenceBarForRefresh()
+
+        // Remove the "PAUSED" banner
+        clearSentenceBarBanner()
+
+        return
+
+    //-----------------------------------------------------------------
+    // F8 – Restart the game
+    //-----------------------------------------------------------------
+    if key == KEY_F8:
+        clearCurrentScriptSelection()
+        restartGame()                    // restart from title / initial state
+        return
+
+    //-----------------------------------------------------------------
+    // '+' – Increase text speed (lower delay)
+    //-----------------------------------------------------------------
+    if key == KEY_PLUS:
+        decreaseTextDelayFactor()        // faster text
+        clampTextDelayToMinimum()        // ensure delay ≥ MIN
+        return
+
+    //-----------------------------------------------------------------
+    // '-' – Decrease text speed (higher delay)
+    //-----------------------------------------------------------------
+    if key == KEY_MINUS:
+        increaseTextDelayFactor()        // slower text
+        clampTextDelayToMaximum()        // ensure delay ≤ MAX
+        return
+
+    //-----------------------------------------------------------------
+    // F2 – Open save/load UI (only in allowed modes)
+    //-----------------------------------------------------------------
+    if gameControlMode() != CUTSCENE_MODE:
+        if cachedKey == KEY_F2:
+            if not isSaveLoadScriptResident():
+                clearCurrentScriptSelection()
+                launchGlobalSaveLoadScript()
+                return
+
+    //-----------------------------------------------------------------
+    // F1 / F3 / F5 – Kid/character switching (only in normal control)
+    //-----------------------------------------------------------------
+    if gameControlMode() != NORMAL_CONTROL_MODE:
+        // No character switching outside normal gameplay
+        return
+
+    if cachedKey == KEY_F1:
+        switchActiveCharacterTo(0)       // first kid / character slot
+        return
+
+    if cachedKey == KEY_F3:
+        switchActiveCharacterTo(1)       // second kid / character slot
+        return
+
+    if cachedKey == KEY_F5:
+        switchActiveCharacterTo(2)       // third kid / character slot
+        return
+
+    //-----------------------------------------------------------------
+    // Any other key is ignored by this handler (handled elsewhere or not at all)
+    //-----------------------------------------------------------------
+    return
+*/
