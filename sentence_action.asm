@@ -1606,10 +1606,10 @@ launch_custom_handler:
 		
 		// Build pointer to script
         clc                                     
-        adc.zp  room_obj_ofs                   // A := low(addr) = handler_ofs + room_obj_ofs.lo
+        adc.zp  room_obj_ofs_lo                   // A := low(addr) = handler_ofs + room_obj_ofs.lo
         sta     task_pc_ofs_lo_tbl               
         lda     #$00                            
-        adc.zp  room_obj_ofs + 1
+        adc.zp  room_obj_ofs_hi
         sta     task_pc_ofs_hi_tbl               // save high byte of script address
 
 		//Select script slot 0
