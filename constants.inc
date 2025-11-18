@@ -203,10 +203,6 @@ Only 2 bits are used, bit 5 (#20) and bit 0 (#01).
 .const PREPOSITION_TO 				= $04
 
 // Control modes
-.const CUTSCENE_CONTROL_MODE 		= $00
-.const KEYPAD_CONTROL_MODE 			= $01
-.const NO_KID_CHANGE_CONTROL_MODE 	= $02
-.const NORMAL_CONTROL_MODE 			= $03
 .const CONTROL_MODE_CUTSCENE      = $00    // Cutscene / restricted UI mode
 .const CONTROL_MODE_KEYPAD        = $01    // Keypad entry mode
 .const CONTROL_MODE_DISABLE_KID   = $02    // Normal play but kid switching disabled
