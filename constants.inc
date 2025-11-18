@@ -181,21 +181,21 @@ Only 2 bits are used, bit 5 (#20) and bit 0 (#01).
 .const SENTENCE_BAR_BASE 			= $ced0
 
 // Verbs
-.const OPEN_VERB 					= $01
-.const CLOSE_VERB 					= $02
-.const GIVE_VERB 					= $03
-.const TURN_ON_VERB 				= $04
-.const TURN_OFF_VERB 				= $05
-.const FIX_VERB 					= $06
-.const NEW_KID_VERB 				= $07
-.const UNLOCK_VERB 					= $08
-.const PUSH_VERB 					= $09
-.const PULL_VERB 					= $0A
-.const USE_VERB 					= $0B
+.const VERB_OPEN 					= $01
+.const VERB_CLOSE 					= $02
+.const VERB_GIVE 					= $03
+.const VERB_TURN_ON 				= $04
+.const VERB_TURN_OFF 				= $05
+.const VERB_FIX 					= $06
+.const VERB_NEW_KID 				= $07
+.const VERB_UNLOCK 					= $08
+.const VERB_PUSH 					= $09
+.const VERB_PULL 					= $0A
+.const VERB_USE 					= $0B
 .const READ_VERB 					= $0C
-.const WALK_TO_VERB 				= $0D
-.const PICK_UP_VERB 				= $0E
-.const WHAT_IS_VERB 				= $0F
+.const VERB_WALK_TO 				= $0D
+.const VERB_PICK_UP 				= $0E
+.const VERB_WHAT_IS 				= $0F
 
 // Prepositions
 .const PREPOSITION_NONE_NEEDED 		= $00
